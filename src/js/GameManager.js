@@ -47,8 +47,6 @@ export class GameManager {
       cameraUp: new THREE.Vector3(0, 1, 0),
       cameraActionOffset: new THREE.Vector3(),
       cameraActionTarget: new THREE.Vector3(),
-      cameraOrbitRightAxis: new THREE.Vector3(),
-      cameraOrbitUpAxis: new THREE.Vector3(),
       cameraLocalOffset: new THREE.Vector3()
     };
 
@@ -431,7 +429,8 @@ export class GameManager {
       this.vectors.cameraLocalOffset.copy(this.camera.position).sub(this.vectors.shipCenter);
       if (this.vectors.cameraLocalOffset.lengthSq() > 0.000001) {
         this.cameraControl.orbitDistance = this.vectors.cameraLocalOffset.length();
-        this.quaternions.cameraOrbitTarget.copy(this.camera.quaternion).normalize();
+        this.lookMatrix.lookAt(this.camera.position, this.vectors.shipCenter, this.axes.y);
+        this.quaternions.cameraOrbitTarget.setFromRotationMatrix(this.lookMatrix).normalize();
       } else {
         this.cameraControl.orbitDistance = this.getFollowCameraRadius();
         this.quaternions.cameraOrbitTarget.identity();
@@ -466,34 +465,22 @@ export class GameManager {
     this.vectors.shipCenter.copy(this.ship.position);
   }
 
-  updateCameraOrbitAxes() {
-    this.vectors.cameraOrbitRightAxis.set(1, 0, 0)
-      .applyQuaternion(this.quaternions.cameraOrbitTarget)
-      .normalize();
-    this.vectors.cameraOrbitUpAxis.set(0, 1, 0).applyQuaternion(this.ship.quaternion);
-    if (this.vectors.cameraOrbitUpAxis.lengthSq() < 0.000001) {
-      this.vectors.cameraOrbitUpAxis.set(0, 1, 0);
-    }
-    this.vectors.cameraOrbitUpAxis.normalize();
-  }
-
   applyCameraZoomDelta(delta) {
-    const previousDistance = this.cameraControl.distance;
+    if (!this.cameraControl.followShip && !this.cameraControl.returningToFollow) {
+      this.cameraControl.orbitDistance = Math.max(
+        0.5,
+        this.cameraControl.orbitDistance + delta
+      );
+      this.cameraControl.distance = Math.max(0.5, this.cameraControl.orbitDistance);
+      return;
+    }
+
     const nextDistance = THREE.MathUtils.clamp(
-      previousDistance + delta,
+      this.cameraControl.distance + delta,
       this.config.cameraMinDistance,
       this.config.cameraMaxDistance
     );
-    const radiusDelta = this.getFollowCameraRadius(nextDistance) - this.getFollowCameraRadius(previousDistance);
-
     this.cameraControl.distance = nextDistance;
-    if (!this.cameraControl.followShip && !this.cameraControl.returningToFollow) {
-      this.cameraControl.orbitDistance = THREE.MathUtils.clamp(
-        this.cameraControl.orbitDistance + radiusDelta,
-        this.getFollowCameraRadius(this.config.cameraMinDistance),
-        this.getFollowCameraRadius(this.config.cameraMaxDistance)
-      );
-    }
   }
 
   getCameraPointerDistance() {
@@ -925,21 +912,18 @@ export class GameManager {
 
     if (dx === 0 && dy === 0) return;
 
-    this.updateCameraOrbitAxes();
     this.quaternions.cameraOrbitYawDelta.setFromAxisAngle(
-      this.vectors.cameraOrbitUpAxis,
+      this.axes.y,
       -dx * this.config.cameraOrbitSensitivity
     );
-    this.quaternions.cameraOrbitTarget.premultiply(this.quaternions.cameraOrbitYawDelta).normalize();
-
-    this.vectors.cameraOrbitRightAxis.set(1, 0, 0)
-      .applyQuaternion(this.quaternions.cameraOrbitTarget)
-      .normalize();
     this.quaternions.cameraOrbitPitchDelta.setFromAxisAngle(
-      this.vectors.cameraOrbitRightAxis,
+      this.axes.x,
       -dy * this.config.cameraOrbitSensitivity
     );
-    this.quaternions.cameraOrbitTarget.premultiply(this.quaternions.cameraOrbitPitchDelta).normalize();
+    this.quaternions.cameraOrbitTarget
+      .premultiply(this.quaternions.cameraOrbitYawDelta)
+      .multiply(this.quaternions.cameraOrbitPitchDelta)
+      .normalize();
   }
 
   stopCameraDrag(event) {
