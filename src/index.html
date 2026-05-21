@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Void Zero</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      color-scheme: light;
+      --panel: rgba(246, 251, 255, 0.74);
+      --panel-strong: rgba(238, 247, 255, 0.92);
+      --line: rgba(43, 98, 140, 0.22);
+      --text: #133047;
+      --muted: #537083;
+      --accent: #63d2ff;
+      --warn: #ffbc66;
+      --danger: #e36f6f;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    *:focus,
+    *:focus-visible {
+      outline: none !important;
+    }
+
+    *::selection {
+      background: transparent;
+    }
+
+    img,
+    svg {
+      -webkit-user-drag: none;
+      user-drag: none;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #f3fbff;
+      color: var(--text);
+      font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      letter-spacing: 0;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      border: 0.12vh solid rgba(43, 98, 140, 0.17);
+      border-radius: 0.8vh;
+      background: rgba(255, 255, 255, 0.6);
+      color: var(--text);
+      padding: 0 1.6vh;
+      font-size: 1.6vh;
+      text-transform: uppercase;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button.primary {
+      border-color: rgba(99, 210, 255, 0.6);
+      background: rgba(99, 210, 255, 0.16);
+    }
+
+    button:active:not(:disabled) {
+      background: rgba(229, 246, 255, 0.85);
+    }
+
+    button:disabled {
+      cursor: progress;
+      opacity: 0.58;
+    }
+
+    input {
+      width: 100%;
+      height: 5vh;
+      border: 0.12vh solid rgba(43, 98, 140, 0.16);
+      border-radius: 0.8vh;
+      background: rgba(255, 255, 255, 0.58);
+      color: var(--text);
+      padding: 0 1.4vh;
+      font-size: 1.8vh;
+      font-variant-numeric: tabular-nums;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: rgba(99, 210, 255, 0.7);
+    }
+
+    label {
+      display: grid;
+      gap: 0.7vh;
+      color: var(--muted);
+      font-size: 1.4vh;
+      text-transform: uppercase;
+    }
+
+    .hud {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .speed-readout,
+    .target-panel,
+    .readout,
+    .toast {
+      pointer-events: auto;
+      position: absolute;
+      backdrop-filter: blur(2.5vh);
+      background: var(--panel);
+      border: 0.12vh solid var(--line);
+      box-shadow: 0 0.4vh 1.6vh rgba(66, 139, 190, 0.18);
+    }
+
+    .speed-readout {
+      left: 50%;
+      bottom: 2.2vh;
+      width: 32vh;
+      border-radius: 0;
+      background: transparent;
+      border: 0;
+      display: grid;
+      align-content: center;
+      padding: 0;
+      transform: translateX(-50%);
+      cursor: ew-resize;
+      touch-action: none;
+      user-select: none;
+    }
+
+    .speed-readout span {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .speed-values {
+      position: absolute;
+      z-index: 2;
+      right: 1vh;
+      top: 50%;
+      transform: translateY(-50%);
+      display: inline-flex;
+      gap: 0.8vh;
+      color: rgba(19, 48, 71, 0.88);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .speed-values span {
+      line-height: 1;
+      font-size: 1.4vh;
+    }
+
+    .speed-gauge {
+      position: relative;
+      height: 2.4vh;
+      overflow: visible;
+      border-radius: 0.6vh;
+      background: rgba(255, 255, 255, 0.42);
+      border: 0.12vh solid rgba(43, 98, 140, 0.6);
+      cursor: ew-resize;
+      touch-action: none;
+    }
+
+    .speed-gauge-fill,
+    .speed-gauge-zero,
+    .speed-gauge-target {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .speed-gauge-fill {
+      left: 50%;
+      width: 0;
+      background: rgba(99, 210, 255, 0.74);
+      box-shadow: 0 0 1.9vh rgba(99, 210, 255, 0.22);
+    }
+
+    .speed-gauge-fill.is-negative {
+      background: rgb(255 99 144 / 74%);
+      box-shadow: 0 0 1.9vh rgb(255 99 144 / 22%);
+    }
+
+    .speed-gauge-zero {
+      left: 10%;
+      width: 0.28vh;
+      transform: translateX(-0.14vh);
+      background: #00000066;
+    }
+
+    .speed-gauge-target {
+      left: 10%;
+      top: -0.55vh;
+      bottom: -0.55vh;
+      width: 0.42vh;
+      transform: translateX(-0.21vh);
+      background: #6975a0;
+      box-shadow: 0 0 0.6vh rgb(10 17 113 / 30%);
+    }
+
+    .readout {
+      left: 2.2vh;
+      top: 2.2vh;
+      border-radius: 1.1vh;
+      padding: 1.2vh;
+      display: flex;
+      flex-direction: column;
+      gap: 0.8vh;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .readout-row {
+      display: flex;
+      line-height: 1;
+      justify-content: start;
+      align-items: center;
+      gap: 0.7vh;
+      color: var(--muted);
+      min-width: 0;
+    }
+
+    .readout-axis {
+      min-width: 2.1vh;
+      font-size: 1.2vh;
+      text-transform: uppercase;
+    }
+
+    .readout-value {
+      min-width: 8vh;
+      color: var(--text);
+      font-size: 1.2vh;
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .target-panel {
+      position: fixed;
+      z-index: 15;
+      left: 50%;
+      top: 50%;
+      left: 50vw;
+      top: 50dvh;
+      display: none;
+      gap: 1.1vh;
+      align-items: stretch;
+      padding: 1.7vh;
+      border-radius: 1.1vh;
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.98);
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .target-panel.open {
+      display: flex;
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .target-popup-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 14;
+      pointer-events: auto;
+      background: transparent;
+    }
+
+    .target-fields {
+      flex: 1;
+      min-width: 0;
+      display: grid;
+      gap: 0.9vh;
+    }
+
+    .target-panel label {
+      display: flex;
+      align-items: center;
+      gap: 1vh;
+    }
+
+    .target-panel input {
+      height: 3vh;
+      width: 12vh;
+      border: 0.12vh solid rgba(43, 98, 140, 0.16);
+      border-radius: 0.8vh;
+      background: rgba(255, 255, 255, 0.58);
+      color: var(--text);
+      padding: 0;
+      padding-left: 1vh;
+      font-size: 1.4vh;
+      font-variant-numeric: tabular-nums;
+      outline: none;
+    }
+
+    .target-panel.nav-active {
+      border-color: rgba(99, 210, 255, 0.62);
+      box-shadow: 0 2.8vh 8.3vh rgba(66, 139, 190, 0.18), 0 0 2.2vh rgba(99, 210, 255, 0.18);
+    }
+
+    .nav-toggle {
+      align-self: stretch;
+      display: grid;
+      place-items: center;
+      height: auto;
+      width: 7vh;
+      color: var(--muted);
+    }
+
+    .target-panel.nav-active .nav-toggle {
+      color: var(--text);
+      border-color: rgba(99, 210, 255, 0.72);
+      background: rgba(99, 210, 255, 0.2);
+      box-shadow: 0 0 1.8vh rgba(99, 210, 255, 0.22);
+    }
+
+    .toast {
+      left: 50%;
+      bottom: 12.6vh;
+      transform: translateX(-50%);
+      min-width: 25vh;
+      max-width: calc(100% - 4.4vh);
+      min-height: 4.7vh;
+      padding: 1.1vh 1.7vh;
+      border-radius: 1.1vh;
+      color: var(--text);
+      font-size: 1.7vh;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 180ms ease, transform 180ms ease;
+      pointer-events: none;
+    }
+
+    .toast.visible {
+      opacity: 1;
+      transform: translate(-50%, -1.1vh);
+    }
+
+    .error-toast {
+      position: absolute;
+      z-index: 20;
+      left: 50%;
+      top: 50%;
+      width: min(58vh, calc(100% - 4.4vh));
+      min-height: 6.4vh;
+      padding: 1.5vh 2.2vh;
+      transform: translate(-50%, -50%) scale(0.98);
+      border: 0.12vh solid rgba(255, 255, 255, 0.28);
+      border-radius: 0.9vh;
+      background: #d83a42;
+      box-shadow: 0 1.4vh 4.8vh rgba(120, 0, 16, 0.34);
+      color: #fff;
+      font-size: 1.9vh;
+      line-height: 1.35;
+      text-align: center;
+      white-space: normal;
+      opacity: 0;
+      transition: opacity 180ms ease, transform 180ms ease;
+      pointer-events: none;
+      text-transform: none;
+    }
+
+    .error-toast.visible {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+      pointer-events: auto;
+    }
+
+    .error-toast.visible:hover:not(:disabled) {
+      background: #eb5f66;
+    }
+
+    .start-scene {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      padding: clamp(3vh, 7vh, 9vh);
+      background: #edf9ff;
+      pointer-events: auto;
+      cursor: pointer;
+      transition: opacity 220ms ease, visibility 220ms ease;
+    }
+
+    .start-scene.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .start-panel {
+      width: min(105vh, 100%);
+      min-height: calc(100vh - 14vh);
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+
+    .start-title {
+      display: grid;
+      place-items: center;
+      text-align: center;
+    }
+
+    .start-title strong {
+      font-size: clamp(6.4vh, 12vh, 15vh);
+      line-height: 1.1;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    .start-prompt,
+    .loading-detail {
+      color: var(--muted);
+      font-size: 1.6vh;
+    }
+
+    .start-prompt {
+      position: fixed;
+      left: 3vh;
+      right: 3vh;
+      bottom: clamp(3.5vh, 8vh, 9vh);
+      text-align: center;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .start-status {
+      display: grid;
+      gap: 1.8vh;
+      width: min(28vh, 70%);
+      place-items: center;
+    }
+
+    .loading-track {
+      width: 100%;
+      height: 0.36vh;
+      border: 0.12vh solid rgba(43, 98, 140, 0.16);
+      background: rgba(255, 255, 255, 0.58);
+      overflow: hidden;
+    }
+
+    .loading-fill {
+      width: 0;
+      height: 100%;
+      background: linear-gradient(90deg, rgba(99, 210, 255, 0.4), rgba(255, 188, 102, 0.7));
+      transition: width 180ms ease;
+    }
+
+    .loading-copy {
+      min-height: 5vh;
+      display: grid;
+      gap: 0.55vh;
+      place-items: center;
+      text-align: center;
+      font-size: 1.5vh;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .start-actions {
+      display: grid;
+      place-items: center;
+    }
+
+    .start-actions button {
+      min-width: 32vh;
+      height: 12vh;
+      padding: 0 7vh;
+      border-radius: 1.2vh;
+      border-width: 0.12vh;
+      font-size: 2.8vh;
+      color: #009fff;
+      border-color: rgba(99, 210, 255, 0.6);
+      background: rgba(99, 210, 255, 0.16);
+    }
+
+    .start-actions #startButton {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .start-scene.ready .start-actions #startButton {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      left: 50vw;
+      top: 50dvh;
+      transform: translate(-50%, -50%);
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .start-scene.loading .loading-fill {
+      box-shadow: 0 0 2.3vh rgba(99, 210, 255, 0.34);
+    }
+
+    .start-status,
+    .start-actions {
+      display: none;
+    }
+
+    .start-scene.loading .start-title,
+    .start-scene.loading .start-prompt,
+    .start-scene.ready .start-title,
+    .start-scene.ready .start-prompt,
+    .start-scene.ready .start-status {
+      display: none;
+    }
+
+    .start-scene.loading .start-status,
+    .start-scene.ready .start-actions {
+      display: grid;
+    }
+
+    .start-scene.ready {
+      cursor: default;
+    }
+
+    .start-settings-button {
+      position: fixed;
+      z-index: 12;
+      top: 2.4vh;
+      right: 2.4vh;
+      width: 5.8vh;
+      height: 5.8vh;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border-radius: 1.1vh;
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(2vh);
+    }
+
+    .svg-icon {
+      --svg-icon-source: none;
+      display: block;
+      width: 2.8vh;
+      height: 2.8vh;
+      background: currentColor;
+      -webkit-mask: var(--svg-icon-source) center / contain no-repeat;
+      mask: var(--svg-icon-source) center / contain no-repeat;
+    }
+
+    .svg-icon-settings {
+      --svg-icon-source: url("./rss/svg/settings.svg");
+    }
+
+    .svg-icon-close {
+      --svg-icon-source: url("./rss/svg/close.svg");
+    }
+
+    .start-settings-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 13;
+      display: none;
+      place-items: center;
+      min-height: 100dvh;
+      padding: clamp(1.6vh, 4vw, 4vh);
+      background: rgba(237, 249, 255, 0.72);
+      backdrop-filter: blur(1.6vh);
+      cursor: default;
+      overflow: auto;
+    }
+
+    .start-settings-backdrop.open {
+      display: grid;
+    }
+
+    .start-settings-panel {
+      width: min(50vh, 100%);
+      max-height: calc(100dvh - clamp(3.2vh, 8vw, 8vh));
+      overflow: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      border: 0.12vh solid var(--line);
+      border-radius: 1.2vh;
+      background: var(--panel-strong);
+      box-shadow: 0 2.4vh 7vh rgba(66, 139, 190, 0.22);
+      padding: 2.2vh;
+      display: grid;
+      gap: 2vh;
+    }
+
+    .start-settings-panel::-webkit-scrollbar {
+      display: none;
+    }
+
+    .start-settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.4vh;
+      margin-bottom: 4vh;
+    }
+
+    .start-settings-footer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.4vh;
+    }
+
+    #settingsResetButton {
+      margin-top: 3vh;
+      width: 80%;
+      height: 7vh;
+      font-size: 3vh;
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .start-settings-title {
+      margin: 0;
+      font-size: 5.4vh;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .settings-icon-button {
+      width: 4.8vh;
+      height: 4.8vh;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: none;
+      background: transparent;
+    }
+
+    .key-binding-list {
+      display: grid;
+      gap: 6vh;
+    }
+
+    .key-binding-group {
+      display: grid;
+      gap: 0.8vh;
+    }
+
+    .key-binding-group-title {
+      color: var(--muted);
+      font-size: 2.4vh;
+      text-transform: uppercase;
+    }
+
+    .key-binding-row {
+      min-height: 5.6vh;
+      display: flex;
+      gap: 1vh;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .key-binding-divider {
+      width: 100%;
+      height: 1px;
+      background: rgba(43, 98, 140, 0.14);
+    }
+
+    .key-binding-label {
+      min-width: 0;
+      font-size: 1.6vh;
+    }
+
+    .key-binding-button {
+      width: fit-content;
+      min-width: 12vh;
+      padding: 0 1vh;
+      height: 5vh;
+      font-size: 1.4vh;
+      font-weight: bold;
+      text-transform: none;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .key-binding-button.capturing {
+      border-color: rgba(255, 188, 102, 0.76);
+      background: rgba(255, 188, 102, 0.18);
+      color: var(--text);
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app"></div>
+
+  <div class="hud">
+    <div class="speed-readout speed-readout-detail" id="speedControl">
+      <div class="speed-gauge" id="speedGauge" role="slider" tabindex="0" aria-label="Target speed"
+        aria-orientation="horizontal">
+        <i class="speed-gauge-fill" id="speedGaugeFill"></i>
+        <i class="speed-gauge-zero" id="speedZeroMark"></i>
+        <i class="speed-gauge-target" id="speedTargetMark"></i>
+        <div class="speed-values">
+          <span id="speedValue">0.0/0.0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="readout" role="button" tabindex="0" aria-live="polite" aria-controls="targetForm" aria-expanded="false">
+      <div class="readout-row">
+        <span class="readout-axis">X</span>
+        <span class="readout-value" id="positionXValue">0</span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-axis">Y</span>
+        <span class="readout-value" id="positionYValue">0</span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-axis">Z</span>
+        <span class="readout-value" id="positionZValue">0</span>
+      </div>
+    </div>
+
+    <div class="target-popup-backdrop" id="targetPopupBackdrop" hidden></div>
+    <form class="target-panel" id="targetForm" role="dialog" aria-modal="true" aria-label="Target navigation" hidden>
+      <div class="target-fields">
+        <label>
+          X
+          <input id="targetX" type="number" value="0" step="100" autocomplete="off">
+        </label>
+        <label>
+          Y
+          <input id="targetY" type="number" value="0" step="100" autocomplete="off">
+        </label>
+        <label>
+          Z
+          <input id="targetZ" type="number" value="-5000" step="100" autocomplete="off">
+        </label>
+      </div>
+      <button class="primary nav-toggle" id="navToggle" type="submit" aria-pressed="false">Nav Off</button>
+    </form>
+
+    <div class="toast" id="toast"></div>
+    <button class="error-toast" id="errorToast" type="button" hidden></button>
+  </div>
+
+  <div class="start-scene" id="startScene">
+    <button class="start-settings-button" id="settingsButton" type="button" aria-label="환경설정" title="Settings">
+      <span class="svg-icon svg-icon-settings" aria-hidden="true"></span>
+    </button>
+    <div class="start-settings-backdrop" id="settingsPopup" aria-hidden="true" inert>
+      <div class="start-settings-panel" role="dialog" aria-labelledby="settingsTitle" aria-modal="true">
+        <div class="start-settings-header">
+          <h2 class="start-settings-title" id="settingsTitle">Settings</h2>
+          <button class="settings-icon-button" id="settingsCloseButton" type="button" aria-label="닫기" title="Close">
+            <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="key-binding-list" id="keyBindingList"></div>
+        <div class="start-settings-footer">
+          <button id="settingsResetButton" type="button">Reset</button>
+        </div>
+      </div>
+    </div>
+    <div class="start-panel" role="dialog" aria-labelledby="startTitle" aria-describedby="loadingText"
+      aria-modal="true">
+      <div class="start-title">
+        <strong id="startTitle">Void Zero</strong>
+      </div>
+      <div class="start-prompt">Click anywhere</div>
+      <div class="start-status">
+        <div class="loading-track" aria-hidden="true">
+          <div class="loading-fill" id="loadingBar"></div>
+        </div>
+        <div class="loading-copy">
+          <div id="loadingText">Standby</div>
+          <div class="loading-detail" id="loadingDetail">click anywhere</div>
+        </div>
+      </div>
+      <div class="start-actions">
+        <button class="primary" id="startButton" type="button" disabled>Start</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="./js/main.js"></script>
+</body>
+
+</html>
