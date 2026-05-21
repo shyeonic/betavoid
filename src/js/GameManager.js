@@ -912,9 +912,12 @@ export class GameManager {
 
     if (dx === 0 && dy === 0) return;
 
+    this.vectors.cameraUp.set(0, 1, 0).applyQuaternion(this.quaternions.cameraOrbitTarget);
+    const yawSign = this.vectors.cameraUp.dot(this.axes.y) >= 0 ? 1 : -1;
+
     this.quaternions.cameraOrbitYawDelta.setFromAxisAngle(
       this.axes.y,
-      -dx * this.config.cameraOrbitSensitivity
+      -dx * this.config.cameraOrbitSensitivity * yawSign
     );
     this.quaternions.cameraOrbitPitchDelta.setFromAxisAngle(
       this.axes.x,
