@@ -137,7 +137,7 @@ export class WorldMapManager {
   }
 
   createResourceMesh(resourceNode) {
-    const definition = RESOURCE_DEFINITIONS[resourceNode.type];
+    const definition = RESOURCE_DEFINITIONS[resourceNode.resource_id || resourceNode.type];
     if (!definition) return null;
     const object = this.createVisualObject(resourceNode.model_id, definition.visual);
     const cachedPosition = this.getFixedObjectPosition(resourceNode.resource_instance_id);
@@ -145,7 +145,7 @@ export class WorldMapManager {
     object.userData = {
       kind: "resource",
       id: resourceNode.resource_instance_id,
-      type: resourceNode.type,
+      type: resourceNode.resource_id || resourceNode.type,
       model_id: resourceNode.model_id,
       sector_id: resourceNode.sector_id,
       chunk_id: resourceNode.chunk_id,
@@ -390,7 +390,13 @@ export class WorldMapManager {
       "SEC-001": 0xffbc66,
       "SEC-002": 0x63d2ff,
       "SEC-003": 0x82e3bd,
-      "SEC-004": 0xa6ebff
+      "SEC-004": 0xa6ebff,
+      "SEC-005": 0xb896ff,
+      "SEC-006": 0xff6b6b,
+      "SEC-007": 0xffd166,
+      "SEC-008": 0x9ee7ff,
+      "SEC-009": 0x7ee081,
+      "SEC-010": 0xd9d9d9
     };
     return colors[sectorId] || 0xffffff;
   }

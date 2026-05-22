@@ -1,6 +1,6 @@
 import {
   BUILDING_DEFINITIONS,
-  INITIAL_BUILDING_TYPES,
+  ITEM_DEFINITIONS,
   INITIAL_RESOURCE_TYPES,
   RESOURCE_DEFINITIONS,
   SECTOR_TEMPLATES,
@@ -55,6 +55,7 @@ export class WorldDataManager {
     const meta = await this.getStoreValue("meta", "world");
     if (!meta) return this.createNewWorld();
 
+    await this.checkAndSpawnResources();
     this.snapshot = await this.getWorldSnapshot();
     return this.snapshot;
   }
@@ -65,52 +66,23 @@ export class WorldDataManager {
     const chunks = this.createWorldChunks(now);
     const sectors = this.createSectors(now, rng, chunks);
     const placedObjects = [];
-    const resourceNodes = INITIAL_RESOURCE_TYPES.map((type, index) => {
-      const sector = this.pickSectorForResource(type, sectors, index);
-      const definition = RESOURCE_DEFINITIONS[type];
-      const position = this.pickPositionInSector(sector, rng, placedObjects, this.config.resourceMinDistance);
-      const chunkData = this.getChunkDataAtPosition(position);
-      const totalCapacity = Math.round(lerp(definition.total_capacity_range[0], definition.total_capacity_range[1], rng()));
-      const resourceNode = {
-        resource_instance_id: this.createId("RES", type, seed, index, rng),
-        type,
-        model_id: definition.model_id,
-        sector_id: sector.sector_id,
-        chunk_id: chunkData.chunk_id,
-        chunk: chunkData.chunk,
-        position,
-        local_position: chunkData.local_position,
-        total_capacity: totalCapacity,
-        current_amount: totalCapacity,
-        base_yield_per_sec: definition.base_yield_per_sec,
-        spawn_time: now,
-        created_at: now
-      };
-      placedObjects.push(resourceNode);
-      return resourceNode;
+    const resourceNodes = this.createInitialResourceNodes({
+      chunks,
+      createdAt: now,
+      placedObjects,
+      rng,
+      sectors,
+      seed
     });
-
-    const buildings = INITIAL_BUILDING_TYPES.map((buildingId, index) => {
-      const sector = sectors[(index + 1) % sectors.length];
-      const definition = BUILDING_DEFINITIONS[buildingId];
-      const position = this.pickPositionInSector(sector, rng, placedObjects, this.config.buildingResourceMinDistance);
-      const chunkData = this.getChunkDataAtPosition(position);
-      const building = {
-        building_instance_id: this.createId("BLD", buildingId, seed, index, rng),
-        building_id: buildingId,
-        model_id: definition.model_id,
-        sector_id: sector.sector_id,
-        chunk_id: chunkData.chunk_id,
-        chunk: chunkData.chunk,
-        position,
-        local_position: chunkData.local_position,
-        hp: definition.hp,
-        status: "active",
-        created_at: now
-      };
-      placedObjects.push(building);
-      return building;
+    const buildings = this.createInitialBuildings({
+      createdAt: now,
+      placedObjects,
+      resourceNodes,
+      rng,
+      sectors,
+      seed
     });
+    const resourceManager = this.createResourceManager(now, resourceNodes, buildings);
 
     this.assignObjectCounts(chunks, [...resourceNodes, ...buildings]);
     const meta = {
@@ -120,7 +92,7 @@ export class WorldDataManager {
     };
     const playerShip = this.createDefaultPlayerShipState(now, sectors);
 
-    await this.replaceWorldData({ sectors, chunks, resourceNodes, buildings, meta, playerShip });
+    await this.replaceWorldData({ sectors, chunks, resourceNodes, buildings, meta, playerShip, resourceManager });
     this.snapshot = await this.getWorldSnapshot();
     return this.snapshot;
   }
@@ -172,10 +144,12 @@ export class WorldDataManager {
         name: template.name,
         theme: template.theme,
         theme_music_id: template.theme_music_id,
-        grid_size: { ...this.config.sectorSize },
+        stats: structuredCloneSafe(template.stats || {}),
         chunk_id: chunk.chunk_id,
         chunk: chunkPosition,
         resource_weights: { ...template.resource_weights },
+        initial_buildings: structuredCloneSafe(template.initial_buildings || []),
+        initial_resource_facilities: structuredCloneSafe(template.initial_resource_facilities || []),
         global_bounds: { min, max },
         chunk_bounds: {
           min: chunkPosition,
@@ -186,36 +160,499 @@ export class WorldDataManager {
     });
   }
 
-  pickSectorForResource(type, sectors, offset) {
-    const sorted = [...sectors].sort((a, b) => {
-      const delta = (b.resource_weights[type] || 0) - (a.resource_weights[type] || 0);
-      if (delta !== 0) return delta;
-      return a.sector_id.localeCompare(b.sector_id);
-    });
+  createInitialResourceNodes({ chunks, createdAt, placedObjects, rng, sectors, seed }) {
+    const resourceNodes = [];
+    let nodeIndex = 0;
 
-    return sorted[offset % Math.min(2, sorted.length)] || sorted[0];
+    for (const resourceId of INITIAL_RESOURCE_TYPES) {
+      const definition = RESOURCE_DEFINITIONS[resourceId];
+      if (!definition) continue;
+
+      const totalCapacity = Math.max(0, Math.round(Number(definition.total_capacity) || 0));
+      const result = this.createDistributedResourceNodes({
+        chunks,
+        createdAt,
+        placedObjects,
+        resourceId,
+        rng,
+        sectors,
+        seed,
+        startIndex: nodeIndex,
+        totalCapacity
+      });
+      resourceNodes.push(...result.nodes);
+      nodeIndex = result.nextIndex;
+    }
+
+    return resourceNodes;
   }
 
-  pickPositionInSector(sector, rng, placedObjects, minDistance) {
-    const margin = this.config.placementMargin;
-    const min = sector.global_bounds.min;
-    const max = sector.global_bounds.max;
+  createDistributedResourceNodes({
+    chunks,
+    createdAt,
+    deferBelowMin = false,
+    placedObjects,
+    resourceId,
+    rng,
+    sectors,
+    seed,
+    startIndex,
+    totalCapacity
+  }) {
+    const definition = RESOURCE_DEFINITIONS[resourceId];
+    if (!definition) return { nodes: [], nextIndex: startIndex, remaining: totalCapacity };
 
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      const position = {
-        x: Math.round(lerp(min.x + margin, max.x - margin, rng())),
-        y: Math.round(lerp(min.y + margin, max.y - margin, rng())),
-        z: Math.round(lerp(min.z + margin, max.z - margin, rng()))
+    const nodes = [];
+    let nextIndex = startIndex;
+    let remaining = 0;
+    const normalizedTotalCapacity = Math.max(0, Math.round(totalCapacity));
+    const sectorCapacity = Math.floor(normalizedTotalCapacity * clamp01(definition.sector_ratio));
+    const allocations = this.calculateSectorResourceAllocations(resourceId, sectorCapacity, sectors);
+
+    for (const allocation of allocations) {
+      const result = this.createResourceNodesForQuota({
+        chunks,
+        createdAt,
+        deferBelowMin,
+        placedObjects,
+        quota: allocation.capacity,
+        resourceId,
+        rng,
+        sector: allocation.sector,
+        seed,
+        startIndex: nextIndex
+      });
+      nodes.push(...result.nodes);
+      nextIndex = result.nextIndex;
+      remaining += result.remaining;
+    }
+
+    const offSectorCapacity = Math.max(0, normalizedTotalCapacity - sectorCapacity);
+    const result = this.createResourceNodesForQuota({
+      chunks,
+      createdAt,
+      deferBelowMin,
+      placedObjects,
+      quota: offSectorCapacity,
+      resourceId,
+      rng,
+      sector: null,
+      seed,
+      startIndex: nextIndex
+    });
+    nodes.push(...result.nodes);
+    nextIndex = result.nextIndex;
+    remaining += result.remaining;
+
+    return { nodes, nextIndex, remaining };
+  }
+
+  calculateSectorResourceAllocations(resourceId, totalCapacity, sectors) {
+    const weightedSectors = sectors
+      .map((sector) => ({
+        sector,
+        weight: Math.max(0, Number(sector.resource_weights?.[resourceId]) || 0)
+      }))
+      .filter((entry) => entry.weight > 0);
+
+    const totalWeight = weightedSectors.reduce((sum, entry) => sum + entry.weight, 0);
+    if (totalWeight <= 0 || totalCapacity <= 0) return [];
+
+    let assigned = 0;
+    return weightedSectors.map((entry, index) => {
+      const isLast = index === weightedSectors.length - 1;
+      const capacity = isLast
+        ? Math.max(0, totalCapacity - assigned)
+        : Math.round(totalCapacity * (entry.weight / totalWeight));
+      assigned += capacity;
+      return { sector: entry.sector, capacity };
+    }).filter((entry) => entry.capacity > 0);
+  }
+
+  createResourceNodesForQuota({
+    chunks,
+    createdAt,
+    deferBelowMin = false,
+    placedObjects,
+    quota,
+    resourceId,
+    rng,
+    sector,
+    seed,
+    startIndex
+  }) {
+    const definition = RESOURCE_DEFINITIONS[resourceId];
+    const item = ITEM_DEFINITIONS[definition.produces_item_id] || null;
+    const [minCapacity, maxCapacity] = definition.node_capacity_range || [quota, quota];
+    const nodes = [];
+    let nextIndex = startIndex;
+    let remaining = Math.max(0, Math.round(quota));
+
+    while (remaining > 0) {
+      if (deferBelowMin && remaining < minCapacity) break;
+
+      const upper = Math.max(1, Math.min(maxCapacity, remaining));
+      const lower = Math.max(1, Math.min(minCapacity, upper));
+      const capacity = remaining <= minCapacity
+        ? remaining
+        : Math.round(lerp(lower, upper, rng()));
+      const position = sector
+        ? this.pickPositionInSector(sector, rng, placedObjects, this.config.resourceMinDistance)
+        : this.pickPositionOutsideSectors(chunks, rng, placedObjects, this.config.resourceMinDistance);
+      const chunkData = this.getChunkDataAtPosition(position);
+      const lifetime = this.pickResourceLifetime(definition, rng);
+      const node = {
+        resource_instance_id: this.createId("RES", resourceId, seed, nextIndex, rng),
+        resource_id: resourceId,
+        type: resourceId,
+        category: definition.visual.category || item?.type || null,
+        produces_item_id: definition.produces_item_id,
+        item_type: item?.type || null,
+        node_type: definition.node_type,
+        model_id: definition.visual.model_id,
+        sector_id: sector?.sector_id || null,
+        chunk_id: chunkData.chunk_id,
+        chunk: chunkData.chunk,
+        position,
+        local_position: chunkData.local_position,
+        total_capacity: capacity,
+        current_amount: capacity,
+        base_yield_per_sec: definition.base_yield_per_sec,
+        spawn_time: createdAt,
+        expiry_time: lifetime ? createdAt + lifetime : null,
+        created_at: createdAt
       };
 
+      nodes.push(node);
+      placedObjects.push(node);
+      remaining -= capacity;
+      nextIndex += 1;
+    }
+
+    return { nodes, nextIndex, remaining };
+  }
+
+  pickResourceLifetime(definition, rng) {
+    if (definition.node_type !== "DECAYING") return null;
+    const [minLifetime, maxLifetime] = definition.lifetime_range || [0, 0];
+    return Math.round(lerp(minLifetime, maxLifetime, rng()));
+  }
+
+  pickPositionOutsideSectors(chunks, rng, placedObjects, minDistance) {
+    const candidateChunks = chunks.filter((chunk) => !chunk.sector_id);
+    const availableChunks = candidateChunks.length > 0 ? candidateChunks : chunks;
+
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const chunk = availableChunks[Math.floor(rng() * availableChunks.length)];
+      const position = this.pickPositionInBounds(chunk.global_bounds, rng);
       if (this.isFarEnough(position, placedObjects, minDistance)) return position;
     }
 
+    const chunk = availableChunks[Math.floor(rng() * availableChunks.length)];
+    return this.pickPositionInBounds(chunk.global_bounds, rng);
+  }
+
+  createInitialBuildings({ createdAt, placedObjects, resourceNodes, rng, sectors, seed }) {
+    const buildings = [];
+    const consumedResourceNodeIds = new Set();
+    let buildingIndex = 0;
+
+    for (const sector of sectors) {
+      for (const entry of sector.initial_buildings || []) {
+        for (let count = 0; count < entry.count; count += 1) {
+          const building = this.createBuildingInstance({
+            buildingId: entry.building_id,
+            createdAt,
+            index: buildingIndex,
+            placedObjects,
+            rng,
+            sector,
+            seed
+          });
+          if (!building) continue;
+          buildings.push(building);
+          placedObjects.push(building);
+          buildingIndex += 1;
+        }
+      }
+
+      for (const entry of sector.initial_resource_facilities || []) {
+        const definition = BUILDING_DEFINITIONS[entry.building_id];
+        const requiredCategory = definition?.placement_rule?.required_resource_type;
+        if (!requiredCategory) continue;
+
+        const candidates = shuffle(resourceNodes.filter((node) => (
+          node.sector_id === sector.sector_id &&
+          node.category === requiredCategory &&
+          !consumedResourceNodeIds.has(node.resource_instance_id)
+        )), rng);
+
+        for (let count = 0; count < entry.count && candidates.length > 0; count += 1) {
+          const resourceNode = candidates.pop();
+          consumedResourceNodeIds.add(resourceNode.resource_instance_id);
+          const building = this.createBuildingInstance({
+            buildingId: entry.building_id,
+            createdAt,
+            index: buildingIndex,
+            placedObjects,
+            position: { ...resourceNode.position },
+            resourceNode,
+            rng,
+            sector,
+            seed
+          });
+          if (!building) continue;
+          buildings.push(building);
+          placedObjects.push(building);
+          buildingIndex += 1;
+        }
+      }
+    }
+
+    removeConsumedResourceNodes(resourceNodes, consumedResourceNodeIds);
+    return buildings;
+  }
+
+  createResourceManager(createdAt = Date.now(), resourceNodes = [], buildings = []) {
+    const resourceManager = {
+      key: "resourceManager",
+      manager_id: "GLOBAL",
+      last_check: createdAt,
+      next_check: createdAt + this.getResourceCheckInterval(),
+      check_interval: this.getResourceCheckInterval(),
+      pools: {}
+    };
+
+    for (const resourceId of INITIAL_RESOURCE_TYPES) {
+      this.ensureResourcePool(resourceManager, resourceId);
+    }
+
+    this.updateResourceManagerTotals(resourceManager, resourceNodes, buildings);
+    return resourceManager;
+  }
+
+  ensureResourcePool(resourceManager, resourceId) {
+    const definition = RESOURCE_DEFINITIONS[resourceId];
+    if (!definition) return null;
+
+    if (!resourceManager.pools) resourceManager.pools = {};
+    if (!resourceManager.pools[resourceId]) {
+      resourceManager.pools[resourceId] = {
+        total_capacity: definition.total_capacity,
+        current_total: 0,
+        pending_buffer: 0
+      };
+    }
+
+    const pool = resourceManager.pools[resourceId];
+    pool.total_capacity = definition.total_capacity;
+    pool.current_total = Math.max(0, Math.round(Number(pool.current_total) || 0));
+    pool.pending_buffer = Math.max(0, Math.round(Number(pool.pending_buffer) || 0));
+    return pool;
+  }
+
+  updateResourceManagerTotals(resourceManager, resourceNodes = [], buildings = []) {
+    for (const resourceId of INITIAL_RESOURCE_TYPES) {
+      const pool = this.ensureResourcePool(resourceManager, resourceId);
+      if (!pool) continue;
+
+      const nodeTotal = resourceNodes
+        .filter((node) => (node.resource_id || node.type) === resourceId)
+        .reduce((sum, node) => sum + Math.max(0, Number(node.current_amount) || 0), 0);
+      const facilityTotal = buildings
+        .filter((building) => building.resource_id === resourceId)
+        .reduce((sum, building) => sum + Math.max(0, Number(building.current_amount) || 0), 0);
+
+      pool.current_total = Math.round(nodeTotal + facilityTotal);
+    }
+
+    return resourceManager;
+  }
+
+  getResourceCheckInterval() {
+    return Math.max(1, Number(this.config.resourceCheckInterval) || 86400000);
+  }
+
+  async checkAndSpawnResources({ force = false, now = Date.now() } = {}) {
+    const [sectors, chunks, storedResourceNodes, buildings, worldMeta, storedResourceManager] = await Promise.all([
+      this.getAll("sectors"),
+      this.getAll("chunks"),
+      this.getAll("resourceNodes"),
+      this.getAll("buildings"),
+      this.getStoreValue("meta", "world"),
+      this.getStoreValue("meta", "resourceManager")
+    ]);
+
+    if (!worldMeta) return { checked: false, reason: "missing-world" };
+
+    let resourceNodes = storedResourceNodes;
+    const resourceManager = storedResourceManager || this.createResourceManager(now, resourceNodes, buildings);
+    resourceManager.key = "resourceManager";
+    resourceManager.manager_id = "GLOBAL";
+    resourceManager.check_interval = this.getResourceCheckInterval();
+
+    this.updateResourceManagerTotals(resourceManager, resourceNodes, buildings);
+
+    if (!force && now < resourceManager.next_check) {
+      await this.saveResourceManager(resourceManager);
+      this.snapshot = await this.getWorldSnapshot();
+      return { checked: false, reason: "not-due", resourceManager };
+    }
+
+    resourceNodes = storedResourceNodes.filter((node) => !this.shouldRemoveResourceNode(node, now));
+    this.updateResourceManagerTotals(resourceManager, resourceNodes, buildings);
+
+    const rng = createSeededRandom(`${worldMeta.seed}:${resourceManager.last_check}:${now}`);
+    const placedObjects = [...resourceNodes, ...buildings];
+    let nextIndex = resourceNodes.length;
+    let spawnedCount = 0;
+
+    for (const resourceId of INITIAL_RESOURCE_TYPES) {
+      const definition = RESOURCE_DEFINITIONS[resourceId];
+      const pool = this.ensureResourcePool(resourceManager, resourceId);
+      if (!definition || !pool) continue;
+
+      const pendingBuffer = Math.max(0, Math.round(Number(pool.pending_buffer) || 0));
+      const totalBuffer = Math.max(0, definition.total_capacity - pool.current_total) + pendingBuffer;
+
+      if (totalBuffer <= 0) {
+        pool.pending_buffer = 0;
+        continue;
+      }
+
+      const spawnAmount = Math.min(totalBuffer, definition.spawn_limit_per_cycle);
+      const result = this.createDistributedResourceNodes({
+        chunks,
+        createdAt: now,
+        deferBelowMin: true,
+        placedObjects,
+        resourceId,
+        rng,
+        sectors,
+        seed: now,
+        startIndex: nextIndex,
+        totalCapacity: spawnAmount
+      });
+
+      resourceNodes.push(...result.nodes);
+      nextIndex = result.nextIndex;
+      spawnedCount += result.nodes.length;
+      pool.pending_buffer = result.remaining;
+    }
+
+    resourceManager.last_check = now;
+    resourceManager.next_check = now + resourceManager.check_interval;
+    this.updateResourceManagerTotals(resourceManager, resourceNodes, buildings);
+    this.resetObjectCounts(chunks);
+    this.assignObjectCounts(chunks, [...resourceNodes, ...buildings]);
+
+    await this.replaceResourceLifecycleData({ chunks, resourceNodes, resourceManager });
+    this.snapshot = await this.getWorldSnapshot();
+
+    return {
+      checked: true,
+      spawnedCount,
+      resourceManager
+    };
+  }
+
+  shouldRemoveResourceNode(node, now = Date.now()) {
+    if ((Number(node.current_amount) || 0) <= 0) return true;
+    return Boolean(node.expiry_time && node.expiry_time <= now);
+  }
+
+  createBuildingInstance({
+    buildingId,
+    createdAt,
+    index,
+    placedObjects,
+    position = null,
+    resourceNode = null,
+    rng,
+    sector,
+    seed
+  }) {
+    const definition = BUILDING_DEFINITIONS[buildingId];
+    if (!definition) return null;
+
+    const resolvedPosition = position || this.pickBuildingPosition(sector, definition, rng, placedObjects);
+    const chunkData = this.getChunkDataAtPosition(resolvedPosition);
+    return {
+      building_instance_id: this.createId("BLD", buildingId, seed, index, rng),
+      building_id: buildingId,
+      model_id: definition.visual.model_id,
+      sector_id: sector.sector_id,
+      chunk_id: chunkData.chunk_id,
+      chunk: chunkData.chunk,
+      position: resolvedPosition,
+      local_position: chunkData.local_position,
+      hp: definition.hp,
+      status: "active",
+      source_resource_instance_id: resourceNode?.resource_instance_id || null,
+      resource_id: resourceNode?.resource_id || null,
+      resource_category: resourceNode?.category || null,
+      produces_item_id: resourceNode?.produces_item_id || null,
+      created_at: createdAt
+    };
+  }
+
+  pickBuildingPosition(sector, definition, rng, placedObjects) {
+    const rule = definition.placement_rule || {};
+    if (rule.type === "sector_anchor") {
+      return this.pickPositionNearSectorCenter(sector, rng, rule.radius, placedObjects);
+    }
+
+    return this.pickPositionInSector(sector, rng, placedObjects, this.config.buildingMinDistance);
+  }
+
+  pickPositionNearSectorCenter(sector, rng, radius, placedObjects) {
+    const center = this.getBoundsCenter(sector.global_bounds);
+    const configuredRadius = Number.isFinite(Number(radius)) && Number(radius) > 0 ? Number(radius) : 0;
+    const maxRadius = Math.max(configuredRadius, this.config.chunkSize.x * 0.08);
+
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const offset = this.randomVectorInRadius(maxRadius, rng);
+      const position = clampPositionToBounds({
+        x: Math.round(center.x + offset.x),
+        y: Math.round(center.y + offset.y),
+        z: Math.round(center.z + offset.z)
+      }, sector.global_bounds, this.config.placementMargin);
+      if (this.isFarEnough(position, placedObjects, this.config.buildingMinDistance)) return position;
+    }
+
+    return clampPositionToBounds(center, sector.global_bounds, this.config.placementMargin);
+  }
+
+  randomVectorInRadius(radius, rng) {
+    return {
+      x: Math.round((rng() - 0.5) * radius * 2),
+      y: Math.round((rng() - 0.5) * radius * 2),
+      z: Math.round((rng() - 0.5) * radius * 2)
+    };
+  }
+
+  pickPositionInSector(sector, rng, placedObjects, minDistance) {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const position = this.pickPositionInBounds(sector.global_bounds, rng);
+      if (this.isFarEnough(position, placedObjects, minDistance)) return position;
+    }
+
+    const min = sector.global_bounds.min;
+    const max = sector.global_bounds.max;
     const jitter = () => Math.round((rng() - 0.5) * 1200);
     return {
       x: Math.round((min.x + max.x) / 2 + jitter()),
       y: Math.round((min.y + max.y) / 2 + jitter()),
       z: Math.round((min.z + max.z) / 2 + jitter())
+    };
+  }
+
+  pickPositionInBounds(bounds, rng) {
+    const margin = this.config.placementMargin;
+    return {
+      x: Math.round(lerp(bounds.min.x + margin, bounds.max.x - margin, rng())),
+      y: Math.round(lerp(bounds.min.y + margin, bounds.max.y - margin, rng())),
+      z: Math.round(lerp(bounds.min.z + margin, bounds.max.z - margin, rng()))
     };
   }
 
@@ -232,6 +669,15 @@ export class WorldDataManager {
       if ("resource_instance_id" in object) chunk.object_counts.resources += 1;
       if ("building_instance_id" in object) chunk.object_counts.buildings += 1;
     }
+  }
+
+  resetObjectCounts(chunks) {
+    chunks.forEach((chunk) => {
+      chunk.object_counts = {
+        resources: 0,
+        buildings: 0
+      };
+    });
   }
 
   createDefaultPlayerShipState(createdAt = Date.now(), sectors = this.snapshot?.sectors || []) {
@@ -286,7 +732,7 @@ export class WorldDataManager {
     return nextState;
   }
 
-  async replaceWorldData({ sectors, chunks, resourceNodes, buildings, meta, playerShip }) {
+  async replaceWorldData({ sectors, chunks, resourceNodes, buildings, meta, playerShip, resourceManager }) {
     const transaction = this.db.transaction(STORE_NAMES, "readwrite");
 
     const stores = Object.fromEntries(STORE_NAMES.map((storeName) => [storeName, transaction.objectStore(storeName)]));
@@ -297,6 +743,33 @@ export class WorldDataManager {
     buildings.forEach((building) => stores.buildings.put(building));
     stores.meta.put(meta);
     if (playerShip) stores.meta.put(playerShip);
+    if (resourceManager) stores.meta.put(resourceManager);
+    await transactionDone(transaction);
+  }
+
+  async saveResourceManager(resourceManager) {
+    return this.putStoreValue("meta", {
+      ...resourceManager,
+      key: "resourceManager",
+      manager_id: "GLOBAL"
+    });
+  }
+
+  async replaceResourceLifecycleData({ chunks, resourceNodes, resourceManager }) {
+    const transaction = this.db.transaction(["chunks", "resourceNodes", "meta"], "readwrite");
+    const chunksStore = transaction.objectStore("chunks");
+    const resourceNodesStore = transaction.objectStore("resourceNodes");
+    const metaStore = transaction.objectStore("meta");
+
+    resourceNodesStore.clear();
+    chunks.forEach((chunk) => chunksStore.put(chunk));
+    resourceNodes.forEach((node) => resourceNodesStore.put(node));
+    metaStore.put({
+      ...resourceManager,
+      key: "resourceManager",
+      manager_id: "GLOBAL"
+    });
+
     await transactionDone(transaction);
   }
 
@@ -352,12 +825,13 @@ export class WorldDataManager {
   }
 
   async getWorldSnapshot() {
-    const [sectors, chunks, resourceNodes, buildings, meta] = await Promise.all([
+    const [sectors, chunks, resourceNodes, buildings, meta, resourceManager] = await Promise.all([
       this.getAll("sectors"),
       this.getAll("chunks"),
       this.getAll("resourceNodes"),
       this.getAll("buildings"),
-      this.getStoreValue("meta", "world")
+      this.getStoreValue("meta", "world"),
+      this.getStoreValue("meta", "resourceManager")
     ]);
 
     this.snapshot = {
@@ -365,7 +839,8 @@ export class WorldDataManager {
       chunks,
       resourceNodes,
       buildings,
-      meta: meta || null
+      meta: meta || null,
+      resourceManager: resourceManager || null
     };
     return this.snapshot;
   }
@@ -449,6 +924,14 @@ export class WorldDataManager {
         y: (chunk.y + 1) * this.config.chunkSize.y,
         z: (chunk.z + 1) * this.config.chunkSize.z
       }
+    };
+  }
+
+  getBoundsCenter(bounds) {
+    return {
+      x: (bounds.min.x + bounds.max.x) / 2,
+      y: (bounds.min.y + bounds.max.y) / 2,
+      z: (bounds.min.z + bounds.max.z) / 2
     };
   }
 
@@ -570,6 +1053,38 @@ function distanceSq(a, b) {
   const dy = a.y - b.y;
   const dz = a.z - b.z;
   return dx * dx + dy * dy + dz * dz;
+}
+
+function clamp01(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 0;
+  return Math.max(0, Math.min(1, number));
+}
+
+function clampPositionToBounds(position, bounds, margin = 0) {
+  return {
+    x: Math.round(clamp(position.x, bounds.min.x + margin, bounds.max.x - margin)),
+    y: Math.round(clamp(position.y, bounds.min.y + margin, bounds.max.y - margin)),
+    z: Math.round(clamp(position.z, bounds.min.z + margin, bounds.max.z - margin))
+  };
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function structuredCloneSafe(value) {
+  if (typeof structuredClone === "function") return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
+
+function removeConsumedResourceNodes(resourceNodes, consumedResourceNodeIds) {
+  if (consumedResourceNodeIds.size === 0) return;
+  for (let index = resourceNodes.length - 1; index >= 0; index -= 1) {
+    if (consumedResourceNodeIds.has(resourceNodes[index].resource_instance_id)) {
+      resourceNodes.splice(index, 1);
+    }
+  }
 }
 
 function shuffle(items, rng) {

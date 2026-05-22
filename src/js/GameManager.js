@@ -5,7 +5,7 @@ import { SoundManager } from "./SoundManager.js";
 import { UIManager } from "./UIManager.js";
 import { WorldDataManager } from "./WorldDataManager.js";
 import { WorldMapManager } from "./WorldMapManager.js";
-import { WORLD_CONFIG } from "./worldDefinitions.js";
+import { BUILDING_DEFINITIONS, ITEM_DEFINITIONS, RESOURCE_DEFINITIONS, WORLD_CONFIG } from "./worldDefinitions.js";
 
 export class GameManager {
   constructor({ root }) {
@@ -1566,7 +1566,14 @@ export class GameManager {
     const playerPosition = this.getPlayerDataPosition();
     const toListItem = (object, kind) => {
       const id = object.building_instance_id || object.resource_instance_id;
-      const type = object.building_id || object.type || "unknown";
+      const type = object.building_id || object.resource_id || object.type || "unknown";
+      const definition = kind === "building"
+        ? BUILDING_DEFINITIONS[object.building_id]
+        : RESOURCE_DEFINITIONS[object.resource_id || object.type];
+      const producedItem = kind === "resource"
+        ? ITEM_DEFINITIONS[definition?.produces_item_id]
+        : null;
+      const label = producedItem?.name_en || definition?.name_en || type;
       const position = { ...object.position };
       const relativePosition = object.chunk_center_relative_position
         ? { ...object.chunk_center_relative_position }
@@ -1579,7 +1586,7 @@ export class GameManager {
       return {
         id,
         kind,
-        name: this.formatObjectName(type),
+        name: this.formatObjectName(label),
         typeLabel: this.formatObjectName(type),
         currentAmount: object.current_amount ?? null,
         totalCapacity: object.total_capacity ?? null,
