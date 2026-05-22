@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 import { ASSETS } from "./config.js";
 
 export class ResourceManager {
@@ -106,6 +107,106 @@ export class ResourceManager {
     });
 
     return object;
+  }
+
+  normalizeWorldModel(object, targetSize = 1) {
+    const box = new THREE.Box3().setFromObject(object);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const longest = Math.max(size.x, size.y, size.z) || 1;
+    const scale = targetSize / longest;
+    object.scale.setScalar(scale);
+    object.position.copy(center).multiplyScalar(-scale);
+
+    object.traverse((child) => {
+      if (!child.isMesh) return;
+      child.castShadow = false;
+      child.receiveShadow = false;
+      if (!child.material) {
+        child.material = new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          metalness: 0.22,
+          roughness: 0.48
+        });
+      }
+    });
+
+    return object;
+  }
+
+  async loadObjModel(id, source, options = {}) {
+    if (this.disposed) throw new Error("ResourceManager has been disposed.");
+    if (this.loadedResources.has(id)) return this.loadedResources.get(id);
+    if (this.pendingLoads.has(id)) return this.pendingLoads.get(id);
+
+    const task = this.fetchObjModel(id, source, options);
+    this.pendingLoads.set(id, task);
+    try {
+      return await task;
+    } finally {
+      this.pendingLoads.delete(id);
+    }
+  }
+
+  async fetchObjModel(id, source, options = {}) {
+    if (this.disposed) throw new Error("ResourceManager has been disposed.");
+    const sources = this.resolveObjSources(source, options);
+    this.begin(id, options.label || id, sources.obj);
+
+    try {
+      const response = await fetch(sources.obj, { cache: "force-cache" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const text = await response.text();
+      if (!this.looksLikeObjFile(text)) throw new Error("Invalid OBJ data.");
+
+      const loader = new OBJLoader();
+      const materials = sources.mtl ? await this.loadMtlMaterials(sources.mtl) : null;
+      if (materials) loader.setMaterials(materials);
+
+      const object = loader.parse(text);
+      if (!object.children.length) throw new Error("OBJ contained no renderable children.");
+      if (this.disposed) throw new Error("ResourceManager has been disposed.");
+
+      const resource = {
+        id,
+        source: sources.obj,
+        mtlSource: sources.mtl,
+        object: this.normalizeWorldModel(object, options.targetSize ?? 1)
+      };
+      this.loadedResources.set(id, resource);
+      this.complete(id, sources.obj);
+      return resource;
+    } catch (error) {
+      this.fail(id, error);
+      throw error;
+    }
+  }
+
+  resolveObjSources(source, options = {}) {
+    if (typeof source === "string") {
+      return {
+        obj: new URL(source).href,
+        mtl: options.mtlSource ? new URL(options.mtlSource).href : null
+      };
+    }
+
+    return {
+      obj: new URL(source.obj).href,
+      mtl: source.mtl ? new URL(source.mtl).href : null
+    };
+  }
+
+  async loadMtlMaterials(source) {
+    const response = await fetch(source, { cache: "force-cache" });
+    if (!response.ok) throw new Error(`MTL HTTP ${response.status}`);
+
+    const text = await response.text();
+    const loader = new MTLLoader();
+    loader.setResourcePath(new URL(".", source).href);
+    const materials = loader.parse(text, new URL(".", source).href);
+    materials.preload();
+    return materials;
   }
 
   async loadShipModel() {

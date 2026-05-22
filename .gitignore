@@ -1,4 +1,9 @@
 archive/
 history/
 .codex-backups/
-
+src/node_modules/
+src/playwright-artifacts/
+src/package.json
+src/package-lock.json
+src/sample-beta_haze.html
+src/test-startButton.html

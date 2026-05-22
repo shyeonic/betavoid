@@ -3,6 +3,9 @@ import { CONFIG, CONTROL_SETTINGS, DEFAULT_KEY_BINDINGS, KEY_BINDING_GROUPS } fr
 import { ResourceManager } from "./ResourceManager.js";
 import { SoundManager } from "./SoundManager.js";
 import { UIManager } from "./UIManager.js";
+import { WorldDataManager } from "./WorldDataManager.js";
+import { WorldMapManager } from "./WorldMapManager.js";
+import { WORLD_CONFIG } from "./worldDefinitions.js";
 
 export class GameManager {
   constructor({ root }) {
@@ -10,16 +13,20 @@ export class GameManager {
     this.config = CONFIG;
     this.keyBindingStorageKey = "void-zero-key-bindings";
     this.keyBindings = this.loadKeyBindings();
+    this.worldViewSettings = { chunkBoundsMode: "all" };
+    this.navDeadReckonSettings = { mode: "fixed", capMinutes: 5 };
     this.keyToAction = this.createKeyToAction(this.keyBindings);
     this.state = {
       phase: "standby",
       speed: 0,
       desiredSpeed: 0,
-      target: null,
-      autopilot: false,
+      autopilotPhase: null,
+      autopilotPeakSpeed: 0,
       cameraFxAmount: 0,
       speedTrend: 0
     };
+    this.navTarget = null;
+    this.activeNavLogId = null;
 
     this.activeActions = new Set();
     this.clock = new THREE.Clock();
@@ -33,6 +40,8 @@ export class GameManager {
       onChange: (snapshot) => this.ui.setResourceProgress(snapshot)
     });
     this.soundManager = new SoundManager(this.resourceManager);
+    this.worldDataManager = new WorldDataManager();
+    this.worldMapManager = null;
 
     this.vectors = {
       forward: new THREE.Vector3(),
@@ -47,6 +56,8 @@ export class GameManager {
       cameraUp: new THREE.Vector3(0, 1, 0),
       cameraActionOffset: new THREE.Vector3(),
       cameraActionTarget: new THREE.Vector3(),
+      cameraOrbitRightAxis: new THREE.Vector3(),
+      cameraOrbitUpAxis: new THREE.Vector3(),
       cameraLocalOffset: new THREE.Vector3()
     };
 
@@ -83,6 +94,14 @@ export class GameManager {
       pointers: new Map(),
       pinching: false,
       pinchDistance: 0,
+      touchDpadPointerId: null,
+      touchDpadStartX: 0,
+      touchDpadStartY: 0,
+      touchDpadActions: new Set(),
+      touchDpadAxisX: 0,
+      touchDpadAxisY: 0,
+      touchDpadDeadzone: 24,
+      touchDpadMaxDistance: 150,
       lastX: 0,
       lastY: 0
     };
@@ -93,11 +112,20 @@ export class GameManager {
     this.disposed = false;
     this.animationFrameId = null;
     this.boundEvents = null;
+    this.worldSummaryLastUpdatedAt = 0;
+    this.worldSummaryPending = false;
+    this.playerShipSaveLastUpdatedAt = 0;
+    this.playerShipSavePending = false;
+    this.playerShipSaveInterval = 1000;
+    this.currentLocationBgmId = null;
+    this.worldDataResetting = false;
   }
 
   async init() {
+    await this.handleDataResetRequest();
     this.setupRenderer();
     this.setupScene();
+    this.setupWorldSystems();
     this.setupWorld();
     this.setupTargetMarker();
     this.setupEvents();
@@ -107,13 +135,38 @@ export class GameManager {
       onNavigate: (coords) => this.setTarget(coords),
       onCancelNavigate: () => this.clearTarget("navigation stopped"),
       onSetSpeed: (speed) => this.setManualSpeed(speed),
-      onKeyBindingsChange: (bindings) => this.setKeyBindings(bindings)
+      onKeyBindingsChange: (bindings) => this.setKeyBindings(bindings),
+      onRegenerateWorld: () => this.regenerateWorld(),
+      onClearAllData: () => this.clearAllData(),
+      onReloadWorldData: () => this.reloadWorldData(),
+      onChunkBoundsModeChange: (mode) => this.setChunkBoundsMode(mode),
+      onNavRestoreModeChange: (mode) => {
+        this.navDeadReckonSettings.mode = mode === "infinite" ? "infinite" : "fixed";
+        this.ui.setNavRestoreMode(this.navDeadReckonSettings.mode);
+        void this.saveNavDeadReckonSettings();
+      },
+      onNavRestoreCapChange: (minutes) => {
+        this.navDeadReckonSettings.capMinutes = minutes;
+        void this.saveNavDeadReckonSettings();
+      },
+      onRequestObjectList: () => this.getWorldObjectList(),
+      onNavigateToWorldObject: (object) => this.navigateToWorldObject(object),
+      onToggleCameraMode: () => this.requestCameraToggle()
     });
+    this.ui.setChunkBoundsMode(this.worldViewSettings.chunkBoundsMode);
 
     this.ui.setInteractionGate();
     this.updateCameraProjection();
     this.resetInitialCamera();
     this.animate();
+  }
+
+  setupWorldSystems() {
+    this.worldMapManager = new WorldMapManager({
+      scene: this.scene,
+      renderScale: WORLD_CONFIG.renderScale
+    });
+    this.worldMapManager.setChunkBoundsMode(this.worldViewSettings.chunkBoundsMode);
   }
 
   loadKeyBindings() {
@@ -122,6 +175,49 @@ export class GameManager {
       return this.normalizeKeyBindings(savedBindings);
     } catch {
       return { ...DEFAULT_KEY_BINDINGS };
+    }
+  }
+
+  async loadSavedWorldViewSettings() {
+    const saved = await this.worldDataManager.getStoreValue("settings", "worldViewSettings");
+    const mode = ["all", "sector", "off"].includes(saved?.chunkBoundsMode) ? saved.chunkBoundsMode : "all";
+    this.worldViewSettings.chunkBoundsMode = mode;
+    this.worldMapManager.setChunkBoundsMode(mode);
+    this.ui.setChunkBoundsMode(mode);
+  }
+
+  async saveWorldViewSettings() {
+    if (!this.worldDataManager.db) return;
+    try {
+      await this.worldDataManager.putStoreValue("settings", {
+        key: "worldViewSettings",
+        chunkBoundsMode: this.worldViewSettings.chunkBoundsMode
+      });
+    } catch {
+      this.ui.showErrorToast("settings storage unavailable");
+    }
+  }
+
+  async loadSavedNavDeadReckonSettings() {
+    const saved = await this.worldDataManager.getStoreValue("settings", "navDeadReckonSettings");
+    const mode = saved?.mode === "infinite" ? "infinite" : "fixed";
+    const capMinutes = Number.isFinite(Number(saved?.capMinutes)) && Number(saved.capMinutes) >= 0
+      ? Number(saved.capMinutes) : 5;
+    this.navDeadReckonSettings = { mode, capMinutes };
+    this.ui.setNavRestoreMode(mode);
+    this.ui.setNavRestoreCap(capMinutes);
+  }
+
+  async saveNavDeadReckonSettings() {
+    if (!this.worldDataManager.db) return;
+    try {
+      await this.worldDataManager.putStoreValue("settings", {
+        key: "navDeadReckonSettings",
+        mode: this.navDeadReckonSettings.mode,
+        capMinutes: this.navDeadReckonSettings.capMinutes
+      });
+    } catch {
+      this.ui.showErrorToast("settings storage unavailable");
     }
   }
 
@@ -266,7 +362,7 @@ export class GameManager {
     this.state.phase = "loading";
     this.ui.setLoadingState({
       message: "Loading resources",
-      detail: "validating ship and BGM",
+      detail: "validating ship, world, and BGM",
       progress: 0,
       canStart: false
     });
@@ -292,7 +388,13 @@ export class GameManager {
         return loaded;
       });
 
-    await Promise.allSettled([shipTask, audioTask]);
+    const worldTask = this.loadWorld()
+      .catch((error) => {
+        warnings.push("world data failed");
+        return error;
+      });
+
+    await Promise.allSettled([shipTask, audioTask, worldTask]);
     if (this.disposed) return;
     await this.waitForMinimumLoadingTime(loadingStartedAt);
     if (this.disposed) return;
@@ -300,6 +402,116 @@ export class GameManager {
     this.state.phase = "ready";
     this.ui.setReady({ warnings });
     warnings.forEach((message) => this.ui.showErrorToast(message));
+  }
+
+  async loadWorld() {
+    await this.worldDataManager.init();
+    await this.worldMapManager.loadAssets(this.resourceManager);
+    const snapshot = await this.worldDataManager.loadOrCreateWorld();
+    this.worldMapManager.renderWorld(snapshot);
+    await this.loadSavedWorldViewSettings();
+    await this.loadSavedNavDeadReckonSettings();
+    await this.restorePlayerShipState();
+    this.syncWorldRuntimeWithPlayer({ force: true });
+    await this.refreshWorldSummary({ force: true });
+    return snapshot;
+  }
+
+  async restorePlayerShipState() {
+    const [playerShipState, navLogs] = await Promise.all([
+      this.worldDataManager.loadOrCreatePlayerShipState(),
+      this.worldDataManager.getNavLogs(10)
+    ]);
+
+    const activeLog = navLogs.find(log => log.status === "active");
+    let usedNavLog = false;
+
+    if (activeLog?.flight_start_at != null && activeLog?.from_position != null) {
+      const tSec = (Date.now() - activeLog.flight_start_at) / 1000;
+
+      if (tSec >= activeLog.flight_duration) {
+        this.ship.position.set(activeLog.target.x, activeLog.target.y, activeLog.target.z);
+        this.state.speed = 0;
+        this.state.desiredSpeed = 0;
+        void this.worldDataManager.updateNavLog(activeLog.id, { status: "completed", completed_at: Date.now() });
+        usedNavLog = true;
+      } else {
+        const computedPos = this.computeNavPositionAtTime(activeLog, tSec);
+        const computedSpeed = this.computeNavSpeedAtTime(activeLog, tSec);
+        this.ship.position.copy(computedPos);
+        this.state.speed = computedSpeed;
+
+        const navTargetVec = new THREE.Vector3(activeLog.target.x, activeLog.target.y, activeLog.target.z);
+        const toTarget = navTargetVec.clone().sub(computedPos);
+
+        if (toTarget.lengthSq() > 0.0001) {
+          const direction = toTarget.clone().normalize();
+          this.lookMatrix.lookAt(direction, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+          this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
+        }
+
+        this.navTarget = navTargetVec;
+        this.activeNavLogId = activeLog.id;
+        this.state.autopilotPeakSpeed = activeLog.peak_speed;
+        this.targetMarker.visible = true;
+        this.targetMarker.position.copy(navTargetVec);
+
+        const remaining = toTarget.length() - this.config.arrivalRadius;
+        const decelDist = computedSpeed > 0
+          ? 0.5 * computedSpeed * computedSpeed / this.config.decelerationRate
+          : 0;
+
+        if (remaining <= decelDist) {
+          this.state.autopilotPhase = "decelerating";
+          this.state.desiredSpeed = 0;
+        } else {
+          this.state.autopilotPhase = "cruising";
+          this.state.desiredSpeed = activeLog.peak_speed;
+        }
+
+        usedNavLog = true;
+      }
+    } else if (activeLog) {
+      void this.worldDataManager.updateNavLog(activeLog.id, { status: "cancelled", cancelled_at: Date.now() });
+    }
+
+    if (!usedNavLog) {
+      this.ship.position.copy(this.worldMapManager.toRenderVector(playerShipState.position));
+      this.ship.quaternion.set(
+        playerShipState.rotation?.x || 0,
+        playerShipState.rotation?.y || 0,
+        playerShipState.rotation?.z || 0,
+        Number.isFinite(Number(playerShipState.rotation?.w)) ? Number(playerShipState.rotation.w) : 1
+      ).normalize();
+      this.state.speed = Number(playerShipState.speed) || 0;
+      this.state.desiredSpeed = Number(playerShipState.desiredSpeed) || 0;
+
+      const savedAt = Number(playerShipState.updated_at) || 0;
+      if (savedAt > 0 && Math.abs(this.state.speed) > 0.001) {
+        const elapsed = (Date.now() - savedAt) / 1000;
+        if (elapsed > 0) {
+          const { mode, capMinutes } = this.navDeadReckonSettings;
+          const result = mode === "infinite"
+            ? this.extrapolateShipMovement(this.state.speed, this.state.desiredSpeed, elapsed)
+            : this.extrapolateShipMovementFixed(this.state.speed, capMinutes * 60, elapsed);
+          if (Math.abs(result.distance) > 0.001) {
+            this.ship.getWorldDirection(this.vectors.forward).normalize();
+            this.ship.position.addScaledVector(this.vectors.forward, result.distance);
+          }
+          this.state.speed = result.finalSpeed;
+          if (mode !== "infinite") this.state.desiredSpeed = result.finalSpeed;
+        }
+      }
+    }
+
+    if (this.state.autopilotPhase === null) {
+      this.state.autopilotPeakSpeed = 0;
+      this.navTarget = null;
+      this.activeNavLogId = null;
+      this.targetMarker.visible = false;
+    }
+
+    this.resetInitialCamera();
   }
 
   waitForMinimumLoadingTime(startedAt) {
@@ -319,10 +531,13 @@ export class GameManager {
     this.clock.getDelta();
     this.ui.hideStartScene();
 
-    const audioStarted = await this.soundManager.enterGame();
+    const initialBgmId = this.getBgmIdForCurrentPlayerPosition();
+    const audioStarted = await this.soundManager.enterGame(initialBgmId);
     if (this.disposed) return;
     if (!audioStarted) {
       this.ui.showErrorToast("BGM unavailable");
+    } else {
+      this.currentLocationBgmId = initialBgmId;
     }
     this.starting = false;
   }
@@ -405,6 +620,7 @@ export class GameManager {
 
   resetCameraView() {
     this.updateShipCenter();
+    this.stopTouchDpad();
     this.state.cameraFxAmount = 0;
     this.vectors.cameraActionOffset.set(0, 0, 0);
     this.vectors.cameraActionTarget.set(0, 0, 0);
@@ -419,21 +635,24 @@ export class GameManager {
     this.cameraControl.returnStartDistance = Math.max(0.001, this.camera.position.distanceTo(this.vectors.shipCenter));
     this.cameraControl.returnTargetDistance = this.getFollowCameraRadius();
     this.quaternions.cameraReturnStart.copy(this.camera.quaternion).normalize();
+    this.ui.setCameraOrbitActive(false);
     this.ui.showToast("cam: follow");
   }
 
   enterOrbitCameraMode() {
+    this.stopTouchDpad();
     const modeChanged = this.cameraControl.followShip || this.cameraControl.returningToFollow;
     if (this.cameraControl.followShip || this.cameraControl.returningToFollow) {
       this.updateShipCenter();
       this.vectors.cameraLocalOffset.copy(this.camera.position).sub(this.vectors.shipCenter);
       if (this.vectors.cameraLocalOffset.lengthSq() > 0.000001) {
         this.cameraControl.orbitDistance = this.vectors.cameraLocalOffset.length();
-        this.lookMatrix.lookAt(this.camera.position, this.vectors.shipCenter, this.axes.y);
-        this.quaternions.cameraOrbitTarget.setFromRotationMatrix(this.lookMatrix).normalize();
+        this.quaternions.cameraOrbitTarget.copy(this.camera.quaternion).normalize();
       } else {
         this.cameraControl.orbitDistance = this.getFollowCameraRadius();
-        this.quaternions.cameraOrbitTarget.identity();
+        this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion).normalize();
+        this.lookMatrix.lookAt(this.camera.position, this.vectors.shipCenter, this.vectors.up);
+        this.quaternions.cameraOrbitTarget.setFromRotationMatrix(this.lookMatrix).normalize();
       }
     }
 
@@ -441,6 +660,7 @@ export class GameManager {
     this.cameraControl.returningToFollow = false;
     this.state.cameraFxAmount = 0;
     this.vectors.cameraActionOffset.set(0, 0, 0);
+    this.ui.setCameraOrbitActive(true);
     if (modeChanged) this.ui.showToast("cam: orbit");
   }
 
@@ -461,8 +681,32 @@ export class GameManager {
     });
   }
 
+  requestCameraToggle() {
+    if (this.state.phase !== "running") return;
+    this.toggleCameraMode();
+    this.playCameraToggleSfx();
+  }
+
   updateShipCenter() {
     this.vectors.shipCenter.copy(this.ship.position);
+  }
+
+  updateCameraOrbitAxes() {
+    this.vectors.cameraOrbitRightAxis.set(1, 0, 0)
+      .applyQuaternion(this.quaternions.cameraOrbitTarget)
+      .normalize();
+    this.vectors.cameraOrbitUpAxis.set(0, 1, 0).applyQuaternion(this.ship.quaternion);
+    if (this.vectors.cameraOrbitUpAxis.lengthSq() < 0.000001) {
+      this.vectors.cameraOrbitUpAxis.set(0, 1, 0);
+    }
+    this.vectors.cameraOrbitUpAxis.normalize();
+  }
+
+  getCameraOrbitHorizontalSign() {
+    this.vectors.cameraUp.set(0, 1, 0)
+      .applyQuaternion(this.quaternions.cameraOrbitTarget)
+      .normalize();
+    return this.vectors.cameraUp.dot(this.vectors.cameraOrbitUpAxis) >= 0 ? 1 : -1;
   }
 
   applyCameraZoomDelta(delta) {
@@ -509,27 +753,166 @@ export class GameManager {
   }
 
   setTarget({ x, y, z }) {
-    this.state.target = new THREE.Vector3(x, y, z);
-    this.state.autopilot = true;
+    this.navTarget = new THREE.Vector3(x, y, z);
+    this.state.autopilotPhase = "stopping";
+    this.state.autopilotPeakSpeed = 0;
     this.targetMarker.visible = true;
-    this.targetMarker.position.copy(this.state.target);
-    this.ui.showToast("navigation engaged");
+    this.targetMarker.position.copy(this.navTarget);
+    const eta = this.computeAutopilotEta();
+    const etaText = eta !== null ? ` (~${Math.round(eta)}s)` : "";
+    this.ui.showToast(`navigation engaged${etaText}`);
+    this.activeNavLogId = this.worldDataManager.createNavLog({ target: { x, y, z } });
+    this.savePlayerShipState({ force: true });
   }
 
-  clearTarget(message) {
-    this.state.autopilot = false;
-    this.state.target = null;
+  clearTarget(message, completed = false) {
+    if (this.activeNavLogId) {
+      const now = Date.now();
+      this.worldDataManager.updateNavLog(this.activeNavLogId, completed
+        ? { status: "completed", completed_at: now }
+        : { status: "cancelled", cancelled_at: now }
+      );
+      this.activeNavLogId = null;
+    }
+    this.state.autopilotPhase = null;
+    this.state.autopilotPeakSpeed = 0;
+    this.navTarget = null;
     this.targetMarker.visible = false;
     if (message) this.ui.showToast(message);
+    this.savePlayerShipState({ force: true });
   }
 
   cancelAutopilot() {
-    if (!this.state.autopilot) return;
-    this.state.autopilot = false;
+    if (this.state.autopilotPhase === null) return;
+    if (this.activeNavLogId) {
+      this.worldDataManager.updateNavLog(this.activeNavLogId, { status: "cancelled", cancelled_at: Date.now() });
+      this.activeNavLogId = null;
+    }
+    this.state.autopilotPhase = null;
+    this.state.autopilotPeakSpeed = 0;
+    this.navTarget = null;
+    this.targetMarker.visible = false;
+  }
+
+  computeAutopilotPeakSpeed(distance) {
+    const { maxSpeed, accelerationRate, decelerationRate } = this.config;
+    const accelDist = 0.5 * maxSpeed * maxSpeed / accelerationRate;
+    const decelDist = 0.5 * maxSpeed * maxSpeed / decelerationRate;
+    if (distance >= accelDist + decelDist) return maxSpeed;
+    const peak = Math.sqrt(2 * distance * accelerationRate * decelerationRate / (accelerationRate + decelerationRate));
+    return Math.max(0, peak);
+  }
+
+  computeAutopilotEta() {
+    if (!this.navTarget) return null;
+    const distance = this.navTarget.distanceTo(this.ship.position);
+    const { maxSpeed, accelerationRate, decelerationRate } = this.config;
+    const accelDist = 0.5 * maxSpeed * maxSpeed / accelerationRate;
+    const decelDist = 0.5 * maxSpeed * maxSpeed / decelerationRate;
+    let flightTime;
+    if (distance >= accelDist + decelDist) {
+      flightTime = maxSpeed / accelerationRate + (distance - accelDist - decelDist) / maxSpeed + maxSpeed / decelerationRate;
+    } else {
+      const peakSpeed = Math.sqrt(2 * distance * accelerationRate * decelerationRate / (accelerationRate + decelerationRate));
+      flightTime = peakSpeed > 0 ? peakSpeed / accelerationRate + peakSpeed / decelerationRate : 0;
+    }
+    const stopTime = Math.abs(this.state.speed) / (this.state.speed >= 0 ? decelerationRate : accelerationRate);
+    return stopTime + 2 + flightTime;
+  }
+
+  computeFlightDuration(effectiveDist, peakSpeed) {
+    if (peakSpeed <= 0 || effectiveDist <= 0) return 0;
+    const { accelerationRate, decelerationRate } = this.config;
+    const accelDist = 0.5 * peakSpeed * peakSpeed / accelerationRate;
+    const decelDist = 0.5 * peakSpeed * peakSpeed / decelerationRate;
+    const cruiseDist = Math.max(0, effectiveDist - accelDist - decelDist);
+    return peakSpeed / accelerationRate + (cruiseDist > 0 ? cruiseDist / peakSpeed : 0) + peakSpeed / decelerationRate;
+  }
+
+  computeNavPositionAtTime(navLog, tSec) {
+    const from = new THREE.Vector3(navLog.from_position.x, navLog.from_position.y, navLog.from_position.z);
+    const target = new THREE.Vector3(navLog.target.x, navLog.target.y, navLog.target.z);
+    const dir = target.clone().sub(from);
+    const totalDist = dir.length();
+    const effectiveDist = Math.max(0, totalDist - this.config.arrivalRadius);
+    if (effectiveDist <= 0) return target.clone();
+    dir.normalize();
+
+    const { accelerationRate, decelerationRate } = this.config;
+    const peak = navLog.peak_speed;
+    const accelTime = peak / accelerationRate;
+    const accelDist = 0.5 * peak * peak / accelerationRate;
+    const decelDist = 0.5 * peak * peak / decelerationRate;
+    const cruiseDist = Math.max(0, effectiveDist - accelDist - decelDist);
+    const cruiseTime = cruiseDist > 0 ? cruiseDist / peak : 0;
+
+    const t = Math.min(tSec, navLog.flight_duration);
+    let distTraveled;
+    if (t <= accelTime) {
+      distTraveled = 0.5 * accelerationRate * t * t;
+    } else if (t <= accelTime + cruiseTime) {
+      distTraveled = accelDist + peak * (t - accelTime);
+    } else {
+      const decelT = t - accelTime - cruiseTime;
+      distTraveled = accelDist + cruiseDist + peak * decelT - 0.5 * decelerationRate * decelT * decelT;
+    }
+
+    return from.clone().addScaledVector(dir, Math.min(distTraveled, effectiveDist));
+  }
+
+  computeNavSpeedAtTime(navLog, tSec) {
+    const peak = navLog.peak_speed;
+    if (peak <= 0) return 0;
+    const { accelerationRate, decelerationRate } = this.config;
+    const accelTime = peak / accelerationRate;
+    const decelTime = peak / decelerationRate;
+    const cruiseTime = Math.max(0, navLog.flight_duration - accelTime - decelTime);
+    const t = Math.min(tSec, navLog.flight_duration);
+    if (t <= accelTime) return accelerationRate * t;
+    if (t <= accelTime + cruiseTime) return peak;
+    const decelT = t - accelTime - cruiseTime;
+    return Math.max(0, peak - decelerationRate * decelT);
+  }
+
+  extrapolateShipMovement(v0, vd, elapsed) {
+    const { accelerationRate, decelerationRate } = this.config;
+    const diff = vd - v0;
+    if (Math.abs(diff) < 0.001) {
+      return { distance: v0 * elapsed, finalSpeed: v0 };
+    }
+    const rate = diff > 0 ? accelerationRate : decelerationRate;
+    const tReach = Math.abs(diff) / rate;
+    const dir = Math.sign(diff);
+    if (elapsed <= tReach) {
+      return {
+        distance: v0 * elapsed + 0.5 * dir * rate * elapsed * elapsed,
+        finalSpeed: v0 + dir * rate * elapsed
+      };
+    }
+    const d1 = v0 * tReach + 0.5 * dir * rate * tReach * tReach;
+    return { distance: d1 + vd * (elapsed - tReach), finalSpeed: vd };
+  }
+
+  extrapolateShipMovementFixed(v0, capSeconds, elapsed) {
+    if (v0 <= 0.001) return { distance: 0, finalSpeed: 0 };
+    const { decelerationRate } = this.config;
+    const decelTime = v0 / decelerationRate;
+    const decelDist = 0.5 * v0 * v0 / decelerationRate;
+    if (elapsed <= capSeconds) {
+      return { distance: v0 * elapsed, finalSpeed: v0 };
+    }
+    const decelElapsed = elapsed - capSeconds;
+    if (decelElapsed >= decelTime) {
+      return { distance: v0 * capSeconds + decelDist, finalSpeed: 0 };
+    }
+    return {
+      distance: v0 * capSeconds + v0 * decelElapsed - 0.5 * decelerationRate * decelElapsed * decelElapsed,
+      finalSpeed: v0 - decelerationRate * decelElapsed
+    };
   }
 
   updateThrottleTarget(dt) {
-    if (this.state.autopilot) return;
+    if (this.state.autopilotPhase !== null) return;
 
     const accelerating = this.activeActions.has("throttleUp");
     const decelerating = this.activeActions.has("throttleDown");
@@ -558,11 +941,15 @@ export class GameManager {
     let yaw = 0;
     let roll = 0;
     const pitchDirection = CONTROL_SETTINGS.arrowPitchNormal ? 1 : -1;
+    const pitchUp = this.getControlActionAmount("pitchUp");
+    const pitchDown = this.getControlActionAmount("pitchDown");
+    const yawLeft = this.getControlActionAmount("yawLeft");
+    const yawRight = this.getControlActionAmount("yawRight");
 
-    if (this.activeActions.has("pitchUp")) pitch += this.config.pitchRate * dt * pitchDirection;
-    if (this.activeActions.has("pitchDown")) pitch -= this.config.pitchRate * dt * pitchDirection;
-    if (this.activeActions.has("yawLeft")) yaw += this.config.yawRate * dt;
-    if (this.activeActions.has("yawRight")) yaw -= this.config.yawRate * dt;
+    if (pitchUp > 0) pitch += this.config.pitchRate * dt * pitchDirection * pitchUp;
+    if (pitchDown > 0) pitch -= this.config.pitchRate * dt * pitchDirection * pitchDown;
+    if (yawLeft > 0) yaw += this.config.yawRate * dt * yawLeft;
+    if (yawRight > 0) yaw -= this.config.yawRate * dt * yawRight;
     if (this.activeActions.has("rollLeft")) roll -= this.config.rollRate * dt;
     if (this.activeActions.has("rollRight")) roll += this.config.rollRate * dt;
 
@@ -587,25 +974,93 @@ export class GameManager {
   }
 
   updateAutopilot(dt) {
-    if (!this.state.autopilot || !this.state.target) return;
+    if (this.state.autopilotPhase === null || !this.navTarget) return;
 
-    this.vectors.targetVec.copy(this.state.target).sub(this.ship.position);
+    this.vectors.targetVec.copy(this.navTarget).sub(this.ship.position);
     const distance = this.vectors.targetVec.length();
 
     if (distance <= this.config.arrivalRadius) {
-      this.state.autopilot = false;
+      this.clearTarget("arrived", true);
       this.setSpeed(0);
       return;
     }
 
-    const direction = this.vectors.targetVec.normalize();
-    this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion);
-    this.lookMatrix.lookAt(new THREE.Vector3(0, 0, 0), direction, this.vectors.up);
-    this.quaternions.desired.setFromRotationMatrix(this.lookMatrix);
-    this.ship.quaternion.slerp(this.quaternions.desired, Math.min(1, this.config.autopilotTurnRate * dt)).normalize();
+    const phase = this.state.autopilotPhase;
 
-    const cruise = THREE.MathUtils.clamp(distance * 0.04, 18, 72);
-    this.setSpeed(cruise);
+    if (phase === "stopping") {
+      this.setSpeed(0);
+      if (Math.abs(this.state.speed) < 0.5) {
+        this.state.autopilotPhase = "aligning";
+      }
+
+    } else if (phase === "aligning") {
+      this.setSpeed(0);
+      const direction = this.vectors.targetVec.normalize();
+      this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion);
+      this.lookMatrix.lookAt(direction, new THREE.Vector3(0, 0, 0), this.vectors.up);
+      this.quaternions.desired.setFromRotationMatrix(this.lookMatrix);
+      this.ship.quaternion.slerp(this.quaternions.desired, Math.min(1, this.config.autopilotTurnRate * dt)).normalize();
+      this.ship.getWorldDirection(this.vectors.forward);
+      if (this.vectors.forward.dot(direction) > 0.99999) {
+        const effectiveDist = distance - this.config.arrivalRadius;
+        const peakSpeed = this.computeAutopilotPeakSpeed(effectiveDist);
+        const flightDuration = this.computeFlightDuration(effectiveDist, peakSpeed);
+        this.state.autopilotPeakSpeed = peakSpeed;
+        this.state.autopilotPhase = "accelerating";
+        if (this.activeNavLogId) {
+          this.worldDataManager.updateNavLog(this.activeNavLogId, {
+            from_position: { x: this.ship.position.x, y: this.ship.position.y, z: this.ship.position.z },
+            flight_start_at: Date.now(),
+            peak_speed: peakSpeed,
+            flight_duration: flightDuration
+          });
+        }
+      }
+
+    } else if (phase === "accelerating") {
+      this.setSpeed(this.state.autopilotPeakSpeed);
+      this._autopilotCourseCorrect(dt);
+      const decelDist = 0.5 * this.state.speed * this.state.speed / this.config.decelerationRate;
+      const remaining = distance - this.config.arrivalRadius;
+      if (remaining <= decelDist) {
+        this.state.autopilotPhase = "decelerating";
+      } else if (this.state.speed >= this.state.autopilotPeakSpeed - 0.1) {
+        this.state.autopilotPhase = "cruising";
+      }
+
+    } else if (phase === "cruising") {
+      this.setSpeed(this.state.autopilotPeakSpeed);
+      this._autopilotCourseCorrect(dt);
+      const decelDist = 0.5 * this.state.speed * this.state.speed / this.config.decelerationRate;
+      if (distance - this.config.arrivalRadius <= decelDist) {
+        this.state.autopilotPhase = "decelerating";
+      }
+
+    } else if (phase === "decelerating") {
+      this.setSpeed(0);
+      this._autopilotCourseCorrect(dt);
+      if (Math.abs(this.state.speed) < 0.5 && distance > this.config.arrivalRadius * 2) {
+        this.state.autopilotPhase = "stopping";
+      }
+    }
+  }
+
+  _autopilotCourseCorrect(dt) {
+    const courseDir = this.vectors.targetVec.normalize();
+    this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion);
+    this.lookMatrix.lookAt(courseDir, new THREE.Vector3(0, 0, 0), this.vectors.up);
+    this.quaternions.desired.setFromRotationMatrix(this.lookMatrix);
+    this.ship.quaternion.slerp(this.quaternions.desired, Math.min(1, this.config.autopilotTurnRate * 0.4 * dt)).normalize();
+  }
+
+  updateAutopilotRollOnly(dt) {
+    let roll = 0;
+    if (this.activeActions.has("rollLeft")) roll -= this.config.rollRate * dt;
+    if (this.activeActions.has("rollRight")) roll += this.config.rollRate * dt;
+    if (roll === 0) return;
+    this.quaternions.localRotation.setFromAxisAngle(this.axes.z, roll);
+    this.ship.quaternion.multiply(this.quaternions.localRotation);
+    this.ship.quaternion.normalize();
   }
 
   updatePosition(dt) {
@@ -616,7 +1071,7 @@ export class GameManager {
     this.vectors.movement.set(0, 0, 0);
     this.vectors.movement.addScaledVector(this.vectors.forward, this.state.speed * dt);
 
-    if (!this.state.autopilot) {
+    if (this.state.autopilotPhase === null) {
       if (this.activeActions.has("strafeLeft")) this.vectors.movement.addScaledVector(this.vectors.right, this.config.strafeRate * dt);
       if (this.activeActions.has("strafeRight")) this.vectors.movement.addScaledVector(this.vectors.right, -this.config.strafeRate * dt);
       if (this.activeActions.has("ascend")) this.vectors.movement.addScaledVector(this.vectors.up, this.config.verticalRate * dt);
@@ -701,12 +1156,12 @@ export class GameManager {
       this.state.cameraFxAmount = 0;
     }
 
-    if (!this.state.autopilot) {
+    if (this.state.autopilotPhase === null) {
       const pitchActionDirection = CONTROL_SETTINGS.arrowPitchNormal ? 1 : -1;
-      if (this.activeActions.has("yawLeft")) this.vectors.cameraActionTarget.x += this.config.cameraYawOffset;
-      if (this.activeActions.has("yawRight")) this.vectors.cameraActionTarget.x -= this.config.cameraYawOffset;
-      if (this.activeActions.has("pitchUp")) this.vectors.cameraActionTarget.y -= this.config.cameraPitchOffset * pitchActionDirection;
-      if (this.activeActions.has("pitchDown")) this.vectors.cameraActionTarget.y += this.config.cameraPitchOffset * pitchActionDirection;
+      this.vectors.cameraActionTarget.x += this.config.cameraYawOffset * this.getControlActionAmount("yawLeft");
+      this.vectors.cameraActionTarget.x -= this.config.cameraYawOffset * this.getControlActionAmount("yawRight");
+      this.vectors.cameraActionTarget.y -= this.config.cameraPitchOffset * pitchActionDirection * this.getControlActionAmount("pitchUp");
+      this.vectors.cameraActionTarget.y += this.config.cameraPitchOffset * pitchActionDirection * this.getControlActionAmount("pitchDown");
       if (this.activeActions.has("strafeLeft")) this.vectors.cameraActionTarget.x -= this.config.cameraStrafeOffset;
       if (this.activeActions.has("strafeRight")) this.vectors.cameraActionTarget.x += this.config.cameraStrafeOffset;
       if (this.activeActions.has("ascend")) this.vectors.cameraActionTarget.y -= this.config.cameraVerticalOffset;
@@ -821,6 +1276,49 @@ export class GameManager {
     this.markerCore.scale.setScalar(pulse);
   }
 
+  getPlayerDataPosition() {
+    const position = this.worldMapManager.toDataVector(this.ship.position);
+    return { x: position.x, y: position.y, z: position.z };
+  }
+
+  syncWorldRuntimeWithPlayer({ force = false } = {}) {
+    if (!this.worldMapManager?.snapshot) return null;
+    const dataPosition = this.getPlayerDataPosition();
+    this.worldMapManager.updateVisibleChunksFromPosition(dataPosition, { force });
+    if (this.state.phase === "running") this.updateLocationBgm(dataPosition);
+    return dataPosition;
+  }
+
+  getBgmIdForCurrentPlayerPosition() {
+    return this.getBgmIdForPosition(this.getPlayerDataPosition());
+  }
+
+  getBgmIdForPosition(dataPosition) {
+    const sector = this.worldDataManager.getSectorAtPosition(
+      dataPosition.x,
+      dataPosition.y,
+      dataPosition.z
+    );
+    if (sector) return sector.theme_music_id || "bgm_sector_01";
+
+    const chunk = this.worldDataManager.getChunkRecordAtPosition(dataPosition);
+    return chunk ? "bgm_main_01" : "bgm_danger_01";
+  }
+
+  updateLocationBgm(dataPosition) {
+    const nextBgmId = this.getBgmIdForPosition(dataPosition);
+    if (this.currentLocationBgmId === nextBgmId) return;
+    this.currentLocationBgmId = nextBgmId;
+
+    void this.soundManager.setBgm(nextBgmId)
+      .then((played) => {
+        if (!played) {
+          this.currentLocationBgmId = null;
+          this.ui.showErrorToast("BGM unavailable");
+        }
+      });
+  }
+
   updateHud() {
     this.ship.getWorldDirection(this.vectors.forward).normalize();
     this.ui.updateHud({
@@ -829,19 +1327,309 @@ export class GameManager {
       desiredSpeed: this.state.desiredSpeed,
       position: this.ship.position,
       heading: this.vectors.forward,
-      target: this.state.target,
-      autopilot: this.state.autopilot
+      target: this.navTarget,
+      autopilot: this.state.autopilotPhase !== null
     });
+    this.refreshWorldSummary();
+  }
+
+  async refreshWorldSummary({ force = false } = {}) {
+    if (!this.worldDataManager.db) return;
+    if (!force) {
+      const now = performance.now();
+      if (this.worldSummaryPending || now - this.worldSummaryLastUpdatedAt < 500) return;
+      this.worldSummaryLastUpdatedAt = now;
+    }
+
+    this.worldSummaryPending = true;
+    const dataPosition = this.syncWorldRuntimeWithPlayer({ force }) || this.getPlayerDataPosition();
+    try {
+      const summary = await this.worldDataManager.getSummary(dataPosition);
+      this.worldMapManager.setCurrentSectorId(summary.currentSector?.sector_id || null);
+      this.ui.setWorldSummary(summary);
+    } finally {
+      this.worldSummaryPending = false;
+    }
   }
 
   update(dt) {
     this.updateAutopilot(dt);
     this.updateThrottleTarget(dt);
     this.updateSpeed(dt);
-    if (!this.state.autopilot) this.updateManualRotation(dt);
+    if (this.state.autopilotPhase === null) {
+      this.updateManualRotation(dt);
+    } else if (this.state.autopilotPhase !== "aligning" && this.state.autopilotPhase !== "stopping") {
+      this.updateAutopilotRollOnly(dt);
+    }
     this.updatePosition(dt);
+    this.syncWorldRuntimeWithPlayer();
     this.updateCamera(dt);
     this.updateStars();
+    this.worldMapManager.update(dt);
+    this.savePlayerShipState();
+  }
+
+  async savePlayerShipState({ force = false } = {}) {
+    if (!this.worldDataManager.db || this.playerShipSavePending || this.worldDataResetting) return;
+
+    const now = performance.now();
+    if (!force && now - this.playerShipSaveLastUpdatedAt < this.playerShipSaveInterval) return;
+    this.playerShipSaveLastUpdatedAt = now;
+    this.playerShipSavePending = true;
+
+    try {
+      const position = this.worldMapManager.toDataVector(this.ship.position);
+      await this.worldDataManager.savePlayerShipState({
+        ship_id: "PLAYER-SHIP-001",
+        player_id: "default",
+        position: { x: position.x, y: position.y, z: position.z },
+        rotation: {
+          x: this.ship.quaternion.x,
+          y: this.ship.quaternion.y,
+          z: this.ship.quaternion.z,
+          w: this.ship.quaternion.w
+        },
+        speed: this.state.speed,
+        desiredSpeed: this.state.desiredSpeed
+      });
+    } catch {
+      this.ui.showErrorToast("player ship state save failed");
+    } finally {
+      this.playerShipSavePending = false;
+    }
+  }
+
+  async regenerateWorld() {
+    if (!this.worldDataManager.db) {
+      this.ui.showErrorToast("world database unavailable");
+      return;
+    }
+
+    try {
+      const snapshot = await this.worldDataManager.createNewWorld();
+      this.worldMapManager.renderWorld(snapshot);
+      await this.restorePlayerShipState();
+      this.syncWorldRuntimeWithPlayer({ force: true });
+      await this.refreshWorldSummary({ force: true });
+      this.ui.showToast("world regenerated");
+    } catch (error) {
+      this.ui.showErrorToast(error instanceof Error ? error.message : "world regenerate failed");
+    }
+  }
+
+  async clearAllData() {
+    try {
+      this.worldDataResetting = true;
+      this.activeActions.clear();
+      this.stopTouchDpad();
+      this.state.autopilotPhase = null;
+      this.state.autopilotPeakSpeed = 0;
+      this.state.speed = 0;
+      this.state.desiredSpeed = 0;
+      this.state.speedTrend = 0;
+      this.state.cameraFxAmount = 0;
+      this.navTarget = null;
+      this.activeNavLogId = null;
+      this.targetMarker.visible = false;
+      await this.waitForPendingPlayerShipSave();
+      if (this.worldDataManager.db) {
+        this.worldDataManager.db.close();
+        this.worldDataManager.db = null;
+      }
+      this.reloadForDataReset();
+    } catch (error) {
+      this.ui.showErrorToast(error instanceof Error ? error.message : "data clear failed");
+      this.worldDataResetting = false;
+    }
+  }
+
+  async handleDataResetRequest() {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("reset")) return;
+
+    try {
+      await this.clearRuntimeCaches();
+      await this.deleteGameDatabases();
+    } finally {
+      url.searchParams.delete("reset");
+      window.history.replaceState(null, "", url.href);
+    }
+  }
+
+  async deleteGameDatabases() {
+    if (this.worldDataManager.db) {
+      this.worldDataManager.db.close();
+      this.worldDataManager.db = null;
+    }
+
+    if (typeof this.worldDataManager.deleteDatabase === "function") {
+      await this.worldDataManager.deleteDatabase();
+      return;
+    }
+
+    const prefix = "void-zero-";
+    const names = new Set([this.worldDataManager.config.dbName]);
+
+    if (typeof indexedDB.databases === "function") {
+      try {
+        const databases = await indexedDB.databases();
+        databases
+          .map((database) => database.name)
+          .filter((name) => typeof name === "string" && name.startsWith(prefix))
+          .forEach((name) => names.add(name));
+      } catch {
+        // Fall back to the known database name.
+      }
+    }
+
+    await Promise.all(Array.from(names).map((name) => this.deleteIndexedDbByName(name)));
+  }
+
+  deleteIndexedDbByName(name) {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(name);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error || new Error(`IndexedDB delete failed: ${name}`));
+      request.onblocked = () => reject(new Error(`IndexedDB delete blocked: ${name}. Close other tabs and try again.`));
+    });
+  }
+
+  async clearRuntimeCaches() {
+    this.clearStorageNamespace(localStorage);
+    this.clearStorageNamespace(sessionStorage);
+
+    if ("caches" in window) {
+      try {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+      } catch {
+        // CacheStorage is best-effort and may be unavailable in local contexts.
+      }
+    }
+  }
+
+  async waitForPendingPlayerShipSave() {
+    const startedAt = performance.now();
+    while (this.playerShipSavePending && performance.now() - startedAt < 1500) {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+  }
+
+  clearStorageNamespace(storage) {
+    const prefix = "void-zero-";
+    try {
+      Object.keys(storage)
+        .filter((key) => key.startsWith(prefix))
+        .forEach((key) => storage.removeItem(key));
+    } catch {
+      // Ignore storage cleanup failures; the database reset is the critical path.
+    }
+  }
+
+  reloadForDataReset() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("reset", String(Date.now()));
+    window.location.replace(url.href);
+  }
+
+  async reloadWorldData() {
+    if (!this.worldDataManager.db) {
+      this.ui.showErrorToast("world database unavailable");
+      return;
+    }
+
+    try {
+      const snapshot = await this.worldDataManager.getWorldSnapshot();
+      this.worldMapManager.renderWorld(snapshot);
+      await this.restorePlayerShipState();
+      this.syncWorldRuntimeWithPlayer({ force: true });
+      await this.refreshWorldSummary({ force: true });
+      this.ui.showToast("world reloaded");
+    } catch (error) {
+      this.ui.showErrorToast(error instanceof Error ? error.message : "world reload failed");
+    }
+  }
+
+  setChunkBoundsMode(mode) {
+    const nextMode = ["all", "sector", "off"].includes(mode) ? mode : "all";
+    this.worldViewSettings.chunkBoundsMode = nextMode;
+    this.worldMapManager.setChunkBoundsMode(nextMode);
+    this.ui.setChunkBoundsMode(nextMode);
+    void this.saveWorldViewSettings();
+  }
+
+  getWorldObjectList() {
+    const snapshot = this.worldMapManager?.snapshot || this.worldDataManager.snapshot;
+    if (!snapshot) return { buildings: [], resources: [] };
+
+    const sectorsById = new Map(snapshot.sectors.map((sector) => [sector.sector_id, sector]));
+    const playerPosition = this.getPlayerDataPosition();
+    const toListItem = (object, kind) => {
+      const id = object.building_instance_id || object.resource_instance_id;
+      const type = object.building_id || object.type || "unknown";
+      const position = { ...object.position };
+      const relativePosition = object.chunk_center_relative_position
+        ? { ...object.chunk_center_relative_position }
+        : null;
+      const chunkCenterPosition = object.chunk_center_position
+        ? { ...object.chunk_center_position }
+        : null;
+      const target = this.worldMapManager.toRenderVector(position);
+      const distance = this.getDataDistance(playerPosition, position);
+      return {
+        id,
+        kind,
+        name: this.formatObjectName(type),
+        typeLabel: this.formatObjectName(type),
+        currentAmount: object.current_amount ?? null,
+        totalCapacity: object.total_capacity ?? null,
+        amountLabel: object.current_amount != null && object.total_capacity != null
+          ? `${Math.round(object.current_amount)} / ${Math.round(object.total_capacity)}`
+          : "unavailable",
+        statusLabel: object.status || "unknown",
+        hpLabel: object.hp != null ? String(object.hp) : "unavailable",
+        sectorName: sectorsById.get(object.sector_id)?.name || object.sector_id || "UNKNOWN",
+        chunkId: object.chunk_id || "UNKNOWN",
+        position,
+        relativePosition,
+        chunkCenterPosition,
+        target: { x: target.x, y: target.y, z: target.z },
+        distance,
+        distanceText: this.formatDistance(distance)
+      };
+    };
+
+    return {
+      buildings: snapshot.buildings.map((building) => toListItem(building, "building")),
+      resources: snapshot.resourceNodes.map((resourceNode) => toListItem(resourceNode, "resource"))
+    };
+  }
+
+  navigateToWorldObject(object) {
+    if (!object?.target) return;
+    this.setTarget(object.target);
+  }
+
+  getDataDistance(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    const dz = a.z - b.z;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+
+  formatDistance(distance) {
+    if (!Number.isFinite(distance)) return "unknown";
+    if (distance >= 1000000) return `${(distance / 1000000).toFixed(2)}M`;
+    if (distance >= 1000) return `${(distance / 1000).toFixed(1)}K`;
+    return `${Math.round(distance)}`;
+  }
+
+  formatObjectName(type, id = "") {
+    const label = String(type || "unknown")
+      .replace(/[_-]+/g, " ")
+      .replace(/([a-z])([0-9])/gi, "$1 $2")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+    return id ? `${label} / ${id}` : label;
   }
 
   animate() {
@@ -864,6 +1652,20 @@ export class GameManager {
     event.preventDefault();
     this.cameraControl.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     this.renderer.domElement.setPointerCapture(event.pointerId);
+
+    if (event.pointerType === "touch" && this.isFollowCameraMode()) {
+      if (this.cameraControl.pointers.size >= 2) {
+        this.stopTouchDpad();
+        this.cameraControl.dragging = false;
+        this.cameraControl.pointerId = null;
+        this.cameraControl.pinching = true;
+        this.cameraControl.pinchDistance = this.getCameraPointerDistance();
+        return;
+      }
+
+      this.startTouchDpad(event);
+      return;
+    }
 
     if (this.cameraControl.pointers.size >= 2) {
       this.enterOrbitCameraMode();
@@ -902,6 +1704,12 @@ export class GameManager {
       return;
     }
 
+    if (this.cameraControl.touchDpadPointerId === event.pointerId) {
+      event.preventDefault();
+      this.updateTouchDpad(event);
+      return;
+    }
+
     if (!this.cameraControl.dragging || this.cameraControl.pointerId !== event.pointerId) return;
     event.preventDefault();
 
@@ -912,21 +1720,22 @@ export class GameManager {
 
     if (dx === 0 && dy === 0) return;
 
-    this.vectors.cameraUp.set(0, 1, 0).applyQuaternion(this.quaternions.cameraOrbitTarget);
-    const yawSign = this.vectors.cameraUp.dot(this.axes.y) >= 0 ? 1 : -1;
-
+    this.updateCameraOrbitAxes();
+    const horizontalSign = this.getCameraOrbitHorizontalSign();
     this.quaternions.cameraOrbitYawDelta.setFromAxisAngle(
-      this.axes.y,
-      -dx * this.config.cameraOrbitSensitivity * yawSign
+      this.vectors.cameraOrbitUpAxis,
+      -dx * this.config.cameraOrbitSensitivity * horizontalSign
     );
+    this.quaternions.cameraOrbitTarget.premultiply(this.quaternions.cameraOrbitYawDelta).normalize();
+
+    this.vectors.cameraOrbitRightAxis.set(1, 0, 0)
+      .applyQuaternion(this.quaternions.cameraOrbitTarget)
+      .normalize();
     this.quaternions.cameraOrbitPitchDelta.setFromAxisAngle(
-      this.axes.x,
+      this.vectors.cameraOrbitRightAxis,
       -dy * this.config.cameraOrbitSensitivity
     );
-    this.quaternions.cameraOrbitTarget
-      .premultiply(this.quaternions.cameraOrbitYawDelta)
-      .multiply(this.quaternions.cameraOrbitPitchDelta)
-      .normalize();
+    this.quaternions.cameraOrbitTarget.premultiply(this.quaternions.cameraOrbitPitchDelta).normalize();
   }
 
   stopCameraDrag(event) {
@@ -941,15 +1750,118 @@ export class GameManager {
       this.cameraControl.pointerId = null;
     }
 
+    if (this.cameraControl.touchDpadPointerId === event.pointerId) {
+      this.stopTouchDpad();
+    }
+
     if (this.renderer.domElement.hasPointerCapture(event.pointerId)) {
       this.renderer.domElement.releasePointerCapture(event.pointerId);
     }
+  }
+
+  isFollowCameraMode() {
+    return this.cameraControl.followShip || this.cameraControl.returningToFollow;
+  }
+
+  startTouchDpad(event) {
+    this.cameraControl.touchDpadPointerId = event.pointerId;
+    this.cameraControl.touchDpadStartX = event.clientX;
+    this.cameraControl.touchDpadStartY = event.clientY;
+    this.setTouchDpadState([], 0, 0);
+    this.ui.showTouchDpad({
+      x: event.clientX,
+      y: event.clientY,
+      maxDistance: this.cameraControl.touchDpadMaxDistance
+    });
+  }
+
+  updateTouchDpad(event) {
+    const dx = event.clientX - this.cameraControl.touchDpadStartX;
+    const dy = event.clientY - this.cameraControl.touchDpadStartY;
+    const axisX = this.getTouchDpadAxisValue(dx);
+    const axisY = this.getTouchDpadAxisValue(dy);
+    const actions = [];
+
+    if (axisY < 0) actions.push("pitchUp");
+    if (axisY > 0) actions.push("pitchDown");
+    if (axisX < 0) actions.push("yawLeft");
+    if (axisX > 0) actions.push("yawRight");
+
+    this.setTouchDpadState(actions, axisX, axisY);
+    this.ui.updateTouchDpad(this.getTouchDpadVisualOffset(dx, dy));
+  }
+
+  getTouchDpadVisualOffset(dx, dy) {
+    const maxDistance = this.cameraControl.touchDpadMaxDistance;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= maxDistance || distance <= 0) {
+      return { knobX: dx, knobY: dy };
+    }
+
+    const scale = maxDistance / distance;
+    return { knobX: dx * scale, knobY: dy * scale };
+  }
+
+  getTouchDpadAxisValue(delta) {
+    const deadzone = this.cameraControl.touchDpadDeadzone;
+    const maxDistance = Math.max(deadzone + 1, this.cameraControl.touchDpadMaxDistance);
+    const distance = Math.abs(delta);
+    if (distance <= deadzone) return 0;
+
+    return Math.sign(delta) * Math.min(1, (distance - deadzone) / (maxDistance - deadzone));
+  }
+
+  setTouchDpadState(actions, axisX = 0, axisY = 0) {
+    const nextActions = new Set(actions);
+    const previousActions = this.cameraControl.touchDpadActions;
+
+    nextActions.forEach((action) => {
+      const isNewAction = !previousActions.has(action);
+      if (isNewAction && this.state.autopilotPhase !== null && this.shouldAutopilotCancelOnKey(action)) {
+        this.clearTarget("autopilot cancelled");
+      }
+    });
+
+    this.cameraControl.touchDpadActions = nextActions;
+    this.cameraControl.touchDpadAxisX = axisX;
+    this.cameraControl.touchDpadAxisY = axisY;
+  }
+
+  stopTouchDpad() {
+    this.cameraControl.touchDpadActions.clear();
+    this.cameraControl.touchDpadAxisX = 0;
+    this.cameraControl.touchDpadAxisY = 0;
+    this.cameraControl.touchDpadPointerId = null;
+    this.ui.hideTouchDpad();
+  }
+
+  getControlActionAmount(action) {
+    if (this.activeActions.has(action)) return 1;
+
+    const x = this.cameraControl.touchDpadAxisX;
+    const y = this.cameraControl.touchDpadAxisY;
+    if (action === "pitchUp") return Math.max(0, -y);
+    if (action === "pitchDown") return Math.max(0, y);
+    if (action === "yawLeft") return Math.max(0, -x);
+    if (action === "yawRight") return Math.max(0, x);
+    return 0;
   }
 
   onWheel(event) {
     if (this.state.phase !== "running") return;
     event.preventDefault();
     this.applyCameraZoomDelta(event.deltaY * this.config.cameraZoomSensitivity);
+  }
+
+  shouldAutopilotCancelOnKey(action) {
+    if (action === "cameraToggle") return false;
+    const isFlightKey = action === "throttleUp" || action === "throttleDown" ||
+      action === "maxSpeed" || action === "stopSpeed" ||
+      this.isManualControlAction(action);
+    if (!isFlightKey) return false;
+    const phase = this.state.autopilotPhase;
+    if (phase === "stopping" || phase === "aligning") return true;
+    return action !== "rollLeft" && action !== "rollRight";
   }
 
   onKeyDown(event) {
@@ -961,23 +1873,25 @@ export class GameManager {
 
     this.activeActions.add(action);
 
+    if (this.state.autopilotPhase !== null && this.shouldAutopilotCancelOnKey(action)) {
+      this.clearTarget("autopilot cancelled");
+    }
+
     if (action === "throttleUp" || action === "throttleDown") {
       event.preventDefault();
     } else if (action === "maxSpeed") {
       event.preventDefault();
-      this.setSpeed(this.config.maxSpeed);
+      if (this.state.autopilotPhase === null) this.setSpeed(this.config.maxSpeed);
     } else if (action === "stopSpeed") {
       event.preventDefault();
-      this.setSpeed(0);
+      if (this.state.autopilotPhase === null) this.setSpeed(0);
     } else if (action === "cameraToggle") {
       event.preventDefault();
       if (!event.repeat) {
-        this.toggleCameraMode();
-        this.playCameraToggleSfx();
+        this.requestCameraToggle();
       }
     } else if (this.isManualControlAction(action)) {
       event.preventDefault();
-      this.cancelAutopilot();
     }
   }
 
@@ -1036,6 +1950,7 @@ export class GameManager {
     }
 
     this.ui.dispose();
+    this.worldMapManager.dispose();
     this.soundManager.dispose();
     this.resourceManager.dispose();
     this.renderer.dispose();

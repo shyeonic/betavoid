@@ -11,7 +11,7 @@ export const CONFIG = {
   strafeRate: 45,
   verticalRate: 45,
   autopilotTurnRate: 1.45,
-  arrivalRadius: 38,
+  arrivalRadius: 10,
   cameraDistance: 10,
   cameraFollowHeight: 2,
   cameraScreenYOffset: 0.3,
@@ -93,10 +93,30 @@ export const KEY_BINDING_GROUPS = [
 export const ASSETS = {
   sounds: {
     mainBgm: new URL("../rss/sounds/bgm_main_01.ogg", import.meta.url).href,
+    sectorBgm: new URL("../rss/sounds/bgm_sector_01.ogg", import.meta.url).href,
+    dangerBgm: new URL("../rss/sounds/bgm_danger_01.ogg", import.meta.url).href,
     cameraToggle: new URL("../rss/sounds/sfx_data_01.ogg", import.meta.url).href
   },
   ships: {
     local: new URL("../rss/ships/ship_01.obj", import.meta.url).href,
     remoteFallback: "https://raw.githubusercontent.com/shyeonic/storage/8a7253eb0ff11db007c2c1d7056d840d56e73e7f/ship_01.obj"
+  },
+  worldModels: {
+    gas_01: {
+      obj: new URL("../rss/ore_planets/gas_01.obj", import.meta.url).href,
+      mtl: new URL("../rss/ore_planets/gas_01.mtl", import.meta.url).href
+    },
+    ore_01: {
+      obj: new URL("../rss/ore_planets/ore_01.obj", import.meta.url).href,
+      mtl: new URL("../rss/ore_planets/ore_01.mtl", import.meta.url).href
+    },
+    water_01: {
+      obj: new URL("../rss/ore_planets/water_01.obj", import.meta.url).href,
+      mtl: new URL("../rss/ore_planets/water_01.mtl", import.meta.url).href
+    },
+    hq_01: {
+      obj: new URL("../rss/buildings/hq_01.obj", import.meta.url).href,
+      mtl: new URL("../rss/buildings/hq_01.mtl", import.meta.url).href
+    }
   }
 };

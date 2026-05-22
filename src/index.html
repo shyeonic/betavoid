@@ -10,13 +10,14 @@
     :root {
       color-scheme: light;
       --panel: rgba(246, 251, 255, 0.74);
-      --panel-strong: rgba(238, 247, 255, 0.92);
+      --panel-strong: #edf7ff;
       --line: rgba(43, 98, 140, 0.22);
       --text: #133047;
       --muted: #537083;
       --accent: #63d2ff;
       --warn: #ffbc66;
       --danger: #e36f6f;
+      --svg-default-color: #6975A0;
     }
 
     * {
@@ -84,7 +85,7 @@
     }
 
     button:active:not(:disabled) {
-      background: rgba(229, 246, 255, 0.85);
+      background: rgba(206, 238, 255, 0.85);
     }
 
     button:disabled {
@@ -123,7 +124,6 @@
       pointer-events: none;
     }
 
-    .speed-readout,
     .target-panel,
     .readout,
     .toast {
@@ -136,9 +136,12 @@
     }
 
     .speed-readout {
+      pointer-events: auto;
+      position: absolute;
+      box-shadow: 0 0.4vh 1.6vh rgba(66, 139, 190, 0.18);
       left: 50%;
-      bottom: 2.2vh;
-      width: 32vh;
+      bottom: 9.4vh;
+      width: 24vh;
       border-radius: 0;
       background: transparent;
       border: 0;
@@ -179,7 +182,7 @@
       height: 2.4vh;
       overflow: visible;
       border-radius: 0.6vh;
-      background: rgba(255, 255, 255, 0.42);
+      background: rgba(255, 255, 255, 0.8);
       border: 0.12vh solid rgba(43, 98, 140, 0.6);
       cursor: ew-resize;
       touch-action: none;
@@ -401,12 +404,8 @@
       position: fixed;
       inset: 0;
       z-index: 10;
-      display: grid;
-      place-items: center;
-      padding: clamp(3vh, 7vh, 9vh);
       background: #edf9ff;
       pointer-events: auto;
-      cursor: pointer;
       transition: opacity 220ms ease, visibility 220ms ease;
     }
 
@@ -416,149 +415,267 @@
       pointer-events: none;
     }
 
-    .start-panel {
+    .start-scene-stack {
+      position: absolute;
+      inset: 0;
+    }
+
+    .start-gate-scene,
+    .start-ready-scene {
+      position: absolute;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: clamp(3vh, 7vh, 9vh);
+    }
+
+    .start-gate-scene.active,
+    .start-ready-scene.active {
+      display: flex;
+      justify-content: center;
+    }
+
+    .start-gate-scene {
+      cursor: pointer;
+    }
+
+    .start-ready-scene {
+      cursor: default;
+    }
+
+    .start-gate-panel,
+    .start-ready-panel {
       width: min(105vh, 100%);
       min-height: calc(100vh - 14vh);
-      display: grid;
-      place-items: center;
+      display: flex;
+      justify-content: center;
+      align-items: center;
       position: relative;
     }
 
+    /* Title/loading gate scene */
     .start-title {
       display: grid;
+      gap: 2.4vh;
       place-items: center;
       text-align: center;
+      color: #fff;
+      filter: drop-shadow(0 0 1vh rgba(101, 163, 187, 0.4)) drop-shadow(0 0 0.4vh rgba(85, 123, 138, 0.2));
+    }
+
+    .start-logo {
+      display: grid;
+      place-items: center;
+      color: #fff;
+    }
+
+    .start-logo .svg-icon {
+      width: 7vh;
+      height: 7vh;
     }
 
     .start-title strong {
-      font-size: clamp(6.4vh, 12vh, 15vh);
+      font-size: 5vh;
       line-height: 1.1;
       text-transform: uppercase;
       letter-spacing: 0;
-    }
-
-    .start-prompt,
-    .loading-detail {
-      color: var(--muted);
-      font-size: 1.6vh;
+      color: #fff;
     }
 
     .start-prompt {
       position: fixed;
       left: 3vh;
       right: 3vh;
-      bottom: clamp(3.5vh, 8vh, 9vh);
+      bottom: 9vh;
+      font-size: 1.6vh;
       text-align: center;
       text-transform: uppercase;
-      font-weight: 700;
+      color: #333;
       letter-spacing: 0;
+      text-shadow: 0 0 1.8vh rgba(99, 210, 255, 0.46);
     }
 
     .start-status {
-      display: grid;
-      gap: 1.8vh;
-      width: min(28vh, 70%);
+      position: fixed;
+      left: 3vh;
+      right: 3vh;
+      bottom: clamp(3.5vh, 8vh, 9vh);
+      display: none;
+      gap: 0.5vh;
       place-items: center;
     }
 
     .loading-track {
-      width: 100%;
-      height: 0.36vh;
-      border: 0.12vh solid rgba(43, 98, 140, 0.16);
-      background: rgba(255, 255, 255, 0.58);
-      overflow: hidden;
+      display: none;
     }
 
     .loading-fill {
-      width: 0;
-      height: 100%;
-      background: linear-gradient(90deg, rgba(99, 210, 255, 0.4), rgba(255, 188, 102, 0.7));
-      transition: width 180ms ease;
+      display: none;
     }
 
     .loading-copy {
-      min-height: 5vh;
       display: grid;
       gap: 0.55vh;
       place-items: center;
       text-align: center;
-      font-size: 1.5vh;
-      text-transform: uppercase;
-      font-weight: 700;
     }
 
-    .start-actions {
+    #loadingText {
+      height: 2.6vh;
+      font-size: 2.4vh;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      color: #333;
+      text-shadow: 0 0 1.8vh rgba(99, 210, 255, 0.46);
+      text-transform: uppercase;
+    }
+
+    .loading-detail {
+      width: 30vh;
+      height: 1.8vh;
+      overflow: hidden;
+      font-size: 1.5vh;
+      line-height: 1;
+      color: #ddd;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Independent ready scene */
+    .start-ready-scene .ready-actions {
       display: grid;
+      gap: 1.4vh;
       place-items: center;
     }
 
-    .start-actions button {
-      min-width: 32vh;
-      height: 12vh;
-      padding: 0 7vh;
-      border-radius: 1.2vh;
-      border-width: 0.12vh;
-      font-size: 2.8vh;
-      color: #009fff;
-      border-color: rgba(99, 210, 255, 0.6);
-      background: rgba(99, 210, 255, 0.16);
+    .start-ready-scene .ready-button {
+      --ready-button-edge: 2.4vh;
+      --ready-button-inner-edge: calc(var(--ready-button-edge) - 0.12vh);
+      --ready-button-border: rgba(126, 222, 255, 0.82);
+      --ready-button-face: linear-gradient(180deg, rgba(241, 253, 255, 0.86), rgba(224, 248, 255, 0.58));
+      position: relative;
+      z-index: 0;
+      isolation: isolate;
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 5.8vh minmax(0, 1fr) 5.8vh;
+      align-items: center;
+      padding: 0 3vh;
+      overflow: visible;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      clip-path: polygon(var(--ready-button-edge) 0, calc(100% - var(--ready-button-edge)) 0, 100% 50%, calc(100% - var(--ready-button-edge)) 100%, var(--ready-button-edge) 100%, 0 50%);
+      color: #243241;
+      filter: drop-shadow(0 1.4vh 2.4vh rgba(60, 102, 130, 0.18));
+      font-size: 1.65vh;
+      font-weight: 700;
+      line-height: 1;
+      text-align: center;
+      text-transform: uppercase;
+      transition: color 160ms ease, filter 160ms ease, opacity 160ms ease, transform 140ms ease;
     }
 
-    .start-actions #startButton {
-      opacity: 0;
+    .start-ready-scene .ready-button::before,
+    .start-ready-scene .ready-button::after {
+      content: "";
+      position: absolute;
       pointer-events: none;
     }
 
-    .start-scene.ready .start-actions #startButton {
-      position: fixed;
-      left: 50%;
-      top: 50%;
-      left: 50vw;
-      top: 50dvh;
-      transform: translate(-50%, -50%);
-      opacity: 1;
+    .start-ready-scene .ready-button::before {
+      z-index: -2;
+      inset: 0;
+      background: var(--ready-button-border);
+      clip-path: inherit;
+    }
+
+    .start-ready-scene .ready-button::after {
+      z-index: -1;
+      inset: 0.12vh;
+      background:
+        linear-gradient(90deg, transparent 0 8%, rgba(255, 255, 255, 0.46) 24%, transparent 58%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent 46%),
+        var(--ready-button-face);
+      clip-path: polygon(var(--ready-button-inner-edge) 0,
+          calc(100% - var(--ready-button-inner-edge)) 0,
+          100% 50%,
+          calc(100% - var(--ready-button-inner-edge)) 100%,
+          var(--ready-button-inner-edge) 100%,
+          0 50%);
+      box-shadow: inset 0 0.12vh 0 rgba(255, 255, 255, 0.56);
+    }
+
+    .start-ready-scene .ready-button:hover:not(:disabled) {
+      color: #112c40;
+      filter: drop-shadow(0 1vh 1.8vh rgba(49, 186, 244, 0.16));
+      transform: translateY(-0.22vh);
+    }
+
+    .start-ready-scene .ready-button:active:not(:disabled) {
+      transform: translateY(0.12vh) scale(0.99);
+      background: transparent;
+    }
+
+    .start-ready-scene .ready-button:focus-visible {
+      outline: 0.22vh solid rgba(49, 186, 244, 0.72);
+      outline-offset: 0.5vh;
+    }
+
+    .start-ready-scene .ready-button:disabled {
+      cursor: progress;
+      opacity: 0.52;
+    }
+
+    .start-ready-scene .ready-button-icon,
+    .start-ready-scene .ready-button-label {
+      position: relative;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .start-ready-scene .ready-button-icon {
+      justify-self: start;
+      width: 2.2vh;
+      height: 2.2vh;
+    }
+
+    .start-ready-scene .ready-button-label {
+      justify-self: center;
+    }
+
+    .start-ready-scene .ready-start-button {
+      width: min(54vh, calc(100vw - 7vh));
+      height: 7.8vh;
       pointer-events: auto;
     }
 
-    .start-scene.loading .loading-fill {
-      box-shadow: 0 0 2.3vh rgba(99, 210, 255, 0.34);
+    .start-ready-scene .ready-start-button .ready-button-icon {
+      color: #31baf4;
     }
 
-    .start-status,
-    .start-actions {
+    .start-ready-scene .ready-settings-button {
+      --ready-button-edge: 1.9vh;
+      --ready-button-inner-edge: calc(var(--ready-button-edge) - 0.12vh);
+      --ready-button-border: rgba(80, 112, 138, 0.13);
+      --ready-button-face: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.34));
+      width: min(42vh, calc(100vw - 11vh));
+      height: 6.5vh;
+      grid-template-columns: 5.4vh minmax(0, 1fr) 5.4vh;
+      padding: 0 2.4vh;
+      font-size: 1.35vh;
+    }
+
+    .start-ready-scene .ready-settings-button .ready-button-icon {
+      color: var(--svg-default-color);
+    }
+
+    .start-gate-scene.is-loading .start-prompt {
       display: none;
     }
 
-    .start-scene.loading .start-title,
-    .start-scene.loading .start-prompt,
-    .start-scene.ready .start-title,
-    .start-scene.ready .start-prompt,
-    .start-scene.ready .start-status {
-      display: none;
-    }
-
-    .start-scene.loading .start-status,
-    .start-scene.ready .start-actions {
+    .start-gate-scene.is-loading .start-status {
       display: grid;
-    }
-
-    .start-scene.ready {
-      cursor: default;
-    }
-
-    .start-settings-button {
-      position: fixed;
-      z-index: 12;
-      top: 2.4vh;
-      right: 2.4vh;
-      width: 5.8vh;
-      height: 5.8vh;
-      display: grid;
-      place-items: center;
-      padding: 0;
-      border-radius: 1.1vh;
-      background: rgba(255, 255, 255, 0.7);
-      backdrop-filter: blur(2vh);
     }
 
     .svg-icon {
@@ -572,11 +689,609 @@
     }
 
     .svg-icon-settings {
-      --svg-icon-source: url("./rss/svg/settings.svg");
+      color: var(--svg-default-color);
+      --svg-icon-source: url("./rss/svg/ui_settings.svg");
+    }
+
+    .svg-icon-power {
+      color: var(--svg-default-color);
+      --svg-icon-source: url("./rss/svg/ui_power.svg");
     }
 
     .svg-icon-close {
-      --svg-icon-source: url("./rss/svg/close.svg");
+      color: var(--svg-default-color);
+      --svg-icon-source: url("./rss/svg/ui_close.svg");
+    }
+
+    .svg-icon-menu {
+      color: var(--svg-default-color);
+      --svg-icon-source: url("./rss/svg/ui_menu.svg");
+    }
+
+    .svg-icon-main-toggle {
+      color: var(--svg-default-color);
+      --svg-icon-source: url("./rss/svg/ui_main_toggle.svg");
+    }
+
+    .svg-icon-main {
+      color: var(--svg-default-color);
+      --svg-icon-source: url("./rss/svg/ui_main.svg");
+    }
+
+    .svg-icon-logo-void {
+      color: #fff;
+      --svg-icon-source: url("./rss/svg/logo_void.svg");
+    }
+
+    .svg-icon-to-do {
+      color: var(--svg-default-color);
+      --svg-icon-source: url("./rss/svg/ui_to_do.svg");
+    }
+
+    .svg-icon-scan {
+      color: var(--svg-default-color);
+      --svg-icon-source: url("./rss/svg/ui_scan.svg");
+    }
+
+    .svg-icon-drop-arrow {
+      color: var(--svg-default-color);
+      --svg-icon-source: url("./rss/svg/ui_drop_arrow.svg");
+    }
+
+    .svg-icon-arrow-right {
+      color: var(--svg-default-color);
+      --svg-icon-source: url("./rss/svg/ui_arrow_right_01.svg");
+    }
+
+    .bottom-nav {
+      position: fixed;
+      z-index: 9;
+      left: 50%;
+      bottom: 1vh;
+      width: 100%;
+      padding: 0 2vh;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      pointer-events: auto;
+    }
+
+    .bottom-nav-slot {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .bottom-nav-slot-left {
+      justify-content: flex-start;
+    }
+
+    .bottom-nav-slot-center {
+      justify-content: center;
+    }
+
+    .bottom-nav-slot-right {
+      justify-content: flex-end;
+    }
+
+    .bottom-nav-button {
+      width: 5.8vh;
+      height: 5.8vh;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: none;
+      border-radius: 0;
+      color: var(--svg-default-color);
+      background: transparent;
+      backdrop-filter: none;
+      box-shadow: none;
+    }
+
+    .bottom-nav-button:active:not(:disabled) {
+      scale: 0.96;
+      background: transparent;
+    }
+
+    .bottom-nav-icon {
+      display: block;
+      width: 3.2vh;
+      height: 3.2vh;
+      background: #6975A0;
+      pointer-events: none;
+      transition: transform 160ms ease;
+    }
+
+    #bottomNavMenuButton[aria-expanded="true"] .bottom-nav-icon {
+      transform: rotate(90deg);
+    }
+
+    .bottom-nav-button.main-toggle .bottom-nav-icon.is-switching-out {
+      animation: bottom-nav-main-icon-out 90ms ease forwards;
+    }
+
+    .bottom-nav-button.main-toggle .bottom-nav-icon.is-switching-in {
+      animation: bottom-nav-main-icon-in 130ms ease;
+    }
+
+    @keyframes bottom-nav-main-icon-out {
+      0% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      100% {
+        opacity: 0;
+        transform: scale(0.72);
+      }
+    }
+
+    @keyframes bottom-nav-main-icon-in {
+      0% {
+        opacity: 0.35;
+        transform: scale(0.76);
+      }
+
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      .bottom-nav-button.main-toggle .bottom-nav-icon.is-switching-out,
+      .bottom-nav-button.main-toggle .bottom-nav-icon.is-switching-in {
+        animation: none;
+      }
+    }
+
+    .touch-dpad {
+      position: fixed;
+      z-index: 8;
+      left: 0;
+      top: 0;
+      width: var(--touch-dpad-size, 30vh);
+      height: var(--touch-dpad-size, 30vh);
+      pointer-events: none;
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.96);
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+
+    .touch-dpad.visible {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .touch-dpad-ring,
+    .touch-dpad-knob {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .touch-dpad-ring {
+      width: 100%;
+      height: 100%;
+      border: 0.16vh solid rgba(43, 98, 140, 0.12);
+      border-radius: 50%;
+      background: transparent;
+    }
+
+    .touch-dpad-knob {
+      width: 4.8vh;
+      height: 4.8vh;
+      border: 0.14vh solid rgba(43, 98, 140, 0.14);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.16);
+      transform: translate(calc(-50% + var(--touch-dpad-knob-x, 0px)),
+          calc(-50% + var(--touch-dpad-knob-y, 0px)));
+    }
+
+    .bottom-nav-stack {
+      position: absolute;
+      left: 0;
+      bottom: 7vh;
+      display: grid;
+      gap: 0.8vh;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(1vh);
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .bottom-nav-stack.open {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
+    }
+
+    .object-list-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 16;
+      display: none;
+      place-items: center;
+      padding: clamp(1.6vh, 4vw, 4vh);
+      background: rgb(237 249 255 / 45%);
+      backdrop-filter: blur(0.4vh);
+      pointer-events: auto;
+    }
+
+    .object-list-backdrop.open {
+      display: grid;
+    }
+
+    .object-list-panel {
+      position: relative;
+      width: min(90vh, 100%);
+      height: 72vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 0;
+      border: 0.12vh solid var(--line);
+      border-radius: 1.1vh;
+      background: var(--panel-strong);
+      box-shadow: 0 2.4vh 7vh rgba(66, 139, 190, 0.22);
+    }
+
+    .object-list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.2vh;
+      min-height: 5.6vh;
+      padding: 1vh 1.2vh 1vh 1.6vh;
+    }
+
+    .object-list-title {
+      margin: 0;
+      color: var(--line);
+      font-size: 2.4vh;
+      font-weight: normal;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .object-list-controls {
+      position: relative;
+      z-index: 5;
+      min-height: 7.4vh;
+      padding: 0.7vh 1.6vh 1vh;
+      display: grid;
+      gap: 0.8vh;
+    }
+
+    .object-list-category-tabs {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2vh;
+    }
+
+    .object-list-sort-controls {
+      display: flex;
+      align-items: center;
+      justify-content: end;
+      gap: 1.6vh;
+      min-width: 0;
+    }
+
+    .object-list-count {
+      min-width: 3vh;
+      color: var(--muted);
+      font-size: 1.2vh;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .object-list-category-button {
+      width: 3.4vh;
+      height: 3.4vh;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+    }
+
+    .object-list-category-button .svg-icon {
+      width: 2.4vh;
+      height: 2.4vh;
+      color: #6975A0;
+    }
+
+    .object-list-category-button.is-prev .svg-icon {
+      transform: scaleX(-1);
+    }
+
+    .object-list-category-current {
+      min-width: 0;
+      width: 18vh;
+      color: var(--svg-default-color);
+      font-size: 1.5vh;
+      font-weight: 800;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .object-list-sort-dropdown {
+      position: relative;
+    }
+
+    .object-list-sort-button {
+      min-width: 13vh;
+      min-height: 3vh;
+      padding: 0 1.2vh;
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1vh;
+      border-radius: 0.7vh;
+      color: var(--muted);
+      font-size: 1vh;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.42);
+    }
+
+    .object-list-sort-button .svg-icon {
+      width: 1.2vh;
+      height: 1.2vh;
+      color: #6975A0;
+      flex: 0 0 auto;
+      transition: transform 160ms ease;
+    }
+
+    .object-list-sort-dropdown.open .object-list-sort-button .svg-icon {
+      transform: rotate(180deg);
+    }
+
+    .object-list-sort-menu {
+      position: absolute;
+      z-index: 5;
+      right: 0;
+      top: calc(100% + 0.3vh);
+      min-width: 13vh;
+      display: none;
+      overflow: hidden;
+      border: 0.12vh solid var(--line);
+      border-radius: 0.7vh;
+      background: rgba(246, 251, 255, 0.98);
+      box-shadow: 0 1vh 2.6vh rgba(66, 139, 190, 0.2);
+    }
+
+    .object-list-sort-dropdown.open .object-list-sort-menu {
+      display: grid;
+    }
+
+    .object-list-sort-option {
+      min-height: 3.2vh;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 1vh;
+      text-align: left;
+    }
+
+    .object-list-sort-option.active {
+      color: var(--text);
+      background: rgba(99, 210, 255, 0.16);
+    }
+
+    .object-list-close {
+      width: 3.8vh;
+      height: 3.8vh;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: none;
+      background: transparent;
+    }
+
+    .object-list-content {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 0 1vh;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    .object-list-content::-webkit-scrollbar {
+      display: none;
+    }
+
+    .object-sector-group {
+      display: grid;
+      gap: 0;
+      margin-bottom: 1.1vh;
+    }
+
+    .object-list-table-head,
+    .object-row {
+      display: grid;
+      grid-template-columns: minmax(8vh, 0.95fr) minmax(12vh, 1.2fr) minmax(12vh, 0.95fr);
+      gap: 0.8vh;
+      align-items: center;
+    }
+
+    .object-list-table-head {
+      position: sticky;
+      z-index: 4;
+      top: 0;
+      min-height: 3.4vh;
+      padding: 0 0.8vh;
+      color: var(--muted);
+      background: var(--panel-strong);
+      border-bottom: 0.12vh solid rgba(43, 98, 140, 0.14);
+      font-size: 1.05vh;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .object-list-item-wrapper {
+      position: relative;
+    }
+
+    .object-row {
+      width: 100%;
+      min-height: 4.5vh;
+      padding: 0.6vh 0.8vh;
+      border: 0;
+      border-bottom: 0.1vh solid rgba(43, 98, 140, 0.12);
+      border-radius: 0;
+      background: transparent;
+      text-transform: none;
+    }
+
+    .object-row:hover,
+    .object-row:focus-visible {
+      background: rgba(255, 255, 255, 0.45);
+    }
+
+    .object-row-main {
+      min-width: 0;
+      display: grid;
+      gap: 0.3vh;
+      text-align: center;
+    }
+
+    .object-row-name,
+    .object-row-sector,
+    .object-row-coordinates {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .object-row-name {
+      color: var(--text);
+      font-size: 1.35vh;
+      font-weight: 700;
+    }
+
+    .object-row-sector,
+    .object-row-coordinates {
+      color: var(--muted);
+      font-size: 1.15vh;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      text-transform: uppercase;
+    }
+
+    .object-row-coordinates {
+      color: var(--text);
+    }
+
+    .object-list-empty {
+      display: grid;
+      place-items: center;
+      min-height: 22vh;
+      color: var(--muted);
+      font-size: 1.5vh;
+      text-transform: uppercase;
+    }
+
+    .object-row.active {
+      background: rgba(229, 246, 255, 0.78);
+      box-shadow: inset 0.32vh 0 0 rgba(99, 210, 255, 0.78);
+    }
+
+    .object-detail-bubble {
+      position: absolute;
+      z-index: 6;
+      width: 16vh;
+      margin: 0;
+      padding: 0.8vh 0.6vh;
+      display: grid;
+      gap: 0.6vh;
+      border: 0.12vh solid rgba(43, 98, 140, 0.16);
+      border-radius: 1.2vh;
+      background: #fff;
+      box-shadow: 0 1.1vh 3.2vh rgba(66, 139, 190, 0.2);
+    }
+
+    .object-bubble-button {
+      height: 3vh;
+      font-size: 1.2vh;
+      padding: 0;
+      background: #fff;
+    }
+
+    .object-bubble-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 1vh;
+      color: var(--muted);
+      font-size: 1.2vh;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .object-bubble-line strong {
+      min-width: 0;
+      color: var(--text);
+      text-align: right;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .object-navigate-button {
+      border-color: rgba(99, 210, 255, 0.62);
+      background: rgba(99, 210, 255, 0.18);
+      color: var(--text);
+    }
+
+    .object-detail-popup {
+      position: absolute;
+      z-index: 7;
+      left: 50%;
+      top: 50%;
+      width: min(48vh, calc(100% - 3.2vh));
+      max-height: calc(100% - 3.2vh);
+      display: grid;
+      gap: 1.1vh;
+      padding: 1.4vh;
+      overflow: auto;
+      transform: translate(-50%, -50%);
+      border: 0.12vh solid var(--line);
+      border-radius: 1vh;
+      background: rgba(246, 251, 255, 0.98);
+      box-shadow: 0 1.8vh 5vh rgba(66, 139, 190, 0.26);
+    }
+
+    .object-detail-popup-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1vh;
+    }
+
+    .object-detail-popup-title {
+      min-width: 0;
+      margin: 0;
+      overflow: hidden;
+      color: var(--text);
+      font-size: 1.55vh;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .object-detail-popup-close {
+      width: 3.4vh;
+      height: 3.4vh;
+      padding: 0;
+      border: 0;
+      background: transparent;
     }
 
     .start-settings-backdrop {
@@ -598,7 +1313,7 @@
     }
 
     .start-settings-panel {
-      width: min(50vh, 100%);
+      width: min(70vh, 100%);
       max-height: calc(100dvh - clamp(3.2vh, 8vw, 8vh));
       overflow: auto;
       scrollbar-width: none;
@@ -621,7 +1336,6 @@
       align-items: center;
       justify-content: space-between;
       gap: 1.4vh;
-      margin-bottom: 4vh;
     }
 
     .start-settings-footer {
@@ -632,7 +1346,6 @@
     }
 
     #settingsResetButton {
-      margin-top: 3vh;
       width: 80%;
       height: 7vh;
       font-size: 3vh;
@@ -657,9 +1370,139 @@
       background: transparent;
     }
 
+    .settings-menu {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.8vh;
+    }
+
+    .settings-tab-button {
+      height: 4.6vh;
+      font-size: 1.45vh;
+    }
+
+    .settings-tab-button.active {
+      border-color: rgba(99, 210, 255, 0.72);
+      background: rgba(99, 210, 255, 0.2);
+      color: var(--text);
+    }
+
+    .settings-panel-section {
+      display: none;
+      min-height: 32vh;
+    }
+
+    .settings-panel-section.active {
+      display: grid;
+      gap: 2vh;
+    }
+
     .key-binding-list {
       display: grid;
       gap: 6vh;
+    }
+
+    .world-summary {
+      display: grid;
+      gap: 0.9vh;
+      padding: 1.2vh 0;
+    }
+
+    .world-summary-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1.2vh;
+      min-height: 3.2vh;
+      align-items: center;
+      border-bottom: 0.12vh solid rgba(43, 98, 140, 0.11);
+      color: var(--muted);
+      font-size: 1.45vh;
+      text-transform: uppercase;
+    }
+
+    .world-summary-row strong {
+      min-width: 0;
+      color: var(--text);
+      font-size: 1.5vh;
+      font-weight: 700;
+      text-align: right;
+      text-transform: none;
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .world-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.8vh;
+    }
+
+    .world-actions button {
+      min-height: 5vh;
+      padding: 0 0.8vh;
+      font-size: 1.25vh;
+      white-space: normal;
+      line-height: 1.15;
+    }
+
+    .world-actions .danger {
+      background: rgba(227, 111, 111, 0.18);
+      border-color: rgba(227, 111, 111, 0.42);
+      color: #8f3030;
+    }
+
+    .world-setting {
+      display: grid;
+      gap: 0.8vh;
+    }
+
+    .world-setting-label {
+      color: var(--muted);
+      font-size: 1.35vh;
+      text-transform: uppercase;
+    }
+
+    .segmented-control {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.6vh;
+    }
+
+    .segmented-control button {
+      min-height: 4.4vh;
+      padding: 0 0.8vh;
+      font-size: 1.2vh;
+    }
+
+    .segmented-control button.active {
+      border-color: rgba(99, 210, 255, 0.72);
+      background: rgba(99, 210, 255, 0.2);
+      color: var(--text);
+    }
+
+    .segmented-control.col-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .settings-number-input {
+      width: 100%;
+      min-height: 4.4vh;
+      padding: 0 1.2vh;
+      font-size: 1.4vh;
+      font-family: inherit;
+      background: rgba(99, 210, 255, 0.06);
+      border: 1px solid rgba(99, 210, 255, 0.2);
+      border-radius: 0.6vh;
+      color: var(--text);
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .settings-number-input:focus {
+      border-color: rgba(99, 210, 255, 0.5);
+      background: rgba(99, 210, 255, 0.1);
     }
 
     .key-binding-group {
@@ -742,33 +1585,89 @@
       </div>
     </div>
 
+    <div class="touch-dpad" id="touchDpad" aria-hidden="true" hidden>
+      <div class="touch-dpad-ring"></div>
+      <div class="touch-dpad-knob" id="touchDpadKnob"></div>
+    </div>
+
     <div class="target-popup-backdrop" id="targetPopupBackdrop" hidden></div>
     <form class="target-panel" id="targetForm" role="dialog" aria-modal="true" aria-label="Target navigation" hidden>
       <div class="target-fields">
         <label>
           X
-          <input id="targetX" type="number" value="0" step="100" autocomplete="off">
+          <input id="targetX" type="number" value="0" autocomplete="off">
         </label>
         <label>
           Y
-          <input id="targetY" type="number" value="0" step="100" autocomplete="off">
+          <input id="targetY" type="number" value="0" autocomplete="off">
         </label>
         <label>
           Z
-          <input id="targetZ" type="number" value="-5000" step="100" autocomplete="off">
+          <input id="targetZ" type="number" value="0" autocomplete="off">
         </label>
       </div>
       <button class="primary nav-toggle" id="navToggle" type="submit" aria-pressed="false">Nav Off</button>
     </form>
+
+    <nav class="bottom-nav" aria-label="Bottom navigation">
+      <div class="bottom-nav-slot bottom-nav-slot-left" id="bottomNavMenu">
+        <div class="bottom-nav-stack" id="bottomNavMenuStack" aria-label="Burger menu actions">
+          <button class="bottom-nav-button" id="bottomNavScanButton" type="button" aria-label="Scan" title="Scan">
+            <span class="svg-icon svg-icon-scan bottom-nav-icon" aria-hidden="true"></span>
+          </button>
+        </div>
+        <button class="bottom-nav-button" id="bottomNavMenuButton" type="button" aria-label="Open menu"
+          aria-expanded="false" aria-controls="bottomNavMenuStack" title="Menu">
+          <span class="svg-icon svg-icon-menu bottom-nav-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div class="bottom-nav-slot bottom-nav-slot-center">
+        <button class="bottom-nav-button main-toggle" id="bottomNavMainToggleButton" type="button"
+          aria-label="Main toggle" aria-pressed="false" title="Main toggle">
+          <span class="svg-icon svg-icon-main bottom-nav-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div class="bottom-nav-slot bottom-nav-slot-right" aria-label="Action list">
+        <button class="bottom-nav-button" type="button" aria-label="To do" aria-disabled="true" title="To do">
+          <span class="svg-icon svg-icon-to-do bottom-nav-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </nav>
+
+    <div class="object-list-backdrop" id="objectListPopup" aria-hidden="true" hidden inert>
+      <section class="object-list-panel" role="dialog" aria-modal="true" aria-labelledby="objectListTitle">
+        <header class="object-list-header">
+          <div>
+            <h2 class="object-list-title" id="objectListTitle">Scanner</h2>
+          </div>
+          <button class="object-list-close" id="objectListCloseButton" type="button" aria-label="Close" title="Close">
+            <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
+          </button>
+        </header>
+        <div class="object-list-controls">
+          <div class="object-list-category-tabs" id="objectListCategoryTabs" role="tablist"
+            aria-label="Scanner category">
+            <button class="object-list-category-button is-prev" id="objectListPrevCategoryButton" type="button"
+              data-object-category-step="-1" aria-label="Previous scanner category">
+              <span class="svg-icon svg-icon-arrow-right" aria-hidden="true"></span>
+            </button>
+            <div class="object-list-category-current" id="objectListCategoryCurrent">Resources</div>
+            <button class="object-list-category-button" id="objectListNextCategoryButton" type="button"
+              data-object-category-step="1" aria-label="Next scanner category">
+              <span class="svg-icon svg-icon-arrow-right" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div class="object-list-sort-controls" id="objectListSortControls" aria-label="Sort priority"></div>
+        </div>
+        <div class="object-list-content" id="objectListContent"></div>
+      </section>
+    </div>
 
     <div class="toast" id="toast"></div>
     <button class="error-toast" id="errorToast" type="button" hidden></button>
   </div>
 
   <div class="start-scene" id="startScene">
-    <button class="start-settings-button" id="settingsButton" type="button" aria-label="환경설정" title="Settings">
-      <span class="svg-icon svg-icon-settings" aria-hidden="true"></span>
-    </button>
     <div class="start-settings-backdrop" id="settingsPopup" aria-hidden="true" inert>
       <div class="start-settings-panel" role="dialog" aria-labelledby="settingsTitle" aria-modal="true">
         <div class="start-settings-header">
@@ -777,30 +1676,107 @@
             <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
           </button>
         </div>
-        <div class="key-binding-list" id="keyBindingList"></div>
+        <div class="settings-menu" role="tablist" aria-label="Settings">
+          <button class="settings-tab-button active" id="settingsKeysTab" type="button" data-settings-tab="keys"
+            role="tab" aria-selected="true" aria-controls="settingsKeysPanel">Key Binding</button>
+          <button class="settings-tab-button" id="settingsDataTab" type="button" data-settings-tab="data" role="tab"
+            aria-selected="false" aria-controls="settingsDataPanel">Data</button>
+        </div>
+        <div class="settings-content">
+          <section class="settings-panel-section active" id="settingsKeysPanel" role="tabpanel"
+            aria-labelledby="settingsKeysTab">
+            <div class="key-binding-list" id="keyBindingList"></div>
+          </section>
+          <section class="settings-panel-section" id="settingsDataPanel" role="tabpanel"
+            aria-labelledby="settingsDataTab">
+            <div class="world-summary" id="worldSummary">
+              <div class="world-summary-row"><span>Seed</span><strong id="worldSeedValue">none</strong></div>
+              <div class="world-summary-row"><span>Generated</span><strong id="worldGeneratedValue">none</strong>
+              </div>
+              <div class="world-summary-row"><span>Sectors</span><strong id="worldSectorCountValue">0</strong></div>
+              <div class="world-summary-row"><span>Chunks</span><strong id="worldChunkCountValue">0</strong></div>
+              <div class="world-summary-row"><span>Resources</span><strong id="worldResourceCountValue">0</strong>
+              </div>
+              <div class="world-summary-row"><span>Buildings</span><strong id="worldBuildingCountValue">0</strong>
+              </div>
+              <div class="world-summary-row"><span>Current Sector</span><strong
+                  id="worldCurrentSectorValue">UNKNOWN</strong></div>
+              <div class="world-summary-row"><span>Current Chunk</span><strong
+                  id="worldCurrentChunkValue">UNKNOWN</strong></div>
+            </div>
+            <div class="world-actions">
+              <button class="primary" id="worldRegenerateButton" type="button">Regenerate</button>
+              <button id="worldReloadButton" type="button">Reload DB</button>
+              <button class="danger" id="dataClearButton" type="button">Clear All Data</button>
+            </div>
+            <div class="world-setting">
+              <div class="world-setting-label">Chunk Bounds</div>
+              <div class="segmented-control" role="group" aria-label="Chunk bounds display">
+                <button class="active" id="chunkBoundsAllButton" type="button" data-chunk-bounds-mode="all">All</button>
+                <button id="chunkBoundsSectorButton" type="button" data-chunk-bounds-mode="sector">Sector</button>
+                <button id="chunkBoundsOffButton" type="button" data-chunk-bounds-mode="off">Off</button>
+              </div>
+            </div>
+            <div class="world-setting">
+              <div class="world-setting-label">Manual Nav Restore</div>
+              <div class="segmented-control col-2" role="group" aria-label="Manual navigation restore mode">
+                <button class="active" id="navRestoreFixedButton" type="button" data-nav-restore-mode="fixed">Fixed +
+                  Stop</button>
+                <button id="navRestoreInfiniteButton" type="button" data-nav-restore-mode="infinite">Infinite</button>
+              </div>
+            </div>
+            <div class="world-setting" id="navRestoreCapRow">
+              <div class="world-setting-label">Hold Time (min)</div>
+              <input type="number" id="navRestoreCapInput" class="settings-number-input" min="0" max="1440" step="1"
+                value="5">
+            </div>
+          </section>
+        </div>
         <div class="start-settings-footer">
           <button id="settingsResetButton" type="button">Reset</button>
         </div>
       </div>
     </div>
-    <div class="start-panel" role="dialog" aria-labelledby="startTitle" aria-describedby="loadingText"
-      aria-modal="true">
-      <div class="start-title">
-        <strong id="startTitle">Void Zero</strong>
-      </div>
-      <div class="start-prompt">Click anywhere</div>
-      <div class="start-status">
-        <div class="loading-track" aria-hidden="true">
-          <div class="loading-fill" id="loadingBar"></div>
+    <div class="start-scene-stack" id="startSceneStack">
+      <section class="start-gate-scene active is-standby" id="startGateScene" role="dialog" aria-labelledby="startTitle"
+        aria-describedby="loadingText" aria-modal="true">
+        <div class="start-gate-panel">
+          <div class="start-title">
+            <span class="start-logo" aria-hidden="true">
+              <span class="svg-icon svg-icon-logo-void"></span>
+            </span>
+            <strong id="startTitle">Void Zero</strong>
+          </div>
+          <div class="start-prompt">Click anywhere</div>
+          <div class="start-status">
+            <div class="loading-track" aria-hidden="true">
+              <div class="loading-fill" id="loadingBar"></div>
+            </div>
+            <div class="loading-copy">
+              <div id="loadingText">Standby</div>
+              <div class="loading-detail" id="loadingDetail">click anywhere</div>
+            </div>
+          </div>
         </div>
-        <div class="loading-copy">
-          <div id="loadingText">Standby</div>
-          <div class="loading-detail" id="loadingDetail">click anywhere</div>
+      </section>
+
+      <section class="start-ready-scene" id="startReadyScene" aria-label="Ready" aria-hidden="true">
+        <div class="start-ready-panel" role="dialog" aria-label="Start menu" aria-modal="true">
+          <div class="ready-actions">
+            <button class="primary ready-button ready-start-button" id="startButton" type="button" disabled>
+              <span class="svg-icon svg-icon-power ready-button-icon" aria-hidden="true"></span>
+              <span class="ready-button-label">Start</span>
+              <span aria-hidden="true"></span>
+            </button>
+            <button class="ready-button ready-settings-button" id="settingsButton" type="button" aria-label="Settings"
+              title="Settings">
+              <span class="svg-icon svg-icon-settings ready-button-icon" aria-hidden="true"></span>
+              <span class="ready-button-label">Settings</span>
+              <span aria-hidden="true"></span>
+            </button>
+          </div>
         </div>
-      </div>
-      <div class="start-actions">
-        <button class="primary" id="startButton" type="button" disabled>Start</button>
-      </div>
+      </section>
     </div>
   </div>
 
@@ -811,6 +1787,41 @@
         "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
       }
     }
+  </script>
+  <script>
+    (() => {
+      const menu = document.getElementById("bottomNavMenu");
+      const stack = document.getElementById("bottomNavMenuStack");
+      const button = document.getElementById("bottomNavMenuButton");
+
+      if (!menu || !stack || !button) {
+        return;
+      }
+
+      const closeMenu = () => {
+        stack.classList.remove("open");
+        button.setAttribute("aria-expanded", "false");
+        button.setAttribute("aria-label", "Open menu");
+      };
+
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const isOpen = stack.classList.toggle("open");
+        button.setAttribute("aria-expanded", String(isOpen));
+        button.setAttribute("aria-label", isOpen ? "Close menu" : "Open menu");
+      });
+
+      document.addEventListener("pointerdown", (event) => {
+        if (!stack.classList.contains("open") || menu.contains(event.target)) {
+          return;
+        }
+
+        closeMenu();
+      });
+
+    })();
   </script>
   <script type="module" src="./js/main.js"></script>
 </body>

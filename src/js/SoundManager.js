@@ -148,10 +148,20 @@ export class SoundManager {
     this.bgmInstance = null;
     this.preloadPromise = null;
     this.playPromise = null;
+    this.currentBgmId = null;
+    this.pendingBgmId = null;
     this.disposed = false;
     this.catalog = new Map([
       ["bgm_main_01", {
         source: ASSETS.sounds.mainBgm,
+        mode: "media"
+      }],
+      ["bgm_sector_01", {
+        source: ASSETS.sounds.sectorBgm,
+        mode: "media"
+      }],
+      ["bgm_danger_01", {
+        source: ASSETS.sounds.dangerBgm,
         mode: "media"
       }],
       ["camera_toggle", {
@@ -172,7 +182,11 @@ export class SoundManager {
     if (this.state.ready && this.assets.has("bgm_main_01")) return true;
     if (this.preloadPromise) return this.preloadPromise;
 
-    this.preloadPromise = this.load("bgm_main_01")
+    this.preloadPromise = Promise.all([
+      this.load("bgm_main_01"),
+      this.load("bgm_sector_01"),
+      this.load("bgm_danger_01")
+    ])
       .then(() => {
         if (this.disposed) return false;
         this.state.ready = true;
@@ -260,13 +274,13 @@ export class SoundManager {
     return this.audioContext;
   }
 
-  async enterGame() {
+  async enterGame(initialBgmId = "bgm_main_01") {
     if (this.disposed) return false;
     if (!this.state.ready) return false;
     if (this.bgmInstance?.playing) return true;
     if (this.playPromise) return this.playPromise;
 
-    this.playPromise = this.playBgm()
+    this.playPromise = this.playBgm(initialBgmId)
       .finally(() => {
         this.playPromise = null;
       });
@@ -274,21 +288,32 @@ export class SoundManager {
     return this.playPromise;
   }
 
-  async playBgm() {
+  async playBgm(id = "bgm_main_01") {
+    return this.setBgm(id, { restart: true });
+  }
+
+  async setBgm(id = "bgm_main_01", { restart = true } = {}) {
     if (this.disposed) return false;
-    if (this.bgmInstance) this.bgmInstance.dispose();
-    this.stopActiveBgm();
+    if (this.currentBgmId === id && this.bgmInstance?.playing) return true;
+    if (this.pendingBgmId === id && this.playPromise) return this.playPromise;
+
+    this.pendingBgmId = id;
 
     try {
-      const instance = await this.play("bgm_main_01", {
+      const previousInstance = this.bgmInstance;
+      const instance = await this.play(id, {
         loop: true,
         destroyOnEnd: false,
         volume: this.volume,
-        restart: true,
+        restart,
         exclusive: true
       });
+      if (!instance) return false;
+      if (previousInstance && previousInstance !== instance) previousInstance.dispose();
       this.bgmInstance = instance;
       window.__voidZeroActiveBgm = instance;
+      window.__voidZeroActiveBgmId = id;
+      this.currentBgmId = id;
       this.state.playing = true;
       this.state.muted = false;
       this.state.error = null;
@@ -297,6 +322,8 @@ export class SoundManager {
       this.state.playing = false;
       this.state.error = error instanceof Error ? error.message : String(error);
       return false;
+    } finally {
+      if (this.pendingBgmId === id) this.pendingBgmId = null;
     }
   }
 
@@ -348,10 +375,12 @@ export class SoundManager {
     this.instances.delete(instance);
     if (this.bgmInstance === instance) {
       this.bgmInstance = null;
+      this.currentBgmId = null;
       this.state.playing = false;
     }
     if (window.__voidZeroActiveBgm === instance) {
       window.__voidZeroActiveBgm = null;
+      window.__voidZeroActiveBgmId = null;
     }
   }
 
@@ -375,6 +404,8 @@ export class SoundManager {
     }
 
     this.bgmInstance = null;
+    this.currentBgmId = null;
+    this.pendingBgmId = null;
     this.preloadPromise = null;
     this.playPromise = null;
     this.state.ready = false;
