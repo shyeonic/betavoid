@@ -14,6 +14,7 @@ export const en = {
         resources: "Resources"
       },
       empty: "No objects detected",
+      select: "Select",
       detail: "Detail",
       autoNavigate: "Auto Navigate",
       objectDetail: "Object detail",

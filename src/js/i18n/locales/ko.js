@@ -14,6 +14,7 @@ export const ko = {
         resources: "자원"
       },
       empty: "감지된 객체 없음",
+      select: "선택",
       detail: "상세",
       autoNavigate: "자동 항법",
       objectDetail: "객체 상세",

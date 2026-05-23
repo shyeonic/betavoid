@@ -34,6 +34,7 @@ export class UIManager {
     };
     this.onKeyBindingsChange = null;
     this.onRequestObjectList = null;
+    this.onSelectWorldObject = null;
     this.onNavigateToWorldObject = null;
     this.onClearWorldSelection = null;
     this.boundBindingKeyDown = (event) => this.onBindingKeyDown(event);
@@ -168,6 +169,7 @@ export class UIManager {
     onNavRestoreModeChange,
     onNavRestoreCapChange,
     onRequestObjectList,
+    onSelectWorldObject,
     onNavigateToWorldObject,
     onClearWorldSelection,
     onToggleCameraMode
@@ -175,6 +177,7 @@ export class UIManager {
     this.onSetSpeed = onSetSpeed;
     this.onKeyBindingsChange = onKeyBindingsChange;
     this.onRequestObjectList = typeof onRequestObjectList === "function" ? onRequestObjectList : null;
+    this.onSelectWorldObject = typeof onSelectWorldObject === "function" ? onSelectWorldObject : null;
     this.onNavigateToWorldObject = typeof onNavigateToWorldObject === "function" ? onNavigateToWorldObject : null;
     this.onClearWorldSelection = typeof onClearWorldSelection === "function" ? onClearWorldSelection : null;
 
@@ -357,6 +360,17 @@ export class UIManager {
     this.elements.objectListPopup.addEventListener("click", (event) => {
       event.stopPropagation();
       const target = event.target instanceof Element ? event.target : null;
+      const selectButton = target?.closest("[data-object-select-id]");
+      if (selectButton) {
+        event.preventDefault();
+        const object = this.findRenderedObject(selectButton.dataset.objectSelectId);
+        if (!object || !this.onSelectWorldObject) return;
+
+        this.onSelectWorldObject(object);
+        this.closeObjectList({ restoreFocus: false });
+        return;
+      }
+
       const detailButton = target?.closest("[data-object-detail-id]");
       if (detailButton) {
         event.preventDefault();
@@ -634,6 +648,18 @@ export class UIManager {
 
   onObjectListClick(event) {
     const target = event.target instanceof Element ? event.target : null;
+    const selectButton = target?.closest("[data-object-select-id]");
+    if (selectButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const object = this.findRenderedObject(selectButton.dataset.objectSelectId);
+      if (!object || !this.onSelectWorldObject) return;
+
+      this.onSelectWorldObject(object);
+      this.closeObjectList({ restoreFocus: false });
+      return;
+    }
+
     const detailButton = target?.closest("[data-object-detail-id]");
     if (detailButton) {
       event.preventDefault();
@@ -690,10 +716,16 @@ export class UIManager {
     return bubble;
   }
 
-  createObjectBubble(object) {
+  createObjectBubble(object, { includeSelect = true } = {}) {
     const bubble = document.createElement("div");
     bubble.className = "object-detail-bubble";
     bubble.dataset.objectBubbleId = object.id;
+
+    const select = document.createElement("button");
+    select.className = "object-bubble-button object-select-button";
+    select.type = "button";
+    select.dataset.objectSelectId = object.id;
+    select.textContent = this.t("ui.scanner.select", "Select");
 
     const detail = document.createElement("button");
     detail.className = "object-bubble-button";
@@ -707,6 +739,7 @@ export class UIManager {
     nav.dataset.objectNavId = object.id;
     nav.textContent = this.t("ui.scanner.autoNavigate", "Auto Navigate");
 
+    if (includeSelect) bubble.append(select);
     bubble.append(detail, nav);
     return bubble;
   }
@@ -802,7 +835,7 @@ export class UIManager {
     }
 
     this.closeSelectionSummaryBubble();
-    const bubble = this.createObjectBubble(object);
+    const bubble = this.createObjectBubble(object, { includeSelect: false });
     bubble.classList.add("selection-detail-bubble");
     bubble.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;

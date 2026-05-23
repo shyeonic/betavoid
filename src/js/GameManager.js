@@ -175,6 +175,7 @@ export class GameManager {
         void this.saveNavDeadReckonSettings();
       },
       onRequestObjectList: () => this.getWorldObjectList(),
+      onSelectWorldObject: (object) => this.selectWorldObjectFromListItem(object),
       onNavigateToWorldObject: (object) => this.navigateToWorldObject(object),
       onClearWorldSelection: () => this.clearWorldSelection(),
       onToggleCameraMode: () => this.requestCameraToggle()
@@ -1615,6 +1616,7 @@ export class GameManager {
       return {
         id,
         kind,
+        type,
         name: this.formatObjectName(label),
         typeLabel: this.formatObjectName(type),
         currentAmount: object.current_amount ?? null,
@@ -1875,6 +1877,20 @@ export class GameManager {
     this.updateTargetingOverlay();
   }
 
+  selectWorldObjectFromListItem(object) {
+    if (!object?.id || (object.kind !== "resource" && object.kind !== "building")) return;
+
+    const visibleObject = this.findVisibleWorldObject(object.kind, object.id);
+    const selection = visibleObject
+      ? this.createWorldSelection(visibleObject)
+      : this.createWorldSelectionFromListItem(object);
+    if (!selection) return;
+
+    this.selectedWorldObject = selection;
+    this.ui.setSelectedWorldObjectName(selection.name, selection);
+    this.updateTargetingOverlay();
+  }
+
   getWorldObjectRoot(object) {
     const objectsGroup = this.worldMapManager?.objectsGroup;
     let cursor = object;
@@ -1946,6 +1962,35 @@ export class GameManager {
       startedAt: performance.now(),
       wasVisible: true,
       frameTransitionUntil: 0
+    };
+  }
+
+  createWorldSelectionFromListItem(object) {
+    const type = object.type || "unknown";
+    const target = object.target || null;
+    if (!target) return null;
+
+    const center = new THREE.Vector3(
+      Number(target.x) || 0,
+      Number(target.y) || 0,
+      Number(target.z) || 0
+    );
+    const name = object.kind === "building"
+      ? object.name || this.getWorldSelectionName(object.kind, type)
+      : object.name || object.typeLabel || this.getWorldSelectionName(object.kind, type);
+
+    return {
+      id: object.id,
+      kind: object.kind,
+      type,
+      name,
+      iconUrl: this.getWorldSelectionIconUrl(object.kind, type),
+      renderCenter: center.clone(),
+      savedCenter: center.clone(),
+      savedRadius: this.getWorldSelectionFallbackRadius(object.kind, type),
+      startedAt: performance.now(),
+      wasVisible: false,
+      frameTransitionUntil: performance.now() + 360
     };
   }
 
