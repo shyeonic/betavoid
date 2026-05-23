@@ -75,7 +75,7 @@ export class TargetingOverlay {
       : 0;
     const margin = clamp(projectedRadius * 0.18, 16, 34);
     const rawSide = projectedRadius * 2 + margin * 2;
-    const maxSelectionSide = this.height * 0.92;
+    const maxSelectionSide = Math.min(this.width, this.height) * 0.92;
     const minSelectionSide = Math.min(metrics.minSelectionSide, maxSelectionSide);
     const side = clamp(rawSide, minSelectionSide, maxSelectionSide);
     const half = side / 2;
