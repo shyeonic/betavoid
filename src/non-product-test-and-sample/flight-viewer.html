@@ -1,0 +1,2894 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Void Zero Flight Viewer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #e9fbff;
+      --muted: rgba(233, 251, 255, 0.68);
+      --line: rgba(117, 220, 255, 0.34);
+      --panel: rgba(8, 20, 30, 0.58);
+      --cyan: #63d2ff;
+      --lime: #9af5bc;
+      --warn: #ffbc66;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #02070b;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #app {
+      position: fixed;
+      inset: 0;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    canvas.dragging {
+      cursor: grabbing;
+    }
+
+    .hud {
+      position: fixed;
+      inset: 16px 16px auto 16px;
+      display: grid;
+      grid-template-columns: minmax(190px, 260px) minmax(260px, 1fr) minmax(220px, 300px) minmax(220px, 300px);
+      gap: 12px;
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    .panel {
+      min-height: 92px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(16px);
+    }
+
+    .panel.center {
+      align-self: start;
+      justify-self: center;
+      width: min(100%, 520px);
+    }
+
+    .panel.interactive {
+      pointer-events: auto;
+    }
+
+    .label {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .readout {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 12px;
+      font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .readout span {
+      color: var(--muted);
+    }
+
+    .readout strong {
+      display: block;
+      margin-top: 2px;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 700;
+      word-break: break-word;
+    }
+
+    .speed {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      font: 700 32px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: var(--cyan);
+    }
+
+    .speed small {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .bar {
+      position: relative;
+      height: 6px;
+      margin-top: 12px;
+      overflow: hidden;
+      border-radius: 99px;
+      background: rgba(233, 251, 255, 0.16);
+    }
+
+    .bar i {
+      position: absolute;
+      inset: 0 auto 0 50%;
+      width: 0;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--cyan), var(--lime));
+      transform-origin: left center;
+    }
+
+    .server-strip {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+      color: var(--muted);
+      font: 11px/1.25 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .server-light {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      border: 1px solid rgba(99, 210, 255, 0.72);
+      background: rgba(99, 210, 255, 0.18);
+      box-shadow: 0 0 0 rgba(99, 210, 255, 0);
+    }
+
+    .server-light.pulse {
+      animation: serverPulse 420ms ease-out;
+    }
+
+    @keyframes serverPulse {
+      0% {
+        background: #dff8ff;
+        box-shadow: 0 0 0 0 rgba(99, 210, 255, 0.88), 0 0 18px rgba(99, 210, 255, 0.92);
+      }
+
+      100% {
+        background: rgba(99, 210, 255, 0.18);
+        box-shadow: 0 0 0 12px rgba(99, 210, 255, 0), 0 0 0 rgba(99, 210, 255, 0);
+      }
+    }
+
+    .server-status {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .server-button,
+    .log-actions button,
+    .log-close {
+      min-height: 30px;
+      border: 1px solid rgba(117, 220, 255, 0.34);
+      border-radius: 6px;
+      background: rgba(99, 210, 255, 0.14);
+      color: var(--ink);
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      cursor: pointer;
+    }
+
+    .server-button {
+      padding: 0 10px;
+    }
+
+    .server-button:hover,
+    .log-actions button:hover,
+    .log-close:hover {
+      background: rgba(99, 210, 255, 0.22);
+    }
+
+    .controls {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .controls code {
+      color: var(--ink);
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .nav-form {
+      display: grid;
+      gap: 10px;
+    }
+
+    .nav-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .nav-grid label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .nav-grid input {
+      width: 100%;
+      min-width: 0;
+      height: 32px;
+      border: 1px solid rgba(117, 220, 255, 0.32);
+      border-radius: 6px;
+      background: rgba(3, 10, 16, 0.72);
+      color: var(--ink);
+      font: 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      outline: none;
+      padding: 0 8px;
+    }
+
+    .nav-grid input:focus {
+      border-color: rgba(99, 210, 255, 0.88);
+      box-shadow: 0 0 0 2px rgba(99, 210, 255, 0.14);
+    }
+
+    .nav-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .nav-actions button {
+      height: 32px;
+      border: 1px solid rgba(117, 220, 255, 0.34);
+      border-radius: 6px;
+      background: rgba(99, 210, 255, 0.14);
+      color: var(--ink);
+      font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      cursor: pointer;
+    }
+
+    .nav-actions button:hover {
+      background: rgba(99, 210, 255, 0.22);
+    }
+
+    .nav-actions button.secondary {
+      border-color: rgba(255, 188, 102, 0.32);
+      background: rgba(255, 188, 102, 0.12);
+    }
+
+    .nav-actions button.secondary:hover {
+      background: rgba(255, 188, 102, 0.2);
+    }
+
+    .nav-state {
+      min-height: 15px;
+      color: var(--muted);
+      font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .status {
+      position: fixed;
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      z-index: 3;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .status-line {
+      max-width: min(720px, 100%);
+      padding: 10px 14px;
+      border: 1px solid rgba(117, 220, 255, 0.28);
+      border-radius: 8px;
+      background: rgba(3, 10, 16, 0.62);
+      color: var(--muted);
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      backdrop-filter: blur(14px);
+    }
+
+    .log-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 8;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(0, 5, 10, 0.62);
+      pointer-events: auto;
+    }
+
+    .log-modal[hidden] {
+      display: none;
+    }
+
+    .log-dialog {
+      width: min(920px, 100%);
+      max-height: min(720px, calc(100vh - 36px));
+      display: grid;
+      grid-template-rows: auto auto minmax(220px, 1fr);
+      gap: 10px;
+      border: 1px solid rgba(117, 220, 255, 0.36);
+      border-radius: 8px;
+      background: rgba(5, 14, 22, 0.94);
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.52);
+      backdrop-filter: blur(18px);
+      padding: 14px;
+    }
+
+    .log-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .log-head strong {
+      display: block;
+      color: var(--ink);
+      font: 700 15px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .log-close {
+      padding: 0 12px;
+    }
+
+    .log-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .log-actions button {
+      padding: 0 12px;
+    }
+
+    .log-output {
+      min-height: 0;
+      margin: 0;
+      overflow: auto;
+      border: 1px solid rgba(117, 220, 255, 0.22);
+      border-radius: 6px;
+      background: rgba(1, 5, 8, 0.72);
+      color: rgba(233, 251, 255, 0.82);
+      font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      padding: 10px;
+    }
+
+    .log-columns {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .log-pane {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 6px;
+    }
+
+    .log-pane-title {
+      color: var(--muted);
+      font: 700 11px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      text-transform: uppercase;
+    }
+
+    .crosshair {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      z-index: 2;
+      width: 34px;
+      height: 34px;
+      border: 1px solid rgba(99, 210, 255, 0.28);
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+    }
+
+    .crosshair::before,
+    .crosshair::after {
+      content: "";
+      position: absolute;
+      background: rgba(99, 210, 255, 0.48);
+    }
+
+    .crosshair::before {
+      left: 50%;
+      top: -8px;
+      width: 1px;
+      height: 48px;
+      transform: translateX(-50%);
+    }
+
+    .crosshair::after {
+      left: -8px;
+      top: 50%;
+      width: 48px;
+      height: 1px;
+      transform: translateY(-50%);
+    }
+
+    @media (max-width: 860px) {
+      .hud {
+        grid-template-columns: 1fr;
+        inset: 10px 10px auto 10px;
+      }
+
+      .panel {
+        min-height: auto;
+        padding: 12px;
+      }
+
+      .panel.center {
+        justify-self: stretch;
+      }
+
+      .speed {
+        font-size: 26px;
+      }
+
+      .controls {
+        display: none;
+      }
+
+      .nav-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .log-columns {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <div class="crosshair" aria-hidden="true"></div>
+  <div class="hud" aria-live="polite">
+    <section class="panel interactive">
+      <p class="label">Flight</p>
+      <div class="speed"><span id="speedValue">0.0</span><small>m/s</small></div>
+      <div class="bar" aria-hidden="true"><i id="speedBar"></i></div>
+      <div class="server-strip">
+        <span class="server-light" id="serverIndicator" aria-hidden="true"></span>
+        <span class="server-status" id="serverStatus">Server idle</span>
+        <button class="server-button" id="serverLogButton" type="button">Logs</button>
+      </div>
+    </section>
+    <section class="panel center">
+      <p class="label">Controls</p>
+      <p class="controls">
+        <code>PageUp/PageDown</code> throttle, <code>Home</code> max, <code>End</code> stop,
+        <code>Arrow keys</code> pitch/yaw, <code>Q/E</code> roll, <code>W/S</code> up/down,
+        <code>A/D</code> strafe, <code>C</code> camera, drag orbit, wheel zoom.
+      </p>
+    </section>
+    <section class="panel">
+      <p class="label">Telemetry</p>
+      <div class="readout">
+        <span>Target<strong id="desiredValue">0.0</strong></span>
+        <span>Camera<strong id="cameraMode">Follow</strong></span>
+        <span>Position<strong id="positionValue">0, 0, 0</strong></span>
+        <span>Heading<strong id="headingValue">0, 0, 1</strong></span>
+      </div>
+    </section>
+    <section class="panel interactive">
+      <p class="label">Autopilot</p>
+      <form class="nav-form" id="navForm">
+        <div class="nav-grid">
+          <label>X<input id="navX" type="number" step="10" value="480"></label>
+          <label>Y<input id="navY" type="number" step="10" value="120"></label>
+          <label>Z<input id="navZ" type="number" step="10" value="-720"></label>
+        </div>
+        <div class="nav-actions">
+          <button type="submit">Navigate</button>
+          <button class="secondary" id="navCancelButton" type="button">Cancel</button>
+        </div>
+        <div class="nav-state" id="navState">Idle</div>
+      </form>
+    </section>
+  </div>
+  <div class="status"><div class="status-line" id="statusLine">Loading flight viewer...</div></div>
+  <div class="log-modal" id="serverLogModal" hidden>
+    <section class="log-dialog" role="dialog" aria-modal="true" aria-labelledby="serverLogTitle">
+      <div class="log-head">
+        <div>
+          <p class="label" id="serverLogTitle">Server Log</p>
+          <strong id="serverLogCount">0 packets</strong>
+        </div>
+        <button class="log-close" id="serverLogCloseButton" type="button">Close</button>
+      </div>
+      <div class="log-actions">
+        <button id="serverLogExportButton" type="button">Export JSONL</button>
+        <button id="serverLogClearButton" type="button">Clear</button>
+      </div>
+      <div class="log-columns">
+        <div class="log-pane">
+          <div class="log-pane-title">Client TX</div>
+          <pre class="log-output" id="serverLogTxOutput"></pre>
+        </div>
+        <div class="log-pane">
+          <div class="log-pane-title">Server RX</div>
+          <pre class="log-output" id="serverLogRxOutput"></pre>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+    import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
+
+    const AUTHORITY_SCALE = {
+      // Raise this to evaluate manual checkpoint send rules less often.
+      manualCheckpointDecisionInterval: 4,
+      // Raise this to send manual movement checkpoints farther apart.
+      manualCheckpointDistance: 13.3333333333,
+      // Raise this to require more time between manual movement checkpoints.
+      manualCheckpointInterval: 40,
+      // Raise this to ignore stationary/manual drift before time-based checkpoints.
+      manualMinimumMove: 1,
+      // Raise this to require more distance before recording a final stop point.
+      manualStopMinimumMove: 1,
+      // Lower this to reduce coordinate payload/log size. 1 means 0.1m precision.
+      coordinatePrecisionDigits: 1,
+      // Lower this to keep fewer diagnostic packets in localStorage.
+      logRetention: 0.4
+    };
+
+    const CONFIG = {
+      minSpeed: -20,
+      maxSpeed: 100,
+      reverseGaugePercent: 10,
+      throttleAdjustRate: 36,
+      accelerationRate: 24,
+      decelerationRate: 32,
+      pitchRate: 1.45,
+      yawRate: 1.55,
+      rollRate: 1.8,
+      strafeRate: 45,
+      verticalRate: 45,
+      autopilotTurnRate: 1.45,
+      arrivalRadius: 10,
+      cameraDistance: 10,
+      cameraFollowHeight: 2,
+      cameraScreenYOffset: 0.3,
+      cameraOrbitHeight: 0,
+      cameraMinDistance: 6,
+      cameraMaxDistance: 60,
+      cameraOrbitSensitivity: 0.005,
+      cameraZoomSensitivity: 0.018,
+      cameraReturnDuration: 0.72,
+      cameraRollRate: 9,
+      cameraFxDistance: 2.15,
+      cameraFxInRate: 7.5,
+      cameraFxOutRate: 4.2,
+      cameraActionInRate: 8.5,
+      cameraActionOutRate: 5.2,
+      cameraYawOffset: 0.72,
+      cameraPitchOffset: 0.52,
+      cameraStrafeOffset: 0.58,
+      cameraVerticalOffset: 0.48,
+      cameraRollSideOffset: 0.36,
+      cameraRollDropOffset: 0.18
+    };
+
+    const CONTROL_SETTINGS = {
+      arrowPitchNormal: false
+    };
+
+    const KEY_BINDINGS = {
+      throttleUp: "PageUp",
+      throttleDown: "PageDown",
+      maxSpeed: "Home",
+      stopSpeed: "End",
+      pitchUp: "ArrowUp",
+      pitchDown: "ArrowDown",
+      yawLeft: "ArrowLeft",
+      yawRight: "ArrowRight",
+      rollLeft: "KeyQ",
+      rollRight: "KeyE",
+      strafeLeft: "KeyA",
+      strafeRight: "KeyD",
+      ascend: "KeyW",
+      descend: "KeyS",
+      cameraToggle: "KeyC"
+    };
+
+    const ASSETS = {
+      ship: {
+        obj: "./rss/ships/ship_01.obj",
+        remoteFallback: "https://raw.githubusercontent.com/shyeonic/storage/8a7253eb0ff11db007c2c1d7056d840d56e73e7f/ship_01.obj"
+      },
+      worldModels: {
+        gas_01: { obj: "./rss/ore_planets/gas_01.obj", mtl: "./rss/ore_planets/gas_01.mtl" },
+        ore_01: { obj: "./rss/ore_planets/ore_01.obj", mtl: "./rss/ore_planets/ore_01.mtl" },
+        water_01: { obj: "./rss/ore_planets/water_01.obj", mtl: "./rss/ore_planets/water_01.mtl" },
+        hq_01: { obj: "./rss/buildings/hq_01.obj", mtl: "./rss/buildings/hq_01.mtl" }
+      }
+    };
+
+    const WORLD_CONFIG = {
+      renderScale: 0.01,
+      sectorSize: { x: 400000, y: 400000, z: 400000 },
+      chunkSize: { x: 400000, y: 400000, z: 400000 }
+    };
+
+    const SERVER_CONFIG = {
+      stateStorageKey: "void-zero-flight-authority-state-v1",
+      logStorageKey: "void-zero-flight-authority-log-v1",
+      minLatencyMs: 240,
+      maxLatencyMs: 820,
+      flightCommitDelayMs: 1500,
+      authorityCorrectionApplyDelayMs: 1200,
+      checkpointDecisionIntervalMs: 500 * AUTHORITY_SCALE.manualCheckpointDecisionInterval,
+      checkpointIntervalMs: 6000 * AUTHORITY_SCALE.manualCheckpointInterval,
+      checkpointDistance: 90 * AUTHORITY_SCALE.manualCheckpointDistance,
+      checkpointMinMoveDistance: 15 * AUTHORITY_SCALE.manualMinimumMove,
+      checkpointStopDistance: 1 * AUTHORITY_SCALE.manualStopMinimumMove,
+      checkpointStationaryDecisionCount: 2,
+      checkpointGrace: 1.25,
+      checkpointFixedAllowance: 35,
+      coordinatePrecisionDigits: AUTHORITY_SCALE.coordinatePrecisionDigits,
+      maxLogEntries: Math.max(50, Math.round(500 * AUTHORITY_SCALE.logRetention)),
+      economyEpoch: "local-authority-test-001"
+    };
+
+    class ServerLogStore {
+      constructor(storageKey, maxEntries) {
+        this.storageKey = storageKey;
+        this.maxEntries = maxEntries;
+        this.listeners = new Set();
+        this.entries = this.load();
+      }
+
+      load() {
+        try {
+          const raw = window.localStorage.getItem(this.storageKey);
+          const parsed = raw ? JSON.parse(raw) : [];
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+
+      save() {
+        try {
+          window.localStorage.setItem(this.storageKey, JSON.stringify(this.entries));
+        } catch {
+          // Logging is diagnostic only; storage failure should not stop flight controls.
+        }
+      }
+
+      subscribe(listener) {
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
+      }
+
+      emit() {
+        for (const listener of this.listeners) listener(this.entries);
+      }
+
+      add(entry) {
+        this.entries.push(entry);
+        if (this.entries.length > this.maxEntries) {
+          this.entries.splice(0, this.entries.length - this.maxEntries);
+        }
+        this.save();
+        this.emit();
+      }
+
+      clear() {
+        this.entries = [];
+        this.save();
+        this.emit();
+      }
+
+      toJsonl() {
+        return this.entries.map((entry) => JSON.stringify(entry)).join("\n");
+      }
+    }
+
+    class AuthoritativeNavServer {
+      constructor(storageKey) {
+        this.storageKey = storageKey;
+        this.state = this.loadState();
+      }
+
+      loadState() {
+        try {
+          const raw = window.localStorage.getItem(this.storageKey);
+          if (raw) return JSON.parse(raw);
+        } catch {
+          // Fall through to a fresh local authority state.
+        }
+        const now = Date.now();
+        return {
+          lastAcceptedPosition: { x: 0, y: 0, z: 0 },
+          lastAcceptedAtMs: now,
+          lastAcceptedSeq: 0,
+          activeRoute: null,
+          shipSnapshot: this.createShipSnapshot(),
+          economyEpoch: SERVER_CONFIG.economyEpoch
+        };
+      }
+
+      saveState() {
+        try {
+          window.localStorage.setItem(this.storageKey, JSON.stringify(this.state));
+        } catch {
+          // The local server can still respond for this session if persistence fails.
+        }
+      }
+
+      createShipSnapshot() {
+        return {
+          maxSpeed: CONFIG.maxSpeed,
+          accelerationRate: CONFIG.accelerationRate,
+          decelerationRate: CONFIG.decelerationRate,
+          manualMaxSpeed: Math.hypot(CONFIG.maxSpeed, CONFIG.strafeRate, CONFIG.verticalRate)
+        };
+      }
+
+      cloneVector(vector) {
+        return {
+          x: Number(vector.x) || 0,
+          y: Number(vector.y) || 0,
+          z: Number(vector.z) || 0
+        };
+      }
+
+      distance(a, b) {
+        return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+      }
+
+      getManualAllowance(serverReceivedAtMs) {
+        const elapsedSeconds = Math.max(0.001, (serverReceivedAtMs - this.state.lastAcceptedAtMs) / 1000);
+        return this.state.shipSnapshot.manualMaxSpeed *
+          elapsedSeconds *
+          SERVER_CONFIG.checkpointGrace +
+          SERVER_CONFIG.checkpointFixedAllowance;
+      }
+
+      validateManualObservation(position, serverReceivedAtMs) {
+        const moved = this.distance(this.state.lastAcceptedPosition, position);
+        const allowance = this.getManualAllowance(serverReceivedAtMs);
+        return {
+          ok: moved <= allowance,
+          moved,
+          allowance,
+          authoritativePosition: { ...this.state.lastAcceptedPosition }
+        };
+      }
+
+      lerpRoutePosition(route, nowMs) {
+        if (nowMs <= route.flightAt) return { ...route.start };
+        if (nowMs >= route.dockAt) return { ...route.target };
+        const t = (nowMs - route.flightAt) / Math.max(1, route.dockAt - route.flightAt);
+        return {
+          x: THREE.MathUtils.lerp(route.start.x, route.target.x, t),
+          y: THREE.MathUtils.lerp(route.start.y, route.target.y, t),
+          z: THREE.MathUtils.lerp(route.start.z, route.target.z, t)
+        };
+      }
+
+      computeFlightDurationMs(start, target) {
+        const distance = this.distance(start, target);
+        const { maxSpeed, accelerationRate, decelerationRate } = this.state.shipSnapshot;
+        const accelDist = 0.5 * maxSpeed * maxSpeed / accelerationRate;
+        const decelDist = 0.5 * maxSpeed * maxSpeed / decelerationRate;
+        let seconds;
+        if (distance >= accelDist + decelDist) {
+          seconds = maxSpeed / accelerationRate +
+            (distance - accelDist - decelDist) / maxSpeed +
+            maxSpeed / decelerationRate;
+        } else {
+          const peak = Math.sqrt(2 * distance * accelerationRate * decelerationRate / (accelerationRate + decelerationRate));
+          seconds = peak > 0 ? peak / accelerationRate + peak / decelerationRate : 0;
+        }
+        return Math.max(1000, Math.ceil(seconds * 1000));
+      }
+
+      deriveState(nowMs = Date.now()) {
+        const route = this.state.activeRoute;
+        if (!route || route.canceledAtMs !== null) {
+          return {
+            mode: "MANUAL",
+            position: { ...this.state.lastAcceptedPosition },
+            route: null
+          };
+        }
+
+        if (nowMs < route.flightAt) {
+          return { mode: "PENDING_FLIGHT", position: { ...route.start }, route };
+        }
+        if (nowMs < route.dockAt) {
+          return { mode: "IN_FLIGHT", position: this.lerpRoutePosition(route, nowMs), route };
+        }
+        return { mode: "DOCKED", position: { ...route.target }, route };
+      }
+
+      settleDockedRoute(nowMs) {
+        const derived = this.deriveState(nowMs);
+        if (derived.mode !== "DOCKED" || !derived.route) return derived;
+        this.state.lastAcceptedPosition = { ...derived.route.target };
+        this.state.lastAcceptedAtMs = Math.max(derived.route.dockAt, nowMs);
+        this.state.lastAcceptedSeq += 1;
+        this.state.activeRoute = null;
+        this.saveState();
+        return this.deriveState(nowMs);
+      }
+
+      handleCommand(command, payload, packet) {
+        const serverReceivedAtMs = Date.now();
+        this.state.shipSnapshot = this.createShipSnapshot();
+        const settled = this.settleDockedRoute(serverReceivedAtMs);
+
+        if (command === "START_AUTONAV") {
+          return this.handleStartAutonav(payload, packet, serverReceivedAtMs, settled);
+        }
+        if (command === "MANUAL_OVERRIDE") {
+          return this.handleManualOverride(payload, packet, serverReceivedAtMs);
+        }
+        if (command === "MOVE_CHECKPOINT") {
+          return this.handleMoveCheckpoint(payload, packet, serverReceivedAtMs);
+        }
+
+        return {
+          ok: false,
+          command,
+          clientActionId: payload.clientActionId || null,
+          clientNavSessionId: payload.clientNavSessionId || null,
+          packetId: packet.packetId,
+          serverReceivedAtMs,
+          reason: "UNKNOWN_COMMAND",
+          authorityAction: "CORRECTION_REQUIRED",
+          applyPolicy: "ON_RELEVANT_AUTHORITY_OR_ECONOMIC_STATE",
+          derivedState: this.deriveState(serverReceivedAtMs)
+        };
+      }
+
+      handleStartAutonav(payload, packet, serverReceivedAtMs, derived) {
+        if (derived.mode === "PENDING_FLIGHT" || derived.mode === "IN_FLIGHT") {
+          return {
+            ok: false,
+            command: "START_AUTONAV",
+            clientActionId: payload.clientActionId || null,
+            clientNavSessionId: payload.clientNavSessionId || null,
+            packetId: packet.packetId,
+            serverReceivedAtMs,
+            reason: "ROUTE_ACTIVE",
+            authorityAction: "CORRECTION_REQUIRED",
+            applyPolicy: "ON_RELEVANT_AUTHORITY_OR_ECONOMIC_STATE",
+            derivedState: derived
+          };
+        }
+
+        const start = this.cloneVector(payload.start);
+        const observation = this.validateManualObservation(start, serverReceivedAtMs);
+        if (!observation.ok) {
+          return {
+            ok: false,
+            command: "START_AUTONAV",
+            clientActionId: payload.clientActionId || null,
+            clientNavSessionId: payload.clientNavSessionId || null,
+            packetId: packet.packetId,
+            serverReceivedAtMs,
+            reason: "START_POSITION_INVALID",
+            authorityAction: "CORRECTION_REQUIRED",
+            applyPolicy: "ON_RELEVANT_AUTHORITY_OR_ECONOMIC_STATE",
+            moved: observation.moved,
+            allowance: observation.allowance,
+            authoritativePosition: observation.authoritativePosition,
+            derivedState: this.deriveState(serverReceivedAtMs)
+          };
+        }
+
+        const target = this.cloneVector(payload.target);
+        const flightAt = serverReceivedAtMs + SERVER_CONFIG.flightCommitDelayMs;
+        const dockAt = flightAt + this.computeFlightDurationMs(start, target);
+        const route = {
+          navSessionId: `NAV-${serverReceivedAtMs.toString(36)}-${Math.floor(Math.random() * 0xffff).toString(16)}`,
+          clientNavSessionId: payload.clientNavSessionId || null,
+          flightAt,
+          dockAt,
+          start,
+          target,
+          from: payload.from || "FREE_SPACE",
+          to: payload.to || "TARGET",
+          routeId: payload.routeId || "DIRECT",
+          canceledAtMs: null,
+          cargoSnapshot: payload.cargoSnapshot || { mass: 0, slots: 0 },
+          shipSnapshot: this.createShipSnapshot(),
+          economyEpoch: SERVER_CONFIG.economyEpoch
+        };
+
+        this.state.activeRoute = route;
+        this.state.lastAcceptedPosition = { ...start };
+        this.state.lastAcceptedAtMs = serverReceivedAtMs;
+        this.state.lastAcceptedSeq += 1;
+        this.saveState();
+
+        return {
+          ok: true,
+          command: "START_AUTONAV",
+          clientActionId: payload.clientActionId || null,
+          clientNavSessionId: payload.clientNavSessionId || null,
+          packetId: packet.packetId,
+          serverReceivedAtMs,
+          authorityAction: "RECORDED",
+          applyPolicy: "NONE",
+          route,
+          derivedState: this.deriveState(serverReceivedAtMs)
+        };
+      }
+
+      handleManualOverride(payload, packet, serverReceivedAtMs) {
+        const route = this.state.activeRoute;
+        if (!route || route.canceledAtMs !== null) {
+          return {
+            ok: true,
+            command: "MANUAL_OVERRIDE",
+            clientActionId: payload.clientActionId || null,
+            clientNavSessionId: payload.clientNavSessionId || null,
+            packetId: packet.packetId,
+            serverReceivedAtMs,
+            reason: "NO_ACTIVE_ROUTE",
+            authorityAction: "RECORDED",
+            applyPolicy: "NONE",
+            derivedState: this.deriveState(serverReceivedAtMs)
+          };
+        }
+
+        if (serverReceivedAtMs >= route.dockAt) {
+          const docked = this.settleDockedRoute(serverReceivedAtMs);
+          return {
+            ok: false,
+            command: "MANUAL_OVERRIDE",
+            clientActionId: payload.clientActionId || null,
+            clientNavSessionId: payload.clientNavSessionId || null,
+            packetId: packet.packetId,
+            serverReceivedAtMs,
+            reason: "ALREADY_DOCKED",
+            authorityAction: "CORRECTION_REQUIRED",
+            applyPolicy: "ON_RELEVANT_AUTHORITY_OR_ECONOMIC_STATE",
+            authoritativePosition: docked.position,
+            derivedState: docked
+          };
+        }
+
+        const authoritativePosition = this.lerpRoutePosition(route, serverReceivedAtMs);
+        route.canceledAtMs = serverReceivedAtMs;
+        this.state.lastAcceptedPosition = authoritativePosition;
+        this.state.lastAcceptedAtMs = serverReceivedAtMs;
+        this.state.lastAcceptedSeq += 1;
+        this.saveState();
+
+        return {
+          ok: true,
+          command: "MANUAL_OVERRIDE",
+          clientActionId: payload.clientActionId || null,
+          clientNavSessionId: payload.clientNavSessionId || null,
+          packetId: packet.packetId,
+          serverReceivedAtMs,
+          reason: payload.reason || "manual input",
+          authorityAction: "RECORDED",
+          applyPolicy: "NONE",
+          authoritativePosition,
+          derivedState: this.deriveState(serverReceivedAtMs)
+        };
+      }
+
+      handleMoveCheckpoint(payload, packet, serverReceivedAtMs) {
+        const derived = this.settleDockedRoute(serverReceivedAtMs);
+        if (derived.mode !== "MANUAL") {
+          return {
+            ok: false,
+            command: "MOVE_CHECKPOINT",
+            clientActionId: payload.clientActionId || null,
+            clientNavSessionId: payload.clientNavSessionId || null,
+            clientSeq: Number(payload.clientSeq) || 0,
+            packetId: packet.packetId,
+            serverReceivedAtMs,
+            reason: "NOT_MANUAL",
+            authorityAction: "CORRECTION_REQUIRED",
+            applyPolicy: "ON_RELEVANT_AUTHORITY_OR_ECONOMIC_STATE",
+            authoritativePosition: derived.position,
+            derivedState: derived
+          };
+        }
+
+        const nextPosition = this.cloneVector(payload.position);
+        const observation = this.validateManualObservation(nextPosition, serverReceivedAtMs);
+
+        if (!observation.ok) {
+          return {
+            ok: false,
+            command: "MOVE_CHECKPOINT",
+            clientActionId: payload.clientActionId || null,
+            clientNavSessionId: payload.clientNavSessionId || null,
+            clientSeq: Number(payload.clientSeq) || 0,
+            packetId: packet.packetId,
+            serverReceivedAtMs,
+            reason: "SPEED_LIMIT",
+            authorityAction: "CORRECTION_REQUIRED",
+            applyPolicy: "ON_RELEVANT_AUTHORITY_OR_ECONOMIC_STATE",
+            moved: observation.moved,
+            allowance: observation.allowance,
+            authoritativePosition: observation.authoritativePosition,
+            derivedState: this.deriveState(serverReceivedAtMs)
+          };
+        }
+
+        this.state.lastAcceptedPosition = nextPosition;
+        this.state.lastAcceptedAtMs = serverReceivedAtMs;
+        this.state.lastAcceptedSeq = Math.max(this.state.lastAcceptedSeq + 1, Number(payload.clientSeq) || 0);
+        this.saveState();
+
+        return {
+          ok: true,
+          command: "MOVE_CHECKPOINT",
+          clientActionId: payload.clientActionId || null,
+          clientNavSessionId: payload.clientNavSessionId || null,
+          clientSeq: Number(payload.clientSeq) || 0,
+          packetId: packet.packetId,
+          serverReceivedAtMs,
+          authorityAction: "RECORDED",
+          applyPolicy: "NONE",
+          moved: observation.moved,
+          allowance: observation.allowance,
+          authoritativePosition: nextPosition,
+          derivedState: this.deriveState(serverReceivedAtMs)
+        };
+      }
+    }
+
+    class SimulatedServerLink {
+      constructor(server, logStore, onTraffic) {
+        this.server = server;
+        this.logStore = logStore;
+        this.onTraffic = onTraffic;
+        this.packetSeq = 0;
+      }
+
+      delay(ms) {
+        return new Promise((resolve) => window.setTimeout(resolve, ms));
+      }
+
+      getLatency() {
+        return Math.round(THREE.MathUtils.lerp(
+          SERVER_CONFIG.minLatencyMs,
+          SERVER_CONFIG.maxLatencyMs,
+          Math.random()
+        ));
+      }
+
+      async send(command, payload) {
+        const packetId = `PKT-${String(++this.packetSeq).padStart(5, "0")}`;
+        const clientSentAtMs = Date.now();
+        const latencyMs = this.getLatency();
+        const packet = { packetId, command, clientSentAtMs, latencyMs };
+        this.onTraffic("TX", command, packetId);
+        this.logStore.add({
+          direction: "TX",
+          packetId,
+          command,
+          atMs: clientSentAtMs,
+          latencyMs,
+          payload
+        });
+        await this.delay(latencyMs);
+        const response = this.server.handleCommand(command, payload, packet);
+        const clientReceivedAtMs = Date.now();
+        this.onTraffic("RX", command, packetId);
+        this.logStore.add({
+          direction: "RX",
+          packetId,
+          command,
+          atMs: clientReceivedAtMs,
+          latencyMs: clientReceivedAtMs - clientSentAtMs,
+          response
+        });
+        return response;
+      }
+    }
+
+    const VISUALS = {
+      hydrite: {
+        model_id: "water_01",
+        color: 0x00c7ff,
+        emissive: 0x064268,
+        emissiveIntensity: 0.13,
+        scale: 17
+      },
+      mineral: {
+        model_id: "ore_01",
+        color: 0xb29daf,
+        emissive: 0x351c3d,
+        emissiveIntensity: 0.08,
+        scale: 16
+      },
+      gas: {
+        model_id: "gas_01",
+        color: 0x99ffaf,
+        emissive: 0x0b624d,
+        emissiveIntensity: 0.14,
+        scale: 16
+      },
+      hq: {
+        model_id: "hq_01",
+        color: 0xffffff,
+        emissive: 0x17345e,
+        emissiveIntensity: 0.08,
+        scale: 5.5
+      }
+    };
+
+    class ResourceLoader {
+      constructor(status) {
+        this.status = status;
+        this.cache = new Map();
+      }
+
+      looksLikeObjFile(text) {
+        return /(^|\n)\s*(v|vn|vt|f|o|g)\s+/m.test(text);
+      }
+
+      async loadShipModel() {
+        const loader = new OBJLoader();
+        const sources = [ASSETS.ship.obj, ASSETS.ship.remoteFallback];
+        for (const source of sources) {
+          try {
+            const response = await fetch(source, { cache: "force-cache" });
+            if (!response.ok) continue;
+            const text = await response.text();
+            if (!this.looksLikeObjFile(text)) continue;
+            const object = loader.parse(text);
+            if (!object.children.length) continue;
+            this.status(`Ship model loaded: ${source}`);
+            return this.normalizeShipModel(object);
+          } catch {
+            continue;
+          }
+        }
+
+        this.status("Ship OBJ failed. Using procedural fallback.");
+        return this.createFallbackShip();
+      }
+
+      async loadObjModel(id, source, targetSize = 1) {
+        if (this.cache.has(id)) return this.cache.get(id);
+        const absoluteObj = new URL(source.obj, window.location.href).href;
+        const absoluteMtl = source.mtl ? new URL(source.mtl, window.location.href).href : null;
+        const response = await fetch(absoluteObj, { cache: "force-cache" });
+        if (!response.ok) throw new Error(`${id} OBJ HTTP ${response.status}`);
+        const text = await response.text();
+        if (!this.looksLikeObjFile(text)) throw new Error(`${id} invalid OBJ`);
+
+        const loader = new OBJLoader();
+        if (absoluteMtl) {
+          const materials = await this.loadMtlMaterials(absoluteMtl);
+          loader.setMaterials(materials);
+        }
+
+        const object = loader.parse(text);
+        const normalized = this.normalizeWorldModel(object, targetSize);
+        this.cache.set(id, normalized);
+        return normalized;
+      }
+
+      async loadMtlMaterials(source) {
+        const response = await fetch(source, { cache: "force-cache" });
+        if (!response.ok) throw new Error(`MTL HTTP ${response.status}`);
+        const text = await response.text();
+        const loader = new MTLLoader();
+        loader.setResourcePath(new URL(".", source).href);
+        const materials = loader.parse(text, new URL(".", source).href);
+        materials.preload();
+        return materials;
+      }
+
+      normalizeShipModel(object) {
+        const box = new THREE.Box3().setFromObject(object);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const longest = Math.max(size.x, size.y, size.z) || 1;
+        const scale = 6 / longest;
+        object.scale.setScalar(scale);
+        object.position.copy(center).multiplyScalar(-scale);
+
+        object.traverse((child) => {
+          if (!child.isMesh) return;
+          child.castShadow = false;
+          child.receiveShadow = false;
+          child.material = new THREE.MeshStandardMaterial({
+            color: 0xcff3ff,
+            metalness: 0.55,
+            roughness: 0.28,
+            emissive: 0x00449e,
+            emissiveIntensity: 0.2
+          });
+        });
+
+        return object;
+      }
+
+      normalizeWorldModel(object, targetSize = 1) {
+        const box = new THREE.Box3().setFromObject(object);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const longest = Math.max(size.x, size.y, size.z) || 1;
+        const scale = targetSize / longest;
+        object.scale.setScalar(scale);
+        object.position.copy(center).multiplyScalar(-scale);
+        object.traverse((child) => {
+          if (!child.isMesh) return;
+          child.castShadow = false;
+          child.receiveShadow = false;
+          if (!child.material) {
+            child.material = new THREE.MeshStandardMaterial({
+              color: 0xffffff,
+              metalness: 0.22,
+              roughness: 0.48
+            });
+          }
+        });
+        return object;
+      }
+
+      createFallbackShip() {
+        const group = new THREE.Group();
+        const body = new THREE.Mesh(
+          new THREE.ConeGeometry(1.15, 5.6, 5, 1, false),
+          new THREE.MeshStandardMaterial({
+            color: 0xcff3ff,
+            metalness: 0.5,
+            roughness: 0.28,
+            emissive: 0x00449e,
+            emissiveIntensity: 0.18
+          })
+        );
+        body.rotation.x = Math.PI / 2;
+        const wingMaterial = new THREE.MeshStandardMaterial({
+          color: 0x63d2ff,
+          metalness: 0.4,
+          roughness: 0.32,
+          emissive: 0x05345c,
+          emissiveIntensity: 0.18
+        });
+        const leftWing = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.16, 1.1), wingMaterial);
+        const rightWing = leftWing.clone();
+        leftWing.position.set(-1.7, -0.12, -0.2);
+        rightWing.position.set(1.7, -0.12, -0.2);
+        group.add(body, leftWing, rightWing);
+        return group;
+      }
+    }
+
+    class SampleWorldMap {
+      constructor(scene, resourceLoader) {
+        this.scene = scene;
+        this.resourceLoader = resourceLoader;
+        this.renderScale = WORLD_CONFIG.renderScale;
+        this.root = new THREE.Group();
+        this.root.name = "sample-world-map";
+        this.sectorBoundsGroup = new THREE.Group();
+        this.sectorBoundsGroup.name = "sector-bounds";
+        this.chunkBoundsGroup = new THREE.Group();
+        this.chunkBoundsGroup.name = "chunk-bounds";
+        this.objectsGroup = new THREE.Group();
+        this.objectsGroup.name = "world-objects";
+        this.root.add(this.sectorBoundsGroup, this.chunkBoundsGroup, this.objectsGroup);
+        this.scene.add(this.root);
+        this.modelCache = new Map();
+        this.animatedObjects = [];
+      }
+
+      async loadAssets() {
+        const entries = Object.entries(ASSETS.worldModels);
+        const results = await Promise.allSettled(
+          entries.map(([id, source]) => this.resourceLoader.loadObjModel(id, source, 1))
+        );
+        results.forEach((result, index) => {
+          const id = entries[index][0];
+          if (result.status === "fulfilled") this.modelCache.set(id, result.value);
+        });
+        return results.filter((result) => result.status === "fulfilled").length;
+      }
+
+      render() {
+        this.renderSectorGrid();
+        this.renderObjects();
+      }
+
+      renderSectorGrid() {
+        const sectorSize = WORLD_CONFIG.sectorSize.x * this.renderScale;
+        const half = sectorSize * 0.5;
+        const sectors = [
+          { id: "SEC-001", offset: [0, 0, 0], color: 0xffbc66 },
+          { id: "SEC-002", offset: [1, 0, 0], color: 0x63d2ff },
+          { id: "SEC-003", offset: [0, 1, 0], color: 0x82e3bd },
+          { id: "SEC-004", offset: [0, 0, 1], color: 0xa6ebff },
+          { id: "SEC-005", offset: [-1, 0, 0], color: 0xb896ff },
+          { id: "SEC-006", offset: [0, -1, 0], color: 0xff6b6b }
+        ];
+
+        sectors.forEach((sector) => {
+          const center = new THREE.Vector3(
+            sector.offset[0] * sectorSize,
+            sector.offset[1] * sectorSize,
+            sector.offset[2] * sectorSize
+          );
+          const bounds = {
+            min: center.clone().addScalar(-half),
+            max: center.clone().addScalar(half)
+          };
+          const line = this.createBoxBounds(bounds, {
+            color: sector.color,
+            opacity: sector.id === "SEC-001" ? 0.5 : 0.28
+          });
+          line.userData = { kind: "sector", sector_id: sector.id };
+          this.sectorBoundsGroup.add(line);
+        });
+
+        const chunkSize = WORLD_CONFIG.chunkSize.x * this.renderScale;
+        for (let z = -1; z <= 1; z += 1) {
+          for (let y = -1; y <= 1; y += 1) {
+            for (let x = -1; x <= 1; x += 1) {
+              const center = new THREE.Vector3(x * chunkSize, y * chunkSize, z * chunkSize);
+              const bounds = {
+                min: center.clone().addScalar(-chunkSize * 0.5),
+                max: center.clone().addScalar(chunkSize * 0.5)
+              };
+              this.chunkBoundsGroup.add(this.createBoxBounds(bounds, {
+                color: 0x49657a,
+                opacity: 0.16
+              }));
+            }
+          }
+        }
+      }
+
+      renderObjects() {
+        const samples = [
+          { id: "HQ-001", visual: VISUALS.hq, position: [0, 0, -120] },
+          { id: "WATER-001", visual: VISUALS.hydrite, position: [260, 80, -460], spin: 0.08 },
+          { id: "ORE-001", visual: VISUALS.mineral, position: [-340, -40, -380], spin: 0.1 },
+          { id: "GAS-001", visual: VISUALS.gas, position: [420, -150, 220], spin: 0.06 },
+          { id: "ORE-002", visual: VISUALS.mineral, position: [-520, 180, 280], spin: 0.07 },
+          { id: "GAS-002", visual: VISUALS.gas, position: [120, 360, 520], spin: 0.05 },
+          { id: "WATER-002", visual: VISUALS.hydrite, position: [-160, -320, 620], spin: 0.09 }
+        ];
+
+        samples.forEach((sample) => {
+          const object = this.createVisualObject(sample.visual);
+          object.position.set(sample.position[0], sample.position[1], sample.position[2]);
+          object.userData = { kind: "sample-object", id: sample.id };
+          this.objectsGroup.add(object);
+          if (sample.spin) this.animatedObjects.push({ object, spin: sample.spin });
+        });
+      }
+
+      createVisualObject(visual) {
+        const source = this.modelCache.get(visual.model_id);
+        const object = source ? source.clone(true) : this.createFallbackMesh(visual);
+        object.traverse((child) => {
+          if (child.isMesh && child.geometry) child.geometry = child.geometry.clone();
+          if (child.isMesh && child.material) {
+            child.material = Array.isArray(child.material)
+              ? child.material.map((material) => material.clone())
+              : child.material.clone();
+          }
+        });
+        object.scale.setScalar(visual.scale);
+        this.applyMaterial(object, visual);
+        return object;
+      }
+
+      createFallbackMesh(visual) {
+        return new THREE.Mesh(
+          new THREE.IcosahedronGeometry(1, 1),
+          new THREE.MeshStandardMaterial({ color: visual.color })
+        );
+      }
+
+      applyMaterial(object, visual) {
+        object.traverse((child) => {
+          if (!child.isMesh) return;
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          materials.forEach((material) => {
+            if (!material) return;
+            if (material.color) material.color.multiply(new THREE.Color(visual.color));
+            if ("emissive" in material) material.emissive.setHex(visual.emissive ?? 0x000000);
+            if ("emissiveIntensity" in material) material.emissiveIntensity = visual.emissiveIntensity ?? 0;
+            material.needsUpdate = true;
+          });
+        });
+      }
+
+      createBoxBounds(bounds, { color, opacity }) {
+        const min = bounds.min;
+        const max = bounds.max;
+        const positions = new Float32Array([
+          min.x, min.y, min.z, max.x, min.y, min.z,
+          max.x, min.y, min.z, max.x, max.y, min.z,
+          max.x, max.y, min.z, min.x, max.y, min.z,
+          min.x, max.y, min.z, min.x, min.y, min.z,
+          min.x, min.y, max.z, max.x, min.y, max.z,
+          max.x, min.y, max.z, max.x, max.y, max.z,
+          max.x, max.y, max.z, min.x, max.y, max.z,
+          min.x, max.y, max.z, min.x, min.y, max.z,
+          min.x, min.y, min.z, min.x, min.y, max.z,
+          max.x, min.y, min.z, max.x, min.y, max.z,
+          max.x, max.y, min.z, max.x, max.y, max.z,
+          min.x, max.y, min.z, min.x, max.y, max.z
+        ]);
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        const material = new THREE.LineBasicMaterial({
+          color,
+          transparent: true,
+          opacity,
+          fog: false
+        });
+        return new THREE.LineSegments(geometry, material);
+      }
+
+      update(dt) {
+        for (const item of this.animatedObjects) {
+          item.object.rotation.y += dt * item.spin;
+        }
+      }
+    }
+
+    class FlightViewer {
+      constructor(root) {
+        this.root = root;
+        this.config = CONFIG;
+        this.clock = new THREE.Clock();
+        this.activeActions = new Set();
+        this.state = {
+          speed: 0,
+          desiredSpeed: 0,
+          speedTrend: 0,
+          cameraFxAmount: 0,
+          autopilotPhase: null,
+          autopilotPeakSpeed: 0
+        };
+        this.vectors = {
+          forward: new THREE.Vector3(),
+          right: new THREE.Vector3(),
+          up: new THREE.Vector3(),
+          targetVec: new THREE.Vector3(),
+          movement: new THREE.Vector3(),
+          shipCenter: new THREE.Vector3(),
+          modelCenter: new THREE.Vector3(),
+          desiredCameraPosition: new THREE.Vector3(),
+          desiredCameraUp: new THREE.Vector3(0, 1, 0),
+          cameraUp: new THREE.Vector3(0, 1, 0),
+          cameraActionOffset: new THREE.Vector3(),
+          cameraActionTarget: new THREE.Vector3(),
+          cameraOrbitRightAxis: new THREE.Vector3(),
+          cameraOrbitUpAxis: new THREE.Vector3(),
+          cameraLocalOffset: new THREE.Vector3(),
+          lastCheckpointPosition: new THREE.Vector3(),
+          lastManualObservationPosition: new THREE.Vector3()
+        };
+        this.quaternions = {
+          desired: new THREE.Quaternion(),
+          localRotation: new THREE.Quaternion(),
+          cameraOrbit: new THREE.Quaternion(),
+          cameraOrbitTarget: new THREE.Quaternion(),
+          cameraOrbitYawDelta: new THREE.Quaternion(),
+          cameraOrbitPitchDelta: new THREE.Quaternion(),
+          cameraReturnStart: new THREE.Quaternion(),
+          cameraReturn: new THREE.Quaternion(),
+          cameraFollowTarget: new THREE.Quaternion()
+        };
+        this.axes = {
+          x: new THREE.Vector3(1, 0, 0),
+          y: new THREE.Vector3(0, 1, 0),
+          z: new THREE.Vector3(0, 0, 1)
+        };
+        this.cameraControl = {
+          distance: this.config.cameraDistance,
+          orbitDistance: this.config.cameraDistance,
+          returnStartDistance: this.config.cameraDistance,
+          returnTargetDistance: this.config.cameraDistance,
+          followShip: true,
+          returningToFollow: false,
+          returnElapsed: 0,
+          dragging: false,
+          pointerId: null,
+          pointers: new Map(),
+          pinching: false,
+          pinchDistance: 0,
+          lastX: 0,
+          lastY: 0
+        };
+        this.lookMatrix = new THREE.Matrix4();
+        this.shipBounds = new THREE.Box3();
+        this.starLayers = [];
+        this.navTarget = null;
+        this.serverRoute = null;
+        this.clientActionSeq = 0;
+        this.currentNavSessionId = null;
+        this.pendingAuthorityCorrection = null;
+        this.serverCommandPending = false;
+        this.serverCommandPendingCount = 0;
+        this.manualOverridePending = false;
+        this.manualSync = {
+          clientSeq: 0,
+          lastSentAtMs: Date.now(),
+          lastDecisionAtMs: 0,
+          dirty: false,
+          pending: false,
+          stationaryDecisionCount: 0,
+          stationaryCheckpointSent: false
+        };
+        this.serverIndicatorTimer = 0;
+        this.statusLine = document.querySelector("#statusLine");
+        this.ui = {
+          speedValue: document.querySelector("#speedValue"),
+          desiredValue: document.querySelector("#desiredValue"),
+          cameraMode: document.querySelector("#cameraMode"),
+          positionValue: document.querySelector("#positionValue"),
+          headingValue: document.querySelector("#headingValue"),
+          speedBar: document.querySelector("#speedBar"),
+          serverIndicator: document.querySelector("#serverIndicator"),
+          serverStatus: document.querySelector("#serverStatus"),
+          serverLogButton: document.querySelector("#serverLogButton"),
+          serverLogModal: document.querySelector("#serverLogModal"),
+          serverLogCloseButton: document.querySelector("#serverLogCloseButton"),
+          serverLogExportButton: document.querySelector("#serverLogExportButton"),
+          serverLogClearButton: document.querySelector("#serverLogClearButton"),
+          serverLogTxOutput: document.querySelector("#serverLogTxOutput"),
+          serverLogRxOutput: document.querySelector("#serverLogRxOutput"),
+          serverLogCount: document.querySelector("#serverLogCount"),
+          navForm: document.querySelector("#navForm"),
+          navX: document.querySelector("#navX"),
+          navY: document.querySelector("#navY"),
+          navZ: document.querySelector("#navZ"),
+          navCancelButton: document.querySelector("#navCancelButton"),
+          navState: document.querySelector("#navState")
+        };
+        this.serverLogStore = new ServerLogStore(SERVER_CONFIG.logStorageKey, SERVER_CONFIG.maxLogEntries);
+        this.authorityServer = new AuthoritativeNavServer(SERVER_CONFIG.stateStorageKey);
+        this.serverLink = new SimulatedServerLink(
+          this.authorityServer,
+          this.serverLogStore,
+          (direction, command, packetId) => this.onServerTraffic(direction, command, packetId)
+        );
+      }
+
+      async init() {
+        this.setupRenderer();
+        this.setupScene();
+        this.setupWorld();
+        this.setupTargetMarker();
+        this.setupEvents();
+        this.bindNavigationControls();
+        this.bindServerLogControls();
+        this.resourceLoader = new ResourceLoader((message) => this.setStatus(message));
+        this.worldMap = new SampleWorldMap(this.scene, this.resourceLoader);
+
+        const [shipModel, loadedWorldModels] = await Promise.all([
+          this.resourceLoader.loadShipModel(),
+          this.worldMap.loadAssets()
+        ]);
+        this.addShipModel(shipModel);
+        this.worldMap.render();
+        this.resetInitialCamera();
+        this.resetManualCheckpointTracking();
+        this.renderServerLogs();
+        this.setStatus(`Ready. Ship and ${loadedWorldModels}/4 world model assets loaded.`);
+        this.animate();
+      }
+
+      setupRenderer() {
+        this.renderer = new THREE.WebGLRenderer({
+          antialias: true,
+          powerPreference: "high-performance",
+          preserveDrawingBuffer: true
+        });
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.05;
+        this.root.appendChild(this.renderer.domElement);
+      }
+
+      setupScene() {
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x02070b);
+        this.scene.fog = new THREE.FogExp2(0x07151d, 0.000006);
+        this.camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 80000);
+        this.ship = new THREE.Group();
+        this.scene.add(this.ship);
+      }
+
+      setupWorld() {
+        this.scene.add(new THREE.AmbientLight(0xf2fbff, 0.74));
+        const keyLight = new THREE.DirectionalLight(0xffffff, 0.82);
+        keyLight.position.set(7, 8, 6);
+        this.scene.add(keyLight);
+        const rimLight = new THREE.DirectionalLight(0x8fdcff, 0.62);
+        rimLight.position.set(-8, 4, -8);
+        this.scene.add(rimLight);
+        this.scene.add(new THREE.HemisphereLight(0xf7fcff, 0x173245, 0.36));
+
+        this.starLayers = [
+          this.createStars(1800, 8500, 32.8, 0.98),
+          this.createStars(900, 24000, 51.2, 0.74),
+          this.createStars(420, 52000, 73.6, 0.5)
+        ];
+      }
+
+      setupTargetMarker() {
+        this.targetMarker = new THREE.Group();
+        this.markerRing = new THREE.Mesh(
+          new THREE.TorusGeometry(18, 0.75, 8, 48),
+          new THREE.MeshBasicMaterial({ color: 0x63d2ff, transparent: true, opacity: 0.78 })
+        );
+        this.markerCore = new THREE.Mesh(
+          new THREE.SphereGeometry(2.6, 16, 8),
+          new THREE.MeshBasicMaterial({ color: 0xffffff })
+        );
+        this.targetMarker.add(this.markerRing, this.markerCore);
+        this.targetMarker.visible = false;
+        this.scene.add(this.targetMarker);
+      }
+
+      setupEvents() {
+        this.boundEvents = {
+          pointerdown: (event) => this.onPointerDown(event),
+          pointermove: (event) => this.onPointerMove(event),
+          pointerup: (event) => this.stopCameraDrag(event),
+          pointercancel: (event) => this.stopCameraDrag(event),
+          wheel: (event) => this.onWheel(event),
+          keydown: (event) => this.onKeyDown(event),
+          keyup: (event) => this.onKeyUp(event),
+          resize: () => this.onResize()
+        };
+
+        this.renderer.domElement.addEventListener("pointerdown", this.boundEvents.pointerdown);
+        this.renderer.domElement.addEventListener("pointermove", this.boundEvents.pointermove);
+        this.renderer.domElement.addEventListener("pointerup", this.boundEvents.pointerup);
+        this.renderer.domElement.addEventListener("pointercancel", this.boundEvents.pointercancel);
+        this.renderer.domElement.addEventListener("wheel", this.boundEvents.wheel, { passive: false });
+        window.addEventListener("keydown", this.boundEvents.keydown);
+        window.addEventListener("keyup", this.boundEvents.keyup);
+        window.addEventListener("resize", this.boundEvents.resize);
+      }
+
+      bindNavigationControls() {
+        this.ui.navForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const target = {
+            x: Number(this.ui.navX.value),
+            y: Number(this.ui.navY.value),
+            z: Number(this.ui.navZ.value)
+          };
+          if (!Number.isFinite(target.x) || !Number.isFinite(target.y) || !Number.isFinite(target.z)) {
+            this.setStatus("Autopilot target must be finite coordinates.");
+            return;
+          }
+          this.requestStartAutonav(target);
+        });
+
+        this.ui.navCancelButton.addEventListener("click", () => {
+          if (this.state.autopilotPhase !== null) {
+            this.requestManualOverride("cancel button");
+          } else {
+            this.clearTarget("autopilot cancelled");
+          }
+        });
+      }
+
+      bindServerLogControls() {
+        this.serverLogStore.subscribe(() => this.renderServerLogs());
+        this.ui.serverLogButton.addEventListener("click", () => {
+          this.renderServerLogs();
+          this.ui.serverLogModal.hidden = false;
+        });
+        this.ui.serverLogCloseButton.addEventListener("click", () => {
+          this.ui.serverLogModal.hidden = true;
+        });
+        this.ui.serverLogModal.addEventListener("click", (event) => {
+          if (event.target === this.ui.serverLogModal) {
+            this.ui.serverLogModal.hidden = true;
+          }
+        });
+        this.ui.serverLogExportButton.addEventListener("click", () => this.exportServerLogs());
+        this.ui.serverLogClearButton.addEventListener("click", () => this.serverLogStore.clear());
+      }
+
+      onServerTraffic(direction, command, packetId) {
+        this.ui.serverIndicator.classList.remove("pulse");
+        void this.ui.serverIndicator.offsetWidth;
+        this.ui.serverIndicator.classList.add("pulse");
+        window.clearTimeout(this.serverIndicatorTimer);
+        this.serverIndicatorTimer = window.setTimeout(() => {
+          this.ui.serverIndicator.classList.remove("pulse");
+        }, 460);
+        this.ui.serverStatus.textContent = `${direction} ${command} ${packetId}`;
+      }
+
+      renderServerLogs() {
+        const entries = this.serverLogStore.entries;
+        const txEntries = entries.filter((entry) => entry.direction === "TX");
+        const rxEntries = entries.filter((entry) => entry.direction === "RX");
+        this.ui.serverLogCount.textContent = `${txEntries.length} TX / ${rxEntries.length} RX`;
+        if (!entries.length) {
+          this.ui.serverLogTxOutput.textContent = "No client packets yet.";
+          this.ui.serverLogRxOutput.textContent = "No server responses yet.";
+          return;
+        }
+        this.ui.serverLogTxOutput.textContent = this.formatServerLogEntries(txEntries, "No client packets yet.");
+        this.ui.serverLogRxOutput.textContent = this.formatServerLogEntries(rxEntries, "No server responses yet.");
+      }
+
+      formatServerLogEntries(entries, emptyMessage) {
+        if (!entries.length) return emptyMessage;
+        return entries
+          .slice()
+          .reverse()
+          .map((entry) => {
+            const time = new Date(entry.atMs).toLocaleTimeString();
+            const status = entry.response ? (entry.response.ok ? "RECORDED" : `CORRECTION ${entry.response.reason}`) : "SEND";
+            return `[${time}] ${entry.packetId} ${entry.command} ${status}\n${JSON.stringify(entry, null, 2)}`;
+          })
+          .join("\n\n");
+      }
+
+      exportServerLogs() {
+        const body = this.serverLogStore.toJsonl();
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const blob = new Blob([body ? `${body}\n` : ""], { type: "application/x-ndjson" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `void-zero-server-log-${stamp}.jsonl`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      toPlainVector(vector) {
+        const precision = 10 ** SERVER_CONFIG.coordinatePrecisionDigits;
+        return {
+          x: Math.round(vector.x * precision) / precision,
+          y: Math.round(vector.y * precision) / precision,
+          z: Math.round(vector.z * precision) / precision
+        };
+      }
+
+      applyPlainPosition(position) {
+        this.ship.position.set(position.x, position.y, position.z);
+      }
+
+      resetManualCheckpointTracking(position = this.ship.position) {
+        const now = Date.now();
+        this.vectors.lastCheckpointPosition.copy(position);
+        this.vectors.lastManualObservationPosition.copy(position);
+        this.manualSync.lastSentAtMs = now;
+        this.manualSync.lastDecisionAtMs = 0;
+        this.manualSync.dirty = false;
+        this.manualSync.stationaryDecisionCount = 0;
+        this.manualSync.stationaryCheckpointSent = false;
+      }
+
+      nextClientActionId(prefix) {
+        this.clientActionSeq += 1;
+        return `${prefix}-${String(this.clientActionSeq).padStart(5, "0")}`;
+      }
+
+      async requestServerCommand(command, payload) {
+        this.serverCommandPendingCount += 1;
+        this.serverCommandPending = true;
+        try {
+          return await this.serverLink.send(command, payload);
+        } finally {
+          this.serverCommandPendingCount = Math.max(0, this.serverCommandPendingCount - 1);
+          this.serverCommandPending = this.serverCommandPendingCount > 0;
+        }
+      }
+
+      addShipModel(model) {
+        model.name = "ship_01";
+        model.rotation.y = Math.PI;
+        this.ship.add(model);
+        this.ship.updateWorldMatrix(true, true);
+        this.shipBounds.setFromObject(model, true);
+        if (!this.shipBounds.isEmpty()) {
+          this.shipBounds.getCenter(this.vectors.modelCenter);
+          this.ship.worldToLocal(this.vectors.modelCenter);
+          model.position.sub(this.vectors.modelCenter);
+        }
+      }
+
+      createStars(count, radius, size, opacity) {
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const colors = new Float32Array(count * 3);
+        const color = new THREE.Color();
+
+        for (let i = 0; i < count; i += 1) {
+          const index = i * 3;
+          positions[index] = (Math.random() * 2 - 1) * radius;
+          positions[index + 1] = (Math.random() * 2 - 1) * radius;
+          positions[index + 2] = (Math.random() * 2 - 1) * radius;
+          const hue = 0.52 + Math.random() * 0.16;
+          const saturation = 0.52 + Math.random() * 0.36;
+          const lightness = 0.16 + Math.random() * 0.62;
+          color.setHSL(hue, saturation, lightness);
+          colors[index] = color.r;
+          colors[index + 1] = color.g;
+          colors[index + 2] = color.b;
+        }
+
+        geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+        const material = new THREE.PointsMaterial({
+          size,
+          vertexColors: true,
+          transparent: true,
+          opacity,
+          sizeAttenuation: true,
+          depthWrite: false,
+          fog: false
+        });
+        const points = new THREE.Points(geometry, material);
+        points.userData.radius = radius;
+        this.scene.add(points);
+        return points;
+      }
+
+      updateCameraProjection() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.camera.projectionMatrix.elements[9] = this.config.cameraScreenYOffset;
+      }
+
+      resetInitialCamera() {
+        this.updateCameraProjection();
+        this.updateShipCenter();
+        this.ship.getWorldDirection(this.vectors.forward).normalize();
+        this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion).normalize();
+        this.vectors.desiredCameraPosition.copy(this.vectors.shipCenter)
+          .addScaledVector(this.vectors.up, this.config.cameraFollowHeight)
+          .addScaledVector(this.vectors.forward, -this.cameraControl.distance);
+        this.camera.position.copy(this.vectors.desiredCameraPosition);
+        this.camera.lookAt(this.vectors.shipCenter);
+      }
+
+      updateShipCenter() {
+        this.vectors.shipCenter.copy(this.ship.position);
+      }
+
+      getFollowCameraRadius(distance = this.cameraControl.distance) {
+        return Math.hypot(distance, this.config.cameraFollowHeight);
+      }
+
+      moveToward(value, target, maxDelta) {
+        if (Math.abs(target - value) <= maxDelta) return target;
+        return value + Math.sign(target - value) * maxDelta;
+      }
+
+      setSpeed(value) {
+        this.state.desiredSpeed = THREE.MathUtils.clamp(
+          value,
+          this.config.minSpeed,
+          this.config.maxSpeed
+        );
+      }
+
+      requestStartAutonav(target) {
+        const startedAtMs = Date.now();
+        const start = this.toPlainVector(this.ship.position);
+        const clientActionId = this.nextClientActionId("START_AUTONAV");
+        const clientNavSessionId = `LOCAL-${startedAtMs.toString(36)}-${this.clientActionSeq}`;
+        const localRoute = {
+          navSessionId: clientNavSessionId,
+          clientNavSessionId,
+          flightAt: startedAtMs,
+          dockAt: startedAtMs + this.estimateAutonavDurationMs(target),
+          start,
+          target,
+          from: "LOCAL_SPACE",
+          to: "TEST_TARGET",
+          routeId: "DIRECT_TEST",
+          canceledAtMs: null,
+          localOnly: true
+        };
+
+        this.applyAutonavRoute(localRoute, "START_AUTONAV sent");
+        this.requestServerCommand("START_AUTONAV", {
+          clientActionId,
+          clientNavSessionId,
+          start,
+          target,
+          from: "LOCAL_SPACE",
+          to: "TEST_TARGET",
+          routeId: "DIRECT_TEST",
+          cargoSnapshot: { mass: 0, slots: 0 }
+        }).then((response) => {
+          if (!response.ok) {
+            this.queueAuthorityCorrection(response, "START_AUTONAV");
+            return;
+          }
+          if (this.currentNavSessionId === clientNavSessionId) {
+            if (response.route) this.serverRoute = response.route;
+            this.setStatus("START_AUTONAV recorded");
+          }
+        }).catch((error) => {
+          console.error(error);
+          this.setStatus("START_AUTONAV sent; server response failed");
+        });
+      }
+
+      applyAutonavRoute(route, message = "") {
+        this.serverRoute = route;
+        this.currentNavSessionId = route.clientNavSessionId || route.navSessionId || this.currentNavSessionId;
+        this.navTarget = new THREE.Vector3(route.target.x, route.target.y, route.target.z);
+        this.state.autopilotPhase = "stopping";
+        this.state.autopilotPeakSpeed = 0;
+        this.manualSync.dirty = false;
+        this.targetMarker.visible = true;
+        this.targetMarker.position.copy(this.navTarget);
+        const seconds = Math.max(0, Math.round((route.dockAt - Date.now()) / 1000));
+        this.setStatus(message ? `${message}. Dock in ${seconds}s.` : `Dock in ${seconds}s.`);
+      }
+
+      queueAuthorityCorrection(response, command) {
+        const position = response.authoritativePosition || response.derivedState?.position;
+        if (!position) {
+          this.setStatus(`${command} correction received without authority position`);
+          return;
+        }
+        this.pendingAuthorityCorrection = {
+          command,
+          response,
+          position,
+          applyAtMs: Date.now() + SERVER_CONFIG.authorityCorrectionApplyDelayMs
+        };
+        this.setStatus(`${command} correction queued: ${response.reason}`);
+      }
+
+      shouldApplyAuthorityCorrection(correction) {
+        const response = correction.response;
+        if (correction.command === "START_AUTONAV" && response.clientNavSessionId !== this.currentNavSessionId) {
+          return false;
+        }
+        if (response.clientNavSessionId && this.currentNavSessionId && response.clientNavSessionId !== this.currentNavSessionId) {
+          return false;
+        }
+        if (correction.command === "MOVE_CHECKPOINT" && this.state.autopilotPhase !== null) {
+          return false;
+        }
+        return true;
+      }
+
+      applyAuthorityCorrection(correction) {
+        if (!this.shouldApplyAuthorityCorrection(correction)) {
+          this.setStatus(`${correction.command} correction ignored: stale session`);
+          return;
+        }
+        const response = correction.response;
+        const position = correction.position;
+        const docked = response.derivedState?.mode === "DOCKED";
+        if (docked) {
+          this.completeServerDock(position, `${correction.command} correction applied: docked`);
+          return;
+        }
+        if (position) {
+          this.applyPlainPosition(position);
+          this.resetManualCheckpointTracking();
+        }
+        this.state.speed = 0;
+        if (correction.command === "START_AUTONAV") {
+          this.clearTarget(`${correction.command} correction applied: ${response.reason}`);
+        } else {
+          this.setSpeed(0);
+          this.setStatus(`${correction.command} correction applied: ${response.reason}`);
+        }
+        this.manualSync.lastDecisionAtMs = 0;
+      }
+
+      updateAuthorityCorrection() {
+        if (!this.pendingAuthorityCorrection) return;
+        if (Date.now() < this.pendingAuthorityCorrection.applyAtMs) return;
+        const correction = this.pendingAuthorityCorrection;
+        this.pendingAuthorityCorrection = null;
+        this.applyAuthorityCorrection(correction);
+      }
+
+      clearTarget(message = "") {
+        this.state.autopilotPhase = null;
+        this.state.autopilotPeakSpeed = 0;
+        this.navTarget = null;
+        this.serverRoute = null;
+        this.currentNavSessionId = null;
+        this.manualOverridePending = false;
+        this.targetMarker.visible = false;
+        this.setSpeed(0);
+        if (message) this.setStatus(message);
+      }
+
+      requestManualOverride(reason) {
+        if (this.manualOverridePending || this.state.autopilotPhase === null) return;
+        const clientPosition = this.toPlainVector(this.ship.position);
+        const clientActionId = this.nextClientActionId("MANUAL_OVERRIDE");
+        const clientNavSessionId = this.currentNavSessionId;
+        this.clearTarget("MANUAL_OVERRIDE sent");
+        this.state.speed = 0;
+        this.resetManualCheckpointTracking();
+        this.manualOverridePending = true;
+
+        this.requestServerCommand("MANUAL_OVERRIDE", {
+          clientActionId,
+          clientNavSessionId,
+          reason,
+          clientPosition
+        }).then((response) => {
+          this.manualOverridePending = false;
+          if (response.ok) {
+            if (response.authoritativePosition) {
+              this.vectors.lastCheckpointPosition.set(
+                response.authoritativePosition.x,
+                response.authoritativePosition.y,
+                response.authoritativePosition.z
+              );
+              this.vectors.lastManualObservationPosition.copy(this.vectors.lastCheckpointPosition);
+              this.manualSync.stationaryDecisionCount = 0;
+              this.manualSync.stationaryCheckpointSent = false;
+            }
+            this.setStatus("MANUAL_OVERRIDE recorded");
+            return;
+          }
+
+          if (response.reason === "ALREADY_DOCKED" && response.authoritativePosition) {
+            this.queueAuthorityCorrection(response, "MANUAL_OVERRIDE");
+            return;
+          }
+
+          this.queueAuthorityCorrection(response, "MANUAL_OVERRIDE");
+        }).catch((error) => {
+          this.manualOverridePending = false;
+          console.error(error);
+          this.setStatus("MANUAL_OVERRIDE sent; server response failed");
+        });
+      }
+
+      completeServerDock(position, message = "server-derived docked") {
+        this.applyPlainPosition(position);
+        this.state.speed = 0;
+        this.clearTarget(message);
+        this.resetManualCheckpointTracking();
+      }
+
+      shouldAutopilotCancelOnKey(action) {
+        if (action === "cameraToggle") return false;
+        return action === "throttleUp" ||
+          action === "throttleDown" ||
+          action === "maxSpeed" ||
+          action === "stopSpeed" ||
+          this.isManualControlAction(action);
+      }
+
+      computeAutopilotPeakSpeed(distance) {
+        const { maxSpeed, accelerationRate, decelerationRate } = this.config;
+        const accelDist = 0.5 * maxSpeed * maxSpeed / accelerationRate;
+        const decelDist = 0.5 * maxSpeed * maxSpeed / decelerationRate;
+        if (distance >= accelDist + decelDist) return maxSpeed;
+        const peak = Math.sqrt(2 * distance * accelerationRate * decelerationRate / (accelerationRate + decelerationRate));
+        return Math.max(0, peak);
+      }
+
+      computeAutopilotEta() {
+        if (!this.navTarget) return null;
+        const distance = this.navTarget.distanceTo(this.ship.position);
+        const { maxSpeed, accelerationRate, decelerationRate } = this.config;
+        const accelDist = 0.5 * maxSpeed * maxSpeed / accelerationRate;
+        const decelDist = 0.5 * maxSpeed * maxSpeed / decelerationRate;
+        let flightTime;
+        if (distance >= accelDist + decelDist) {
+          flightTime = maxSpeed / accelerationRate +
+            (distance - accelDist - decelDist) / maxSpeed +
+            maxSpeed / decelerationRate;
+        } else {
+          const peakSpeed = Math.sqrt(2 * distance * accelerationRate * decelerationRate / (accelerationRate + decelerationRate));
+          flightTime = peakSpeed > 0 ? peakSpeed / accelerationRate + peakSpeed / decelerationRate : 0;
+        }
+        const stopTime = Math.abs(this.state.speed) / (this.state.speed >= 0 ? decelerationRate : accelerationRate);
+        return stopTime + 2 + flightTime;
+      }
+
+      estimateAutonavDurationMs(target) {
+        const targetPosition = new THREE.Vector3(target.x, target.y, target.z);
+        const distance = targetPosition.distanceTo(this.ship.position);
+        const { maxSpeed, accelerationRate, decelerationRate } = this.config;
+        const accelDist = 0.5 * maxSpeed * maxSpeed / accelerationRate;
+        const decelDist = 0.5 * maxSpeed * maxSpeed / decelerationRate;
+        let flightTime;
+        if (distance >= accelDist + decelDist) {
+          flightTime = maxSpeed / accelerationRate +
+            (distance - accelDist - decelDist) / maxSpeed +
+            maxSpeed / decelerationRate;
+        } else {
+          const peakSpeed = Math.sqrt(2 * distance * accelerationRate * decelerationRate / (accelerationRate + decelerationRate));
+          flightTime = peakSpeed > 0 ? peakSpeed / accelerationRate + peakSpeed / decelerationRate : 0;
+        }
+        const stopTime = Math.abs(this.state.speed) / (this.state.speed >= 0 ? decelerationRate : accelerationRate);
+        return Math.max(1000, Math.ceil((stopTime + 2 + flightTime) * 1000));
+      }
+
+      updateThrottleTarget(dt) {
+        if (this.state.autopilotPhase !== null) return;
+
+        const accelerating = this.activeActions.has("throttleUp");
+        const decelerating = this.activeActions.has("throttleDown");
+        if (accelerating === decelerating) return;
+        const target = accelerating ? this.config.maxSpeed : this.config.minSpeed;
+        this.setSpeed(this.moveToward(
+          this.state.desiredSpeed,
+          target,
+          this.config.throttleAdjustRate * dt
+        ));
+      }
+
+      updateSpeed(dt) {
+        const previousSpeed = this.state.speed;
+        const rate = this.state.desiredSpeed >= this.state.speed
+          ? this.config.accelerationRate
+          : this.config.decelerationRate;
+        this.state.speed = this.moveToward(this.state.speed, this.state.desiredSpeed, rate * dt);
+        this.state.speedTrend = this.state.speed - previousSpeed;
+      }
+
+      getControlActionAmount(action) {
+        return this.activeActions.has(action) ? 1 : 0;
+      }
+
+      updateManualRotation(dt) {
+        let pitch = 0;
+        let yaw = 0;
+        let roll = 0;
+        const pitchDirection = CONTROL_SETTINGS.arrowPitchNormal ? 1 : -1;
+
+        if (this.activeActions.has("pitchUp")) pitch += this.config.pitchRate * dt * pitchDirection;
+        if (this.activeActions.has("pitchDown")) pitch -= this.config.pitchRate * dt * pitchDirection;
+        if (this.activeActions.has("yawLeft")) yaw += this.config.yawRate * dt;
+        if (this.activeActions.has("yawRight")) yaw -= this.config.yawRate * dt;
+        if (this.activeActions.has("rollLeft")) roll -= this.config.rollRate * dt;
+        if (this.activeActions.has("rollRight")) roll += this.config.rollRate * dt;
+
+        if (pitch === 0 && yaw === 0 && roll === 0) return;
+
+        if (yaw !== 0) {
+          this.quaternions.localRotation.setFromAxisAngle(this.axes.y, yaw);
+          this.ship.quaternion.multiply(this.quaternions.localRotation);
+        }
+        if (pitch !== 0) {
+          this.quaternions.localRotation.setFromAxisAngle(this.axes.x, pitch);
+          this.ship.quaternion.multiply(this.quaternions.localRotation);
+        }
+        if (roll !== 0) {
+          this.quaternions.localRotation.setFromAxisAngle(this.axes.z, roll);
+          this.ship.quaternion.multiply(this.quaternions.localRotation);
+        }
+        this.ship.quaternion.normalize();
+      }
+
+      updateAutopilot(dt) {
+        if (this.serverRoute && Date.now() >= this.serverRoute.dockAt) {
+          this.completeServerDock(this.serverRoute.target, "server-derived docked");
+          return;
+        }
+        if (this.state.autopilotPhase === null || !this.navTarget) return;
+
+        this.vectors.targetVec.copy(this.navTarget).sub(this.ship.position);
+        const distance = this.vectors.targetVec.length();
+
+        if (distance <= this.config.arrivalRadius) {
+          if (this.serverRoute) {
+            this.ship.position.copy(this.navTarget);
+            this.state.autopilotPhase = "awaitingDock";
+            this.setSpeed(0);
+            return;
+          }
+          this.clearTarget("arrived");
+          return;
+        }
+
+        const phase = this.state.autopilotPhase;
+
+        if (phase === "awaitingDock") {
+          this.setSpeed(0);
+
+        } else if (phase === "stopping") {
+          this.setSpeed(0);
+          if (Math.abs(this.state.speed) < 0.5) {
+            this.state.autopilotPhase = "aligning";
+          }
+
+        } else if (phase === "aligning") {
+          this.setSpeed(0);
+          const direction = this.vectors.targetVec.normalize();
+          this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion);
+          this.lookMatrix.lookAt(direction, new THREE.Vector3(0, 0, 0), this.vectors.up);
+          this.quaternions.desired.setFromRotationMatrix(this.lookMatrix);
+          this.ship.quaternion.slerp(
+            this.quaternions.desired,
+            Math.min(1, this.config.autopilotTurnRate * dt)
+          ).normalize();
+          this.ship.getWorldDirection(this.vectors.forward);
+          if (this.vectors.forward.dot(direction) > 0.99999) {
+            const effectiveDist = distance - this.config.arrivalRadius;
+            this.state.autopilotPeakSpeed = this.computeAutopilotPeakSpeed(effectiveDist);
+            this.state.autopilotPhase = "accelerating";
+          }
+
+        } else if (phase === "accelerating") {
+          this.setSpeed(this.state.autopilotPeakSpeed);
+          this.autopilotCourseCorrect(dt);
+          const decelDist = 0.5 * this.state.speed * this.state.speed / this.config.decelerationRate;
+          const remaining = distance - this.config.arrivalRadius;
+          if (remaining <= decelDist) {
+            this.state.autopilotPhase = "decelerating";
+          } else if (this.state.speed >= this.state.autopilotPeakSpeed - 0.1) {
+            this.state.autopilotPhase = "cruising";
+          }
+
+        } else if (phase === "cruising") {
+          this.setSpeed(this.state.autopilotPeakSpeed);
+          this.autopilotCourseCorrect(dt);
+          const decelDist = 0.5 * this.state.speed * this.state.speed / this.config.decelerationRate;
+          if (distance - this.config.arrivalRadius <= decelDist) {
+            this.state.autopilotPhase = "decelerating";
+          }
+
+        } else if (phase === "decelerating") {
+          this.setSpeed(0);
+          this.autopilotCourseCorrect(dt);
+          if (Math.abs(this.state.speed) < 0.5 && distance > this.config.arrivalRadius * 2) {
+            this.state.autopilotPhase = "stopping";
+          }
+        }
+      }
+
+      autopilotCourseCorrect(dt) {
+        const courseDir = this.vectors.targetVec.normalize();
+        this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion);
+        this.lookMatrix.lookAt(courseDir, new THREE.Vector3(0, 0, 0), this.vectors.up);
+        this.quaternions.desired.setFromRotationMatrix(this.lookMatrix);
+        this.ship.quaternion.slerp(
+          this.quaternions.desired,
+          Math.min(1, this.config.autopilotTurnRate * 0.4 * dt)
+        ).normalize();
+      }
+
+      updateAutopilotRollOnly(dt) {
+        let roll = 0;
+        if (this.activeActions.has("rollLeft")) roll -= this.config.rollRate * dt;
+        if (this.activeActions.has("rollRight")) roll += this.config.rollRate * dt;
+        if (roll === 0) return;
+        this.quaternions.localRotation.setFromAxisAngle(this.axes.z, roll);
+        this.ship.quaternion.multiply(this.quaternions.localRotation);
+        this.ship.quaternion.normalize();
+      }
+
+      updatePosition(dt) {
+        this.ship.getWorldDirection(this.vectors.forward).normalize();
+        this.vectors.right.set(1, 0, 0).applyQuaternion(this.ship.quaternion).normalize();
+        this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion).normalize();
+        this.vectors.movement.set(0, 0, 0);
+        this.vectors.movement.addScaledVector(this.vectors.forward, this.state.speed * dt);
+
+        if (this.state.autopilotPhase === null) {
+          if (this.activeActions.has("strafeLeft")) this.vectors.movement.addScaledVector(this.vectors.right, this.config.strafeRate * dt);
+          if (this.activeActions.has("strafeRight")) this.vectors.movement.addScaledVector(this.vectors.right, -this.config.strafeRate * dt);
+          if (this.activeActions.has("ascend")) this.vectors.movement.addScaledVector(this.vectors.up, this.config.verticalRate * dt);
+          if (this.activeActions.has("descend")) this.vectors.movement.addScaledVector(this.vectors.up, -this.config.verticalRate * dt);
+        }
+
+        this.ship.position.add(this.vectors.movement);
+      }
+
+      updateManualCheckpoint(forceDecision = false) {
+        if (this.state.autopilotPhase !== null) return;
+        const now = Date.now();
+        if (!forceDecision && now - this.manualSync.lastDecisionAtMs < SERVER_CONFIG.checkpointDecisionIntervalMs) {
+          return;
+        }
+        this.manualSync.lastDecisionAtMs = now;
+
+        const elapsedSinceSend = now - this.manualSync.lastSentAtMs;
+        const distanceFromLastReportedPosition = this.ship.position.distanceTo(this.vectors.lastCheckpointPosition);
+        const movementSinceLastDecision = this.ship.position.distanceTo(this.vectors.lastManualObservationPosition);
+        const isStationaryAtDecision = movementSinceLastDecision <= 0.001;
+
+        if (isStationaryAtDecision) {
+          this.manualSync.stationaryDecisionCount += 1;
+        } else {
+          this.manualSync.stationaryDecisionCount = 0;
+          this.manualSync.stationaryCheckpointSent = false;
+        }
+        this.vectors.lastManualObservationPosition.copy(this.ship.position);
+
+        const hasMeaningfulHeartbeatMove = distanceFromLastReportedPosition >= SERVER_CONFIG.checkpointMinMoveDistance;
+        const hasUnreportedStopPosition = distanceFromLastReportedPosition >= SERVER_CONFIG.checkpointStopDistance;
+        const stopReady = this.manualSync.stationaryDecisionCount >= SERVER_CONFIG.checkpointStationaryDecisionCount &&
+          hasUnreportedStopPosition &&
+          !this.manualSync.stationaryCheckpointSent;
+        const timeReady = elapsedSinceSend >= SERVER_CONFIG.checkpointIntervalMs && hasMeaningfulHeartbeatMove;
+        const distanceReady = distanceFromLastReportedPosition >= SERVER_CONFIG.checkpointDistance;
+        const shouldSend = stopReady || timeReady || distanceReady;
+        if (!shouldSend) return;
+        if (this.manualSync.pending || this.serverCommandPending) {
+          this.manualSync.dirty = true;
+          return;
+        }
+        if (stopReady) this.manualSync.stationaryCheckpointSent = true;
+        this.sendMoveCheckpoint();
+      }
+
+      async sendMoveCheckpoint() {
+        this.manualSync.pending = true;
+        this.manualSync.clientSeq += 1;
+        const clientActionId = this.nextClientActionId("MOVE_CHECKPOINT");
+        this.manualSync.dirty = false;
+        this.manualSync.lastSentAtMs = Date.now();
+        const sentPosition = this.toPlainVector(this.ship.position);
+        this.vectors.lastCheckpointPosition.set(sentPosition.x, sentPosition.y, sentPosition.z);
+        this.vectors.lastManualObservationPosition.copy(this.vectors.lastCheckpointPosition);
+        const response = await this.requestServerCommand("MOVE_CHECKPOINT", {
+          clientActionId,
+          clientSeq: this.manualSync.clientSeq,
+          position: sentPosition
+        });
+
+        this.manualSync.pending = false;
+        if (response.ok) {
+          this.setStatus(`MOVE_CHECKPOINT recorded ${response.moved.toFixed(1)}m`);
+          if (this.manualSync.dirty) this.updateManualCheckpoint(true);
+          return;
+        }
+
+        this.queueAuthorityCorrection(response, "MOVE_CHECKPOINT");
+      }
+
+      updateCamera(dt) {
+        this.updateShipCenter();
+        this.ship.getWorldDirection(this.vectors.forward).normalize();
+        this.vectors.right.set(1, 0, 0).applyQuaternion(this.ship.quaternion).normalize();
+        this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion).normalize();
+
+        if (this.cameraControl.returningToFollow) {
+          this.updateReturningCamera(dt);
+          return;
+        }
+        if (this.cameraControl.followShip) {
+          this.updateFollowCamera(dt);
+          return;
+        }
+        this.updateOrbitCamera();
+      }
+
+      updateReturningCamera(dt) {
+        this.state.cameraFxAmount = 0;
+        this.vectors.cameraActionOffset.set(0, 0, 0);
+        this.vectors.cameraActionTarget.set(0, 0, 0);
+
+        this.cameraControl.returnElapsed += dt;
+        const progress = Math.min(1, this.cameraControl.returnElapsed / this.config.cameraReturnDuration);
+        const easedProgress = progress * progress * (3 - 2 * progress);
+
+        this.cameraControl.returnTargetDistance = this.getFollowCameraRadius();
+        this.vectors.desiredCameraPosition.copy(this.vectors.shipCenter)
+          .addScaledVector(this.vectors.up, this.config.cameraFollowHeight)
+          .addScaledVector(this.vectors.forward, -this.cameraControl.distance);
+
+        this.vectors.desiredCameraUp.copy(this.vectors.up);
+        this.lookMatrix.lookAt(this.vectors.desiredCameraPosition, this.vectors.shipCenter, this.vectors.desiredCameraUp);
+        this.quaternions.cameraFollowTarget.setFromRotationMatrix(this.lookMatrix).normalize();
+        this.quaternions.cameraReturn.copy(this.quaternions.cameraReturnStart)
+          .slerp(this.quaternions.cameraFollowTarget, easedProgress)
+          .normalize();
+
+        this.vectors.cameraLocalOffset.set(
+          0,
+          0,
+          THREE.MathUtils.lerp(
+            this.cameraControl.returnStartDistance,
+            this.cameraControl.returnTargetDistance,
+            easedProgress
+          )
+        ).applyQuaternion(this.quaternions.cameraReturn);
+
+        this.camera.position.copy(this.vectors.shipCenter).add(this.vectors.cameraLocalOffset);
+        this.camera.quaternion.copy(this.quaternions.cameraReturn);
+        this.vectors.cameraUp.set(0, 1, 0).applyQuaternion(this.quaternions.cameraReturn).normalize();
+        this.camera.up.copy(this.vectors.cameraUp);
+
+        if (progress >= 1) {
+          this.cameraControl.returningToFollow = false;
+          this.cameraControl.followShip = true;
+          this.camera.position.copy(this.vectors.desiredCameraPosition);
+          this.camera.quaternion.copy(this.quaternions.cameraFollowTarget);
+          this.vectors.cameraUp.copy(this.vectors.desiredCameraUp);
+          this.camera.up.copy(this.vectors.cameraUp);
+        }
+      }
+
+      updateFollowCamera(dt) {
+        this.vectors.cameraActionTarget.set(0, 0, 0);
+        const cameraFxTarget = Math.abs(this.state.speedTrend) < 0.001 ? 0 : Math.sign(this.state.speedTrend);
+        const fxRate = cameraFxTarget === 0 ? this.config.cameraFxOutRate : this.config.cameraFxInRate;
+        this.state.cameraFxAmount = THREE.MathUtils.damp(this.state.cameraFxAmount, cameraFxTarget, fxRate, dt);
+        if (cameraFxTarget === 0 && Math.abs(this.state.cameraFxAmount) < 0.001) {
+          this.state.cameraFxAmount = 0;
+        }
+
+        if (this.state.autopilotPhase === null) {
+          const pitchActionDirection = CONTROL_SETTINGS.arrowPitchNormal ? 1 : -1;
+          this.vectors.cameraActionTarget.x += this.config.cameraYawOffset * this.getControlActionAmount("yawLeft");
+          this.vectors.cameraActionTarget.x -= this.config.cameraYawOffset * this.getControlActionAmount("yawRight");
+          this.vectors.cameraActionTarget.y -= this.config.cameraPitchOffset * pitchActionDirection * this.getControlActionAmount("pitchUp");
+          this.vectors.cameraActionTarget.y += this.config.cameraPitchOffset * pitchActionDirection * this.getControlActionAmount("pitchDown");
+          if (this.activeActions.has("strafeLeft")) this.vectors.cameraActionTarget.x -= this.config.cameraStrafeOffset;
+          if (this.activeActions.has("strafeRight")) this.vectors.cameraActionTarget.x += this.config.cameraStrafeOffset;
+          if (this.activeActions.has("ascend")) this.vectors.cameraActionTarget.y -= this.config.cameraVerticalOffset;
+          if (this.activeActions.has("descend")) this.vectors.cameraActionTarget.y += this.config.cameraVerticalOffset;
+          if (this.activeActions.has("rollLeft")) {
+            this.vectors.cameraActionTarget.x += this.config.cameraRollSideOffset;
+            this.vectors.cameraActionTarget.y -= this.config.cameraRollDropOffset;
+          }
+          if (this.activeActions.has("rollRight")) {
+            this.vectors.cameraActionTarget.x -= this.config.cameraRollSideOffset;
+            this.vectors.cameraActionTarget.y -= this.config.cameraRollDropOffset;
+          }
+        }
+
+        const actionTargetActive = this.vectors.cameraActionTarget.lengthSq() > 0.0001;
+        const actionRate = actionTargetActive ? this.config.cameraActionInRate : this.config.cameraActionOutRate;
+        this.vectors.cameraActionOffset.x = THREE.MathUtils.damp(this.vectors.cameraActionOffset.x, this.vectors.cameraActionTarget.x, actionRate, dt);
+        this.vectors.cameraActionOffset.y = THREE.MathUtils.damp(this.vectors.cameraActionOffset.y, this.vectors.cameraActionTarget.y, actionRate, dt);
+        this.vectors.cameraActionOffset.z = THREE.MathUtils.damp(this.vectors.cameraActionOffset.z, this.vectors.cameraActionTarget.z, actionRate, dt);
+
+        if (!actionTargetActive && this.vectors.cameraActionOffset.lengthSq() < 0.000001) {
+          this.vectors.cameraActionOffset.set(0, 0, 0);
+        }
+
+        const cameraFxOffset = this.state.cameraFxAmount * this.config.cameraFxDistance;
+        const distance = this.cameraControl.distance + cameraFxOffset;
+        this.vectors.desiredCameraPosition.copy(this.vectors.shipCenter)
+          .addScaledVector(this.vectors.forward, -distance + this.vectors.cameraActionOffset.z)
+          .addScaledVector(this.vectors.up, this.config.cameraFollowHeight + this.vectors.cameraActionOffset.y)
+          .addScaledVector(this.vectors.right, this.vectors.cameraActionOffset.x);
+
+        this.vectors.desiredCameraUp.copy(this.vectors.up);
+        const rollEase = 1 - Math.exp(-this.config.cameraRollRate * dt);
+        this.vectors.cameraUp.lerp(this.vectors.desiredCameraUp, rollEase).normalize();
+
+        this.camera.position.copy(this.vectors.desiredCameraPosition);
+        this.camera.up.copy(this.vectors.cameraUp);
+        this.camera.lookAt(this.vectors.shipCenter);
+      }
+
+      updateOrbitCamera() {
+        this.state.cameraFxAmount = 0;
+        this.vectors.cameraActionOffset.set(0, 0, 0);
+        this.quaternions.cameraOrbit.copy(this.quaternions.cameraOrbitTarget);
+        this.vectors.cameraLocalOffset.set(
+          0,
+          this.config.cameraOrbitHeight,
+          this.cameraControl.orbitDistance
+        ).applyQuaternion(this.quaternions.cameraOrbit);
+
+        this.vectors.desiredCameraPosition.copy(this.vectors.shipCenter).add(this.vectors.cameraLocalOffset);
+        this.camera.position.copy(this.vectors.desiredCameraPosition);
+        this.camera.quaternion.copy(this.quaternions.cameraOrbit);
+        this.vectors.cameraUp.set(0, 1, 0).applyQuaternion(this.quaternions.cameraOrbit).normalize();
+        this.camera.up.copy(this.vectors.cameraUp);
+      }
+
+      updateCameraOrbitAxes() {
+        this.vectors.cameraOrbitRightAxis.set(1, 0, 0)
+          .applyQuaternion(this.quaternions.cameraOrbitTarget)
+          .normalize();
+        this.vectors.cameraOrbitUpAxis.set(0, 1, 0).applyQuaternion(this.ship.quaternion);
+        if (this.vectors.cameraOrbitUpAxis.lengthSq() < 0.000001) {
+          this.vectors.cameraOrbitUpAxis.set(0, 1, 0);
+        }
+        this.vectors.cameraOrbitUpAxis.normalize();
+      }
+
+      getCameraOrbitHorizontalSign() {
+        this.vectors.cameraUp.set(0, 1, 0)
+          .applyQuaternion(this.quaternions.cameraOrbitTarget)
+          .normalize();
+        return this.vectors.cameraUp.dot(this.vectors.cameraOrbitUpAxis) >= 0 ? 1 : -1;
+      }
+
+      enterOrbitCameraMode() {
+        if (this.cameraControl.followShip || this.cameraControl.returningToFollow) {
+          this.updateShipCenter();
+          this.vectors.cameraLocalOffset.copy(this.camera.position).sub(this.vectors.shipCenter);
+          if (this.vectors.cameraLocalOffset.lengthSq() > 0.000001) {
+            this.cameraControl.orbitDistance = this.vectors.cameraLocalOffset.length();
+            this.quaternions.cameraOrbitTarget.copy(this.camera.quaternion).normalize();
+          } else {
+            this.cameraControl.orbitDistance = this.getFollowCameraRadius();
+            this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion).normalize();
+            this.lookMatrix.lookAt(this.camera.position, this.vectors.shipCenter, this.vectors.up);
+            this.quaternions.cameraOrbitTarget.setFromRotationMatrix(this.lookMatrix).normalize();
+          }
+        }
+        this.cameraControl.followShip = false;
+        this.cameraControl.returningToFollow = false;
+        this.state.cameraFxAmount = 0;
+        this.vectors.cameraActionOffset.set(0, 0, 0);
+      }
+
+      resetCameraView() {
+        this.updateShipCenter();
+        this.state.cameraFxAmount = 0;
+        this.vectors.cameraActionOffset.set(0, 0, 0);
+        this.vectors.cameraActionTarget.set(0, 0, 0);
+        this.cameraControl.dragging = false;
+        this.cameraControl.pointerId = null;
+        this.cameraControl.pointers.clear();
+        this.cameraControl.pinching = false;
+        this.cameraControl.pinchDistance = 0;
+        this.cameraControl.followShip = false;
+        this.cameraControl.returningToFollow = true;
+        this.cameraControl.returnElapsed = 0;
+        this.cameraControl.returnStartDistance = Math.max(0.001, this.camera.position.distanceTo(this.vectors.shipCenter));
+        this.cameraControl.returnTargetDistance = this.getFollowCameraRadius();
+        this.quaternions.cameraReturnStart.copy(this.camera.quaternion).normalize();
+      }
+
+      toggleCameraMode() {
+        if (this.cameraControl.followShip || this.cameraControl.returningToFollow) {
+          this.enterOrbitCameraMode();
+        } else {
+          this.resetCameraView();
+        }
+      }
+
+      applyCameraZoomDelta(delta) {
+        if (!this.cameraControl.followShip && !this.cameraControl.returningToFollow) {
+          this.cameraControl.orbitDistance = Math.max(0.5, this.cameraControl.orbitDistance + delta);
+          this.cameraControl.distance = Math.max(0.5, this.cameraControl.orbitDistance);
+          return;
+        }
+        this.cameraControl.distance = THREE.MathUtils.clamp(
+          this.cameraControl.distance + delta,
+          this.config.cameraMinDistance,
+          this.config.cameraMaxDistance
+        );
+      }
+
+      getCameraPointerDistance() {
+        const pointers = Array.from(this.cameraControl.pointers.values());
+        if (pointers.length < 2) return 0;
+        return Math.hypot(pointers[0].x - pointers[1].x, pointers[0].y - pointers[1].y);
+      }
+
+      onPointerDown(event) {
+        if (event.pointerType === "mouse" && event.button !== 0) return;
+        event.preventDefault();
+        this.cameraControl.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        this.renderer.domElement.setPointerCapture(event.pointerId);
+
+        if (this.cameraControl.pointers.size >= 2) {
+          this.enterOrbitCameraMode();
+          this.cameraControl.dragging = false;
+          this.cameraControl.pointerId = null;
+          this.cameraControl.pinching = true;
+          this.cameraControl.pinchDistance = this.getCameraPointerDistance();
+          return;
+        }
+
+        this.enterOrbitCameraMode();
+        this.cameraControl.dragging = true;
+        this.cameraControl.pointerId = event.pointerId;
+        this.cameraControl.lastX = event.clientX;
+        this.cameraControl.lastY = event.clientY;
+        this.renderer.domElement.classList.add("dragging");
+      }
+
+      onPointerMove(event) {
+        if (this.cameraControl.pointers.has(event.pointerId)) {
+          this.cameraControl.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        }
+
+        if (this.cameraControl.pinching) {
+          if (this.cameraControl.pointers.size < 2) return;
+          event.preventDefault();
+          const nextDistance = this.getCameraPointerDistance();
+          if (nextDistance <= 0 || this.cameraControl.pinchDistance <= 0) {
+            this.cameraControl.pinchDistance = nextDistance;
+            return;
+          }
+          const pinchDelta = (this.cameraControl.pinchDistance - nextDistance) * this.config.cameraZoomSensitivity;
+          this.applyCameraZoomDelta(pinchDelta);
+          this.cameraControl.pinchDistance = nextDistance;
+          return;
+        }
+
+        if (!this.cameraControl.dragging || this.cameraControl.pointerId !== event.pointerId) return;
+        event.preventDefault();
+        const dx = event.clientX - this.cameraControl.lastX;
+        const dy = event.clientY - this.cameraControl.lastY;
+        this.cameraControl.lastX = event.clientX;
+        this.cameraControl.lastY = event.clientY;
+        if (dx === 0 && dy === 0) return;
+
+        this.updateCameraOrbitAxes();
+        const horizontalSign = this.getCameraOrbitHorizontalSign();
+        this.quaternions.cameraOrbitYawDelta.setFromAxisAngle(
+          this.vectors.cameraOrbitUpAxis,
+          -dx * this.config.cameraOrbitSensitivity * horizontalSign
+        );
+        this.quaternions.cameraOrbitTarget.premultiply(this.quaternions.cameraOrbitYawDelta).normalize();
+
+        this.vectors.cameraOrbitRightAxis.set(1, 0, 0)
+          .applyQuaternion(this.quaternions.cameraOrbitTarget)
+          .normalize();
+        this.quaternions.cameraOrbitPitchDelta.setFromAxisAngle(
+          this.vectors.cameraOrbitRightAxis,
+          -dy * this.config.cameraOrbitSensitivity
+        );
+        this.quaternions.cameraOrbitTarget.premultiply(this.quaternions.cameraOrbitPitchDelta).normalize();
+      }
+
+      stopCameraDrag(event) {
+        this.cameraControl.pointers.delete(event.pointerId);
+        if (this.cameraControl.pointers.size < 2) {
+          this.cameraControl.pinching = false;
+          this.cameraControl.pinchDistance = 0;
+        }
+        if (this.cameraControl.pointerId === event.pointerId) {
+          this.cameraControl.dragging = false;
+          this.cameraControl.pointerId = null;
+          this.renderer.domElement.classList.remove("dragging");
+        }
+        if (this.renderer.domElement.hasPointerCapture(event.pointerId)) {
+          this.renderer.domElement.releasePointerCapture(event.pointerId);
+        }
+      }
+
+      onWheel(event) {
+        event.preventDefault();
+        this.applyCameraZoomDelta(event.deltaY * this.config.cameraZoomSensitivity);
+      }
+
+      getActionForCode(code) {
+        return Object.entries(KEY_BINDINGS).find(([, value]) => value === code)?.[0] || null;
+      }
+
+      isManualControlAction(action) {
+        return action === "pitchUp" ||
+          action === "pitchDown" ||
+          action === "yawLeft" ||
+          action === "yawRight" ||
+          action === "rollLeft" ||
+          action === "rollRight" ||
+          action === "ascend" ||
+          action === "descend" ||
+          action === "strafeLeft" ||
+          action === "strafeRight";
+      }
+
+      onKeyDown(event) {
+        if (event.target instanceof HTMLInputElement) return;
+        const action = this.getActionForCode(event.code);
+        if (!action) return;
+
+        if (this.state.autopilotPhase !== null && this.shouldAutopilotCancelOnKey(action)) {
+          event.preventDefault();
+          this.requestManualOverride(action);
+          return;
+        }
+
+        this.activeActions.add(action);
+
+        if (action === "maxSpeed") {
+          event.preventDefault();
+          this.setSpeed(this.config.maxSpeed);
+        } else if (action === "stopSpeed") {
+          event.preventDefault();
+          this.setSpeed(0);
+        } else if (action === "cameraToggle") {
+          event.preventDefault();
+          if (!event.repeat) this.toggleCameraMode();
+        } else {
+          event.preventDefault();
+        }
+      }
+
+      onKeyUp(event) {
+        const action = this.getActionForCode(event.code);
+        if (!action) return;
+        this.activeActions.delete(action);
+        event.preventDefault();
+      }
+
+      onResize() {
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.updateCameraProjection();
+      }
+
+      updateStars() {
+        for (const layer of this.starLayers) {
+          const radius = layer.userData.radius;
+          const span = radius * 2;
+          const positions = layer.geometry.attributes.position.array;
+          let changed = false;
+
+          for (let i = 0; i < positions.length; i += 3) {
+            let x = positions[i];
+            let y = positions[i + 1];
+            let z = positions[i + 2];
+
+            if (x - this.ship.position.x > radius) {
+              x -= span;
+              changed = true;
+            } else if (this.ship.position.x - x > radius) {
+              x += span;
+              changed = true;
+            }
+
+            if (y - this.ship.position.y > radius) {
+              y -= span;
+              changed = true;
+            } else if (this.ship.position.y - y > radius) {
+              y += span;
+              changed = true;
+            }
+
+            if (z - this.ship.position.z > radius) {
+              z -= span;
+              changed = true;
+            } else if (this.ship.position.z - z > radius) {
+              z += span;
+              changed = true;
+            }
+
+            positions[i] = x;
+            positions[i + 1] = y;
+            positions[i + 2] = z;
+          }
+
+          if (changed) layer.geometry.attributes.position.needsUpdate = true;
+        }
+      }
+
+      updateTargetMarker(dt) {
+        if (!this.targetMarker.visible) return;
+        this.markerRing.lookAt(this.camera.position);
+        this.markerRing.rotation.z += dt * 0.75;
+        const pulse = 1 + Math.sin(this.clock.elapsedTime * 4) * 0.12;
+        this.markerCore.scale.setScalar(pulse);
+      }
+
+      updateHud() {
+        this.ship.getWorldDirection(this.vectors.forward).normalize();
+        const speed = this.state.speed;
+        this.ui.speedValue.textContent = speed.toFixed(1);
+        this.ui.desiredValue.textContent = this.state.desiredSpeed.toFixed(1);
+        this.ui.cameraMode.textContent = this.cameraControl.followShip
+          ? "Follow"
+          : this.cameraControl.returningToFollow
+            ? "Returning"
+            : "Orbit";
+        this.ui.positionValue.textContent = this.formatVector(this.ship.position, 0);
+        this.ui.headingValue.textContent = this.formatVector(this.vectors.forward, 2);
+        this.updateNavHud();
+        const positiveRange = this.config.maxSpeed;
+        const reverseRange = Math.abs(this.config.minSpeed);
+        const scale = speed >= 0 ? speed / positiveRange : speed / reverseRange;
+        this.ui.speedBar.style.transform = `scaleX(${THREE.MathUtils.clamp(scale, -1, 1)})`;
+      }
+
+      updateNavHud() {
+        if (!this.navTarget || this.state.autopilotPhase === null) {
+          this.ui.navState.textContent = "Idle";
+          return;
+        }
+
+        const distance = this.navTarget.distanceTo(this.ship.position);
+        const phase = this.state.autopilotPhase;
+        const dockEta = this.serverRoute
+          ? ` / dock ${Math.max(0, Math.ceil((this.serverRoute.dockAt - Date.now()) / 1000))}s`
+          : "";
+        this.ui.navState.textContent = `${phase} / ${distance.toFixed(0)}m${dockEta}`;
+      }
+
+      formatVector(vector, digits) {
+        return `${vector.x.toFixed(digits)}, ${vector.y.toFixed(digits)}, ${vector.z.toFixed(digits)}`;
+      }
+
+      setStatus(message) {
+        this.statusLine.textContent = message;
+      }
+
+      update(dt) {
+        this.updateAuthorityCorrection();
+        this.updateAutopilot(dt);
+        this.updateThrottleTarget(dt);
+        this.updateSpeed(dt);
+        if (this.state.autopilotPhase === null) {
+          this.updateManualRotation(dt);
+        } else if (this.state.autopilotPhase !== "aligning" && this.state.autopilotPhase !== "stopping") {
+          this.updateAutopilotRollOnly(dt);
+        }
+        this.updatePosition(dt);
+        this.updateManualCheckpoint();
+        this.updateCamera(dt);
+        this.updateStars();
+        this.updateTargetMarker(dt);
+        this.worldMap.update(dt);
+      }
+
+      animate() {
+        const dt = Math.min(this.clock.getDelta(), 0.05);
+        this.update(dt);
+        this.updateHud();
+        this.renderer.render(this.scene, this.camera);
+        requestAnimationFrame(() => this.animate());
+      }
+    }
+
+    const app = document.querySelector("#app");
+    const viewer = new FlightViewer(app);
+    window.__flightViewer = viewer;
+    viewer.init().catch((error) => {
+      console.error(error);
+      document.querySelector("#statusLine").textContent = error instanceof Error
+        ? error.message
+        : "Flight viewer failed to initialize.";
+    });
+  </script>
+</body>
+</html>
