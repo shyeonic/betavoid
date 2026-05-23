@@ -63,7 +63,8 @@
     }
 
     button,
-    input {
+    input,
+    select {
       font: inherit;
     }
 
@@ -107,6 +108,22 @@
     }
 
     input:focus {
+      border-color: rgba(99, 210, 255, 0.7);
+    }
+
+    select {
+      width: 100%;
+      min-height: 4.6vh;
+      border: 0.12vh solid rgba(43, 98, 140, 0.16);
+      border-radius: 0.8vh;
+      background: rgba(255, 255, 255, 0.58);
+      color: var(--text);
+      padding: 0 1.2vh;
+      font-size: 1.45vh;
+      outline: none;
+    }
+
+    select:focus {
       border-color: rgba(99, 210, 255, 0.7);
     }
 
@@ -1376,6 +1393,39 @@
       gap: 0.8vh;
     }
 
+    .settings-language-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(12vh, 18vh);
+      align-items: center;
+      gap: 1.2vh;
+      padding: 1.2vh 0;
+      border-top: 0.12vh solid rgba(43, 98, 140, 0.1);
+      border-bottom: 0.12vh solid rgba(43, 98, 140, 0.1);
+    }
+
+    .settings-language-copy {
+      display: grid;
+      gap: 0.35vh;
+      min-width: 0;
+    }
+
+    .settings-language-label {
+      color: var(--text);
+      font-size: 1.5vh;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .settings-language-hint {
+      color: var(--muted);
+      font-size: 1.2vh;
+      line-height: 1.3;
+    }
+
+    .settings-language-select {
+      min-width: 0;
+    }
+
     .settings-tab-button {
       height: 4.6vh;
       font-size: 1.45vh;
@@ -1675,6 +1725,17 @@
           <button class="settings-icon-button" id="settingsCloseButton" type="button" aria-label="닫기" title="Close">
             <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
           </button>
+        </div>
+        <div class="settings-language-row">
+          <div class="settings-language-copy">
+            <div class="settings-language-label" id="settingsLanguageLabel">Language</div>
+            <div class="settings-language-hint" id="settingsLanguageHint">Applies after reload</div>
+          </div>
+          <select class="settings-language-select" id="settingsLanguageSelect"
+            aria-labelledby="settingsLanguageLabel">
+            <option value="en">English</option>
+            <option value="ko">한국어</option>
+          </select>
         </div>
         <div class="settings-menu" role="tablist" aria-label="Settings">
           <button class="settings-tab-button active" id="settingsKeysTab" type="button" data-settings-tab="keys"

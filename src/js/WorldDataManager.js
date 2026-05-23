@@ -577,6 +577,17 @@ export class WorldDataManager {
 
     const resolvedPosition = position || this.pickBuildingPosition(sector, definition, rng, placedObjects);
     const chunkData = this.getChunkDataAtPosition(resolvedPosition);
+    const resourceState = resourceNode
+      ? {
+          total_capacity: Math.max(0, Number(resourceNode.total_capacity) || 0),
+          current_amount: Math.max(0, Number(resourceNode.current_amount) || 0),
+          base_yield_per_sec: Number(resourceNode.base_yield_per_sec) || 0,
+          resource_node_type: resourceNode.node_type || null,
+          source_resource_spawn_time: resourceNode.spawn_time || null,
+          source_resource_expiry_time: resourceNode.expiry_time || null
+        }
+      : {};
+
     return {
       building_instance_id: this.createId("BLD", buildingId, seed, index, rng),
       building_id: buildingId,
@@ -592,6 +603,7 @@ export class WorldDataManager {
       resource_id: resourceNode?.resource_id || null,
       resource_category: resourceNode?.category || null,
       produces_item_id: resourceNode?.produces_item_id || null,
+      ...resourceState,
       created_at: createdAt
     };
   }

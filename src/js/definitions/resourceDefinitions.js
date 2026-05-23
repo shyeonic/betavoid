@@ -28,6 +28,8 @@ export const RESOURCE_VISUALS_BY_ITEM_TYPE = {
 export const RESOURCE_DEFINITIONS = {
   rss_001: {
     resource_id: "rss_001",
+    label_key: "resource.rss_001.name",
+    description_key: "resource.rss_001.description",
     produces_item_id: "item_001",
     node_type: "PERMANENT",
     total_capacity: 1000000,
@@ -39,6 +41,8 @@ export const RESOURCE_DEFINITIONS = {
   },
   rss_002: {
     resource_id: "rss_002",
+    label_key: "resource.rss_002.name",
+    description_key: "resource.rss_002.description",
     produces_item_id: "item_002",
     node_type: "PERMANENT",
     total_capacity: 600000,
@@ -50,6 +54,8 @@ export const RESOURCE_DEFINITIONS = {
   },
   rss_003: {
     resource_id: "rss_003",
+    label_key: "resource.rss_003.name",
+    description_key: "resource.rss_003.description",
     produces_item_id: "item_003",
     node_type: "PERMANENT",
     total_capacity: 400000,
@@ -61,6 +67,8 @@ export const RESOURCE_DEFINITIONS = {
   },
   rss_004: {
     resource_id: "rss_004",
+    label_key: "resource.rss_004.name",
+    description_key: "resource.rss_004.description",
     produces_item_id: "item_004",
     node_type: "PERMANENT",
     total_capacity: 600000,
@@ -72,6 +80,8 @@ export const RESOURCE_DEFINITIONS = {
   },
   rss_005: {
     resource_id: "rss_005",
+    label_key: "resource.rss_005.name",
+    description_key: "resource.rss_005.description",
     produces_item_id: "item_005",
     node_type: "PERMANENT",
     total_capacity: 300000,
@@ -83,6 +93,8 @@ export const RESOURCE_DEFINITIONS = {
   },
   rss_006: {
     resource_id: "rss_006",
+    label_key: "resource.rss_006.name",
+    description_key: "resource.rss_006.description",
     produces_item_id: "item_006",
     node_type: "PERMANENT",
     total_capacity: 200000,
@@ -94,6 +106,8 @@ export const RESOURCE_DEFINITIONS = {
   },
   rss_007: {
     resource_id: "rss_007",
+    label_key: "resource.rss_007.name",
+    description_key: "resource.rss_007.description",
     produces_item_id: "item_007",
     node_type: "DECAYING",
     total_capacity: 800000,
@@ -106,6 +120,8 @@ export const RESOURCE_DEFINITIONS = {
   },
   rss_008: {
     resource_id: "rss_008",
+    label_key: "resource.rss_008.name",
+    description_key: "resource.rss_008.description",
     produces_item_id: "item_008",
     node_type: "DECAYING",
     total_capacity: 600000,
@@ -118,6 +134,8 @@ export const RESOURCE_DEFINITIONS = {
   },
   rss_009: {
     resource_id: "rss_009",
+    label_key: "resource.rss_009.name",
+    description_key: "resource.rss_009.description",
     produces_item_id: "item_009",
     node_type: "DECAYING",
     total_capacity: 300000,
@@ -130,6 +148,8 @@ export const RESOURCE_DEFINITIONS = {
   },
   rss_010: {
     resource_id: "rss_010",
+    label_key: "resource.rss_010.name",
+    description_key: "resource.rss_010.description",
     produces_item_id: "item_010",
     node_type: "DECAYING",
     total_capacity: 100000,

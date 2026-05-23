@@ -9,8 +9,10 @@ const baseSector = ({
   theme_music_id = "bgm_sector_01"
 }) => ({
   sector_id,
+  label_key: `sector.${sector_id}.name`,
   name,
   theme,
+  theme_key: `sector.${sector_id}.theme`,
   theme_music_id,
   stats,
   resource_weights,

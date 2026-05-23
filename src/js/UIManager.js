@@ -1,6 +1,10 @@
 export class UIManager {
-  constructor({ config, keyBindings, keyBindingGroups, defaultKeyBindings }) {
+  constructor({ config, i18n, keyBindings, keyBindingGroups, defaultKeyBindings }) {
     this.config = config;
+    this.i18n = i18n || {
+      t: (key, params = {}, fallback = key) => fallback,
+      resolveDefinitionText: (definition, field = "name", fallback = "") => definition?.[field] || fallback
+    };
     this.keyBindings = { ...keyBindings };
     this.keyBindingGroups = keyBindingGroups;
     this.defaultKeyBindings = { ...defaultKeyBindings };
@@ -44,6 +48,9 @@ export class UIManager {
       settingsDataTab: this.getElement("#settingsDataTab"),
       settingsKeysPanel: this.getElement("#settingsKeysPanel"),
       settingsDataPanel: this.getElement("#settingsDataPanel"),
+      settingsLanguageLabel: this.getElement("#settingsLanguageLabel"),
+      settingsLanguageHint: this.getElement("#settingsLanguageHint"),
+      settingsLanguageSelect: this.getElement("#settingsLanguageSelect"),
       keyBindingList: this.getElement("#keyBindingList"),
       worldSeedValue: this.getElement("#worldSeedValue"),
       worldGeneratedValue: this.getElement("#worldGeneratedValue"),
@@ -105,8 +112,10 @@ export class UIManager {
     this.navRestoreMode = "fixed";
     this.speedPointerId = null;
     this.onSetSpeed = null;
+    document.documentElement.lang = this.i18n.locale || document.documentElement.lang;
     this.elements.speedGauge.setAttribute("aria-valuemin", String(this.config.minSpeed));
     this.elements.speedGauge.setAttribute("aria-valuemax", String(this.config.maxSpeed));
+    this.renderLanguageSettings();
     this.setStartButtonText("Start");
     this.renderKeyBindings();
   }
@@ -115,6 +124,27 @@ export class UIManager {
     const element = document.querySelector(selector);
     if (!element) throw new Error(`Missing UI element: ${selector}`);
     return element;
+  }
+
+  t(key, fallback, params = {}) {
+    return this.i18n.t(key, params, fallback);
+  }
+
+  renderLanguageSettings() {
+    const select = this.elements.settingsLanguageSelect;
+    const supportedLocales = Object.keys(this.i18n.messages || {});
+
+    select.replaceChildren();
+    supportedLocales.forEach((locale) => {
+      const option = document.createElement("option");
+      option.value = locale;
+      option.textContent = this.t(`ui.settings.languages.${locale}`, locale.toUpperCase());
+      select.append(option);
+    });
+
+    select.value = this.i18n.locale;
+    this.elements.settingsLanguageLabel.textContent = this.t("ui.settings.language", "Language");
+    this.elements.settingsLanguageHint.textContent = this.t("ui.settings.languageHint", "Applies after reload");
   }
 
   bindControls({
@@ -177,6 +207,17 @@ export class UIManager {
       event.stopPropagation();
       this.pendingBindingAction = null;
       this.setKeyBindings(this.defaultKeyBindings);
+    });
+    this.elements.settingsLanguageSelect.addEventListener("change", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const target = event.target instanceof HTMLSelectElement ? event.target : null;
+      if (!target || target.value === this.i18n.locale) return;
+      if (!this.i18n.setLocale(target.value)) {
+        target.value = this.i18n.locale;
+        return;
+      }
+      window.location.reload();
     });
     this.elements.worldRegenerateButton.addEventListener("click", (event) => {
       event.preventDefault();
@@ -476,13 +517,15 @@ export class UIManager {
     this.elements.objectListContent.replaceChildren();
     this.closeObjectListTransient();
 
-    this.elements.objectListCategoryCurrent.textContent = category === "buildings" ? "Buildings" : "Resources";
+    this.elements.objectListCategoryCurrent.textContent = category === "buildings"
+      ? this.t("ui.scanner.categories.buildings", "Buildings")
+      : this.t("ui.scanner.categories.resources", "Resources");
     this.renderObjectListSortControls(items.length);
 
     if (items.length === 0) {
       const empty = document.createElement("div");
       empty.className = "object-list-empty";
-      empty.textContent = "No objects detected";
+      empty.textContent = this.t("ui.scanner.empty", "No objects detected");
       this.elements.objectListContent.append(empty);
       return;
     }
@@ -607,13 +650,13 @@ export class UIManager {
     detail.className = "object-bubble-button";
     detail.type = "button";
     detail.dataset.objectDetailId = object.id;
-    detail.textContent = "Detail";
+    detail.textContent = this.t("ui.scanner.detail", "Detail");
 
     const nav = document.createElement("button");
     nav.className = "object-bubble-button object-navigate-button";
     nav.type = "button";
     nav.dataset.objectNavId = object.id;
-    nav.textContent = "Auto Navigate";
+    nav.textContent = this.t("ui.scanner.autoNavigate", "Auto Navigate");
 
     bubble.append(detail, nav);
     return bubble;
@@ -626,7 +669,7 @@ export class UIManager {
     popup.className = "object-detail-popup";
     popup.dataset.objectDetailPopupId = object.id;
     popup.setAttribute("role", "dialog");
-    popup.setAttribute("aria-label", "Object detail");
+    popup.setAttribute("aria-label", this.t("ui.scanner.objectDetail", "Object detail"));
 
     const header = document.createElement("header");
     header.className = "object-detail-popup-header";
@@ -638,7 +681,7 @@ export class UIManager {
     const close = document.createElement("button");
     close.className = "object-detail-popup-close";
     close.type = "button";
-    close.setAttribute("aria-label", "Close detail");
+    close.setAttribute("aria-label", this.t("ui.scanner.closeDetail", "Close detail"));
     close.innerHTML = '<span class="svg-icon svg-icon-close" aria-hidden="true"></span>';
     close.addEventListener("click", (event) => {
       event.preventDefault();
@@ -649,31 +692,31 @@ export class UIManager {
     header.append(title, close);
 
     const lines = [
-      this.createObjectBubbleLine("Category", object.kind),
-      this.createObjectBubbleLine("Sector", object.sectorName),
-      this.createObjectBubbleLine("Chunk", object.chunkId || "UNKNOWN"),
-      this.createObjectBubbleLine("Position", this.formatPosition(object.position)),
+      this.createObjectBubbleLine(this.t("ui.scanner.fields.category", "Category"), object.kind),
+      this.createObjectBubbleLine(this.t("ui.scanner.fields.sector", "Sector"), object.sectorName),
+      this.createObjectBubbleLine(this.t("ui.scanner.fields.chunk", "Chunk"), object.chunkId || "UNKNOWN"),
+      this.createObjectBubbleLine(this.t("ui.scanner.fields.position", "Position"), this.formatPosition(object.position)),
       this.createObjectBubbleLine(
-        "Chunk Relative",
+        this.t("ui.scanner.fields.chunkRelative", "Chunk Relative"),
         object.relativePosition ? this.formatPosition(object.relativePosition) : "unavailable"
       ),
-      this.createObjectBubbleLine("Distance", object.distanceText || "unknown")
+      this.createObjectBubbleLine(this.t("ui.scanner.fields.distance", "Distance"), object.distanceText || "unknown")
     ];
 
     if (object.kind === "resource") {
-      lines.splice(1, 0, this.createObjectBubbleLine("Type", object.typeLabel));
-      lines.splice(2, 0, this.createObjectBubbleLine("Amount", object.amountLabel));
+      lines.splice(1, 0, this.createObjectBubbleLine(this.t("ui.scanner.fields.type", "Type"), object.typeLabel));
+      lines.splice(2, 0, this.createObjectBubbleLine(this.t("ui.scanner.fields.amount", "Amount"), object.amountLabel));
     } else {
-      lines.splice(1, 0, this.createObjectBubbleLine("Name", object.name));
-      lines.splice(2, 0, this.createObjectBubbleLine("Status", object.statusLabel));
-      lines.splice(3, 0, this.createObjectBubbleLine("HP", object.hpLabel));
+      lines.splice(1, 0, this.createObjectBubbleLine(this.t("ui.scanner.fields.name", "Name"), object.name));
+      lines.splice(2, 0, this.createObjectBubbleLine(this.t("ui.scanner.fields.status", "Status"), object.statusLabel));
+      lines.splice(3, 0, this.createObjectBubbleLine(this.t("ui.scanner.fields.hp", "HP"), object.hpLabel));
     }
 
     const nav = document.createElement("button");
     nav.className = "object-navigate-button";
     nav.type = "button";
     nav.dataset.objectNavId = object.id;
-    nav.textContent = "Auto Navigate";
+    nav.textContent = this.t("ui.scanner.autoNavigate", "Auto Navigate");
 
     popup.append(header, ...lines, nav);
     this.elements.objectListPanel.append(popup);
@@ -866,6 +909,7 @@ export class UIManager {
     this.settingsReturnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
       ? document.activeElement
       : this.elements.settingsButton;
+    this.renderLanguageSettings();
     this.elements.settingsPopup.removeAttribute("inert");
     this.elements.settingsPopup.classList.add("open");
     this.elements.settingsPopup.setAttribute("aria-hidden", "false");
@@ -1158,7 +1202,9 @@ export class UIManager {
     this.elements.worldChunkCountValue.textContent = String(summary.chunkCount ?? 0);
     this.elements.worldResourceCountValue.textContent = String(summary.resourceCount ?? 0);
     this.elements.worldBuildingCountValue.textContent = String(summary.buildingCount ?? 0);
-    this.elements.worldCurrentSectorValue.textContent = summary.currentSector?.name || "UNKNOWN";
+    this.elements.worldCurrentSectorValue.textContent = summary.currentSector
+      ? this.i18n.resolveDefinitionText(summary.currentSector, "name", summary.currentSector.name || "UNKNOWN")
+      : "UNKNOWN";
     this.elements.worldCurrentChunkValue.textContent = summary.currentChunk || "UNKNOWN";
   }
 

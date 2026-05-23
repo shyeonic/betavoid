@@ -6,6 +6,7 @@ import { UIManager } from "./UIManager.js";
 import { WorldDataManager } from "./WorldDataManager.js";
 import { WorldMapManager } from "./WorldMapManager.js";
 import { BUILDING_DEFINITIONS, ITEM_DEFINITIONS, RESOURCE_DEFINITIONS, WORLD_CONFIG } from "./worldDefinitions.js";
+import { createI18n } from "./i18n/i18n.js";
 
 export class GameManager {
   constructor({ root }) {
@@ -13,6 +14,7 @@ export class GameManager {
     this.config = CONFIG;
     this.keyBindingStorageKey = "void-zero-key-bindings";
     this.keyBindings = this.loadKeyBindings();
+    this.i18n = createI18n();
     this.worldViewSettings = { chunkBoundsMode: "all" };
     this.navDeadReckonSettings = { mode: "fixed", capMinutes: 5 };
     this.keyToAction = this.createKeyToAction(this.keyBindings);
@@ -32,6 +34,7 @@ export class GameManager {
     this.clock = new THREE.Clock();
     this.ui = new UIManager({
       config: this.config,
+      i18n: this.i18n,
       keyBindings: this.keyBindings,
       keyBindingGroups: KEY_BINDING_GROUPS,
       defaultKeyBindings: DEFAULT_KEY_BINDINGS
@@ -1573,7 +1576,8 @@ export class GameManager {
       const producedItem = kind === "resource"
         ? ITEM_DEFINITIONS[definition?.produces_item_id]
         : null;
-      const label = producedItem?.name_en || definition?.name_en || type;
+      const labelDefinition = kind === "building" ? definition : producedItem || definition;
+      const label = this.i18n.resolveDefinitionText(labelDefinition, "name", type);
       const position = { ...object.position };
       const relativePosition = object.chunk_center_relative_position
         ? { ...object.chunk_center_relative_position }
@@ -1581,6 +1585,7 @@ export class GameManager {
       const chunkCenterPosition = object.chunk_center_position
         ? { ...object.chunk_center_position }
         : null;
+      const sectorDefinition = sectorsById.get(object.sector_id);
       const target = this.worldMapManager.toRenderVector(position);
       const distance = this.getDataDistance(playerPosition, position);
       return {
@@ -1595,7 +1600,9 @@ export class GameManager {
           : "unavailable",
         statusLabel: object.status || "unknown",
         hpLabel: object.hp != null ? String(object.hp) : "unavailable",
-        sectorName: sectorsById.get(object.sector_id)?.name || object.sector_id || "UNKNOWN",
+        sectorName: sectorDefinition
+          ? this.i18n.resolveDefinitionText(sectorDefinition, "name", sectorDefinition.name || sectorDefinition.sector_id)
+          : object.sector_id || "UNKNOWN",
         chunkId: object.chunk_id || "UNKNOWN",
         position,
         relativePosition,

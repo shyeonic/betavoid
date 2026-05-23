@@ -55,9 +55,11 @@
 
 ### 3.2 자원 총량 계산
 
-자원 총량은 현재 존재하는 resource node의 `current_amount` 합으로 계산한다.
+자원 총량은 현재 존재하는 resource node의 `current_amount`와, 자원 노드 위에 건설되어 원본 노드를 고정한 resource facility의 `current_amount` 합으로 계산한다.
 
-추후 자원 시설이 자체 저장량을 갖게 되면 샘플처럼 시설의 `current_amount`도 합산할 수 있다. 현재 구현된 자원 시설은 원본 resource node를 소비해 건물로 바꾸지만 별도의 채굴 저장량을 아직 갖지 않으므로 이번 단계에서는 resource node 합산을 기준으로 한다.
+자원 시설은 별도의 신규 자원을 만들지 않는다. 원본 resource node의 `current_amount`, `total_capacity`, `base_yield_per_sec`를 그대로 승계하며, 원본 노드는 `resourceNodes` store에서 제거된다. 이렇게 하면 시설은 자원지가 주기 만료로 사라지지 않도록 고정하는 역할만 하고, 글로벌 자원 총량에는 독립적인 증가를 만들지 않는다.
+
+추후 자동 생산 tick이 구현되면 시설의 `current_amount`가 감소하고, 감소한 만큼 `resourceManager.pools[resource_id].current_total`이 줄어든다. 그 부족분만 다음 lifecycle check의 재생성 후보가 된다.
 
 ### 3.3 주기적 체크
 
@@ -149,7 +151,8 @@ DB version은 꼭 필요하지 않으면 올리지 않는다. 단, 현재 테스
 ### 5.6 검증
 
 - 정의 카탈로그 검증이 계속 통과해야 한다.
-- 최초 생성 시 자원 pool의 `current_total`이 resource node 합과 일치해야 한다.
+- 최초 생성 시 자원 pool의 `current_total`이 resource node와 resource facility의 `current_amount` 합과 일치해야 한다.
+- 자원 노드 위에 생성된 건물은 원본 resource node의 `current_amount`, `total_capacity`, `base_yield_per_sec`를 승계해야 한다.
 - `force` 재생성 시 `next_check`가 갱신되어야 한다.
 - `expiry_time`이 지난 노드는 제거되어야 한다.
 - `current_amount <= 0` 노드는 제거되어야 한다.
@@ -161,7 +164,7 @@ DB version은 꼭 필요하지 않으면 올리지 않는다. 단, 현재 테스
 - 기존 DB 데이터 migration
 - legacy ID alias
 - 자원 채굴 UI와 생산/창고 시스템 전체 연결
-- 자원 시설의 내부 저장량/생산 tick 구현
+- 자원 시설의 생산 tick 구현
 - 샘플의 2D 공간 규격 이식
 - 별도 resourceManager object store 추가
 
