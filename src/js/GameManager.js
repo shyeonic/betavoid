@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { CONFIG, CONTROL_SETTINGS, DEFAULT_KEY_BINDINGS, KEY_BINDING_GROUPS } from "./config.js";
 import { ResourceManager } from "./ResourceManager.js";
 import { SoundManager } from "./SoundManager.js";
+import { TargetingOverlay } from "./TargetingOverlay.js";
 import { UIManager } from "./UIManager.js";
 import { WorldDataManager } from "./WorldDataManager.js";
 import { WorldMapManager } from "./WorldMapManager.js";
@@ -45,6 +46,27 @@ export class GameManager {
     this.soundManager = new SoundManager(this.resourceManager);
     this.worldDataManager = new WorldDataManager();
     this.worldMapManager = null;
+    this.targetingOverlay = new TargetingOverlay({ canvas: this.ui.elements.targetingCanvas });
+    this.raycaster = new THREE.Raycaster();
+    this.pointerNdc = new THREE.Vector2();
+    this.selectedWorldObject = null;
+    this.selectionPointer = {
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      maySelect: false,
+      moved: false
+    };
+    this.selectionBounds = new THREE.Box3();
+    this.selectionChildBounds = new THREE.Box3();
+    this.selectionBoundsSize = new THREE.Vector3();
+    this.selectionBoundsCenter = new THREE.Vector3();
+    this.selectionWorldScale = new THREE.Vector3();
+    this.selectionRootInverse = new THREE.Matrix4();
+    this.selectionChildMatrix = new THREE.Matrix4();
+    this.selectionScratch = new THREE.Vector3();
+    this.selectionScratchB = new THREE.Vector3();
+    this.selectionCameraDirection = new THREE.Vector3();
 
     this.vectors = {
       forward: new THREE.Vector3(),
@@ -154,12 +176,14 @@ export class GameManager {
       },
       onRequestObjectList: () => this.getWorldObjectList(),
       onNavigateToWorldObject: (object) => this.navigateToWorldObject(object),
+      onClearWorldSelection: () => this.clearWorldSelection(),
       onToggleCameraMode: () => this.requestCameraToggle()
     });
     this.ui.setChunkBoundsMode(this.worldViewSettings.chunkBoundsMode);
 
     this.ui.setInteractionGate();
     this.updateCameraProjection();
+    this.targetingOverlay.resize();
     this.resetInitialCamera();
     this.animate();
   }
@@ -341,7 +365,7 @@ export class GameManager {
     this.boundEvents = {
       pointerdown: (event) => this.onPointerDown(event),
       pointermove: (event) => this.onPointerMove(event),
-      pointerup: (event) => this.stopCameraDrag(event),
+      pointerup: (event) => this.onPointerUp(event),
       pointercancel: (event) => this.stopCameraDrag(event),
       wheel: (event) => this.onWheel(event),
       keydown: (event) => this.onKeyDown(event),
@@ -1656,6 +1680,7 @@ export class GameManager {
 
     this.updateTargetMarker(dt);
     this.updateHud();
+    this.updateTargetingOverlay();
     this.renderer.render(this.scene, this.camera);
     this.animationFrameId = requestAnimationFrame(() => this.animate());
   }
@@ -1664,11 +1689,13 @@ export class GameManager {
     if (this.state.phase !== "running") return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
+    this.startSelectionPointer(event, this.cameraControl.pointers.size === 0);
     this.cameraControl.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     this.renderer.domElement.setPointerCapture(event.pointerId);
 
     if (event.pointerType === "touch" && this.isFollowCameraMode()) {
       if (this.cameraControl.pointers.size >= 2) {
+        this.cancelSelectionPointer();
         this.stopTouchDpad();
         this.cameraControl.dragging = false;
         this.cameraControl.pointerId = null;
@@ -1682,6 +1709,7 @@ export class GameManager {
     }
 
     if (this.cameraControl.pointers.size >= 2) {
+      this.cancelSelectionPointer();
       this.enterOrbitCameraMode();
       this.cameraControl.dragging = false;
       this.cameraControl.pointerId = null;
@@ -1698,6 +1726,8 @@ export class GameManager {
   }
 
   onPointerMove(event) {
+    this.updateSelectionPointer(event);
+
     if (this.cameraControl.pointers.has(event.pointerId)) {
       this.cameraControl.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     }
@@ -1752,6 +1782,52 @@ export class GameManager {
     this.quaternions.cameraOrbitTarget.premultiply(this.quaternions.cameraOrbitPitchDelta).normalize();
   }
 
+  onPointerUp(event) {
+    const shouldSelect = this.shouldSelectFromPointer(event);
+    this.stopCameraDrag(event);
+    if (shouldSelect) this.selectWorldObjectFromPointer(event.clientX, event.clientY);
+    this.resetSelectionPointer(event.pointerId);
+  }
+
+  startSelectionPointer(event, maySelect) {
+    this.selectionPointer.pointerId = event.pointerId;
+    this.selectionPointer.startX = event.clientX;
+    this.selectionPointer.startY = event.clientY;
+    this.selectionPointer.maySelect = maySelect;
+    this.selectionPointer.moved = false;
+  }
+
+  updateSelectionPointer(event) {
+    if (this.selectionPointer.pointerId !== event.pointerId) return;
+    const distance = Math.hypot(
+      event.clientX - this.selectionPointer.startX,
+      event.clientY - this.selectionPointer.startY
+    );
+    if (distance > 8) this.selectionPointer.moved = true;
+  }
+
+  cancelSelectionPointer() {
+    this.selectionPointer.maySelect = false;
+    this.selectionPointer.moved = true;
+  }
+
+  shouldSelectFromPointer(event) {
+    if (this.state.phase !== "running") return false;
+    if (this.selectionPointer.pointerId !== event.pointerId) return false;
+    if (!this.selectionPointer.maySelect || this.selectionPointer.moved) return false;
+    if (this.cameraControl.pinching || this.cameraControl.pointers.size > 1) return false;
+    return true;
+  }
+
+  resetSelectionPointer(pointerId) {
+    if (this.selectionPointer.pointerId !== pointerId) return;
+    this.selectionPointer.pointerId = null;
+    this.selectionPointer.startX = 0;
+    this.selectionPointer.startY = 0;
+    this.selectionPointer.maySelect = false;
+    this.selectionPointer.moved = false;
+  }
+
   stopCameraDrag(event) {
     this.cameraControl.pointers.delete(event.pointerId);
     if (this.cameraControl.pointers.size < 2) {
@@ -1771,6 +1847,259 @@ export class GameManager {
     if (this.renderer.domElement.hasPointerCapture(event.pointerId)) {
       this.renderer.domElement.releasePointerCapture(event.pointerId);
     }
+
+    if (event.type === "pointercancel") this.resetSelectionPointer(event.pointerId);
+  }
+
+  selectWorldObjectFromPointer(clientX, clientY) {
+    const objectsGroup = this.worldMapManager?.objectsGroup;
+    if (!objectsGroup || objectsGroup.children.length === 0) return;
+
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointerNdc.set(
+      ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+      -(((clientY - rect.top) / Math.max(1, rect.height)) * 2 - 1)
+    );
+    this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+
+    const hit = this.raycaster.intersectObjects(objectsGroup.children, true)
+      .map((intersection) => this.getWorldObjectRoot(intersection.object))
+      .find(Boolean) || this.getWorldObjectFromScreenPoint(clientX, clientY);
+    if (!hit) return;
+
+    const selection = this.createWorldSelection(hit);
+    if (!selection) return;
+
+    this.selectedWorldObject = selection;
+    this.ui.setSelectedWorldObjectName(selection.name, selection);
+    this.updateTargetingOverlay();
+  }
+
+  getWorldObjectRoot(object) {
+    const objectsGroup = this.worldMapManager?.objectsGroup;
+    let cursor = object;
+    while (cursor && cursor !== objectsGroup) {
+      if (cursor.userData?.kind === "resource" || cursor.userData?.kind === "building") return cursor;
+      cursor = cursor.parent;
+    }
+    return null;
+  }
+
+  getWorldObjectFromScreenPoint(clientX, clientY) {
+    const objectsGroup = this.worldMapManager?.objectsGroup;
+    if (!objectsGroup) return null;
+
+    const hits = [];
+    for (const object of objectsGroup.children) {
+      if (object.userData?.kind !== "resource" && object.userData?.kind !== "building") continue;
+      const bounds = this.getObjectSelectionBounds(object);
+      const projection = this.projectWorldSelectionCenter(bounds.center);
+      if (!projection) continue;
+
+      const frame = this.targetingOverlay.calculateSquareFrame({
+        screenCenter: projection.screenCenter,
+        depth: projection.depth,
+        focal: projection.focal,
+        radius: bounds.radius,
+        forceMinimumSide: false
+      });
+      if (!frame) continue;
+
+      const pad = 8;
+      const inside = clientX >= frame.minX - pad &&
+        clientX <= frame.maxX + pad &&
+        clientY >= frame.minY - pad &&
+        clientY <= frame.maxY + pad;
+      if (!inside) continue;
+
+      hits.push({
+        object,
+        distance: Math.hypot(clientX - frame.cx, clientY - frame.cy),
+        depth: projection.depth
+      });
+    }
+
+    hits.sort((a, b) => a.distance - b.distance || a.depth - b.depth);
+    return hits[0]?.object || null;
+  }
+
+  createWorldSelection(object) {
+    const data = object.userData || {};
+    const kind = data.kind;
+    const id = data.id;
+    if (!id || (kind !== "resource" && kind !== "building")) return null;
+
+    const type = kind === "building"
+      ? data.building_id || data.type || "unknown"
+      : data.type || data.resource_id || "unknown";
+    const bounds = this.getObjectSelectionBounds(object);
+
+    return {
+      id,
+      kind,
+      type,
+      name: this.getWorldSelectionName(kind, type),
+      iconUrl: this.getWorldSelectionIconUrl(kind, type),
+      renderCenter: bounds.center.clone(),
+      savedCenter: bounds.center.clone(),
+      savedRadius: bounds.radius,
+      startedAt: performance.now(),
+      wasVisible: true,
+      frameTransitionUntil: 0
+    };
+  }
+
+  getObjectSelectionBounds(object) {
+    const cached = object.userData?.selectionLocalBounds;
+    if (cached) {
+      object.getWorldPosition(this.selectionBoundsCenter);
+      object.getWorldScale(this.selectionWorldScale);
+      return {
+        center: this.selectionBoundsCenter,
+        radius: Math.max(cached.radius * maxAbsComponent(this.selectionWorldScale), 0.001)
+      };
+    }
+
+    object.updateWorldMatrix(true, true);
+    this.selectionRootInverse.copy(object.matrixWorld).invert();
+    this.selectionBounds.makeEmpty();
+
+    object.traverse((child) => {
+      if (!child.isMesh || !child.geometry) return;
+      if (!child.geometry.boundingBox) child.geometry.computeBoundingBox();
+      if (!child.geometry.boundingBox) return;
+
+      this.selectionChildMatrix.multiplyMatrices(this.selectionRootInverse, child.matrixWorld);
+      this.selectionChildBounds.copy(child.geometry.boundingBox).applyMatrix4(this.selectionChildMatrix);
+      this.selectionBounds.union(this.selectionChildBounds);
+    });
+
+    if (!this.selectionBounds.isEmpty()) {
+      this.selectionBounds.getSize(this.selectionBoundsSize);
+      const localRadius = Math.max(this.selectionBoundsSize.length() / 2, 0.001);
+      object.userData.selectionLocalBounds = {
+        radius: localRadius
+      };
+
+      object.getWorldPosition(this.selectionBoundsCenter);
+      object.getWorldScale(this.selectionWorldScale);
+      return {
+        center: this.selectionBoundsCenter,
+        radius: Math.max(localRadius * maxAbsComponent(this.selectionWorldScale), 0.001)
+      };
+    }
+
+    object.getWorldPosition(this.selectionBoundsCenter);
+    return {
+      center: this.selectionBoundsCenter,
+      radius: this.getWorldSelectionFallbackRadius(object.userData?.kind, object.userData?.building_id || object.userData?.type)
+    };
+  }
+
+  getWorldSelectionName(kind, type) {
+    if (kind === "building") {
+      const definition = BUILDING_DEFINITIONS[type];
+      return this.i18n.resolveDefinitionText(definition, "name", this.formatObjectName(type));
+    }
+
+    const definition = RESOURCE_DEFINITIONS[type];
+    const producedItem = ITEM_DEFINITIONS[definition?.produces_item_id];
+    return this.i18n.resolveDefinitionText(producedItem || definition, "name", this.formatObjectName(type));
+  }
+
+  getWorldSelectionIconUrl(kind, type) {
+    if (kind !== "building") return new URL("../rss/svg/ind_loot.svg", import.meta.url).href;
+
+    const size = BUILDING_DEFINITIONS[type]?.size;
+    if (size === "EX") return new URL("../rss/svg/ind_ex.svg", import.meta.url).href;
+    if (size === "L") return new URL("../rss/svg/ind_large.svg", import.meta.url).href;
+    if (size === "S") return new URL("../rss/svg/ind_small.svg", import.meta.url).href;
+    return new URL("../rss/svg/ind_medium.svg", import.meta.url).href;
+  }
+
+  getWorldSelectionFallbackRadius(kind, type) {
+    const definition = kind === "building"
+      ? BUILDING_DEFINITIONS[type]
+      : RESOURCE_DEFINITIONS[type];
+    const visualScale = Number(definition?.visual?.scale) || 8;
+    return Math.max(0.001, visualScale * 1.6);
+  }
+
+  clearWorldSelection() {
+    this.selectedWorldObject = null;
+    this.ui.clearSelectedWorldObjectName();
+    this.targetingOverlay.render(null);
+  }
+
+  updateTargetingOverlay() {
+    if (!this.selectedWorldObject) {
+      this.targetingOverlay.render(null);
+      return;
+    }
+
+    const target = this.createTargetingOverlayTarget();
+    this.targetingOverlay.render(target, performance.now());
+  }
+
+  createTargetingOverlayTarget() {
+    const selection = this.selectedWorldObject;
+    const visibleObject = this.findVisibleWorldObject(selection.kind, selection.id);
+    const visible = !!visibleObject;
+    let center = selection.savedCenter;
+    let radius = selection.savedRadius;
+    let forceMinimumSide = !visible;
+
+    if (visibleObject) {
+      const bounds = this.getObjectSelectionBounds(visibleObject);
+      center = bounds.center.clone();
+      radius = bounds.radius;
+      selection.savedCenter.copy(center);
+      selection.savedRadius = radius;
+      if (!selection.wasVisible) {
+        selection.frameTransitionUntil = performance.now() + 360;
+      }
+    }
+
+    selection.wasVisible = visible;
+    const projection = this.projectWorldSelectionCenter(center);
+    if (!projection) return null;
+
+    return {
+      key: `${selection.kind}:${selection.id}`,
+      screenCenter: projection.screenCenter,
+      depth: projection.depth,
+      focal: projection.focal,
+      radius,
+      forceMinimumSide,
+      startedAt: selection.startedAt,
+      iconUrl: selection.iconUrl,
+      smoothFrame: performance.now() < selection.frameTransitionUntil
+    };
+  }
+
+  findVisibleWorldObject(kind, id) {
+    const objectsGroup = this.worldMapManager?.objectsGroup;
+    if (!objectsGroup) return null;
+    return objectsGroup.children.find((child) => child.userData?.kind === kind && child.userData?.id === id) || null;
+  }
+
+  projectWorldSelectionCenter(center) {
+    this.camera.getWorldDirection(this.selectionCameraDirection);
+    const depth = this.selectionScratch.copy(center).sub(this.camera.position).dot(this.selectionCameraDirection);
+    if (depth <= this.camera.near) return null;
+
+    this.selectionScratchB.copy(center).project(this.camera);
+    if (!Number.isFinite(this.selectionScratchB.x) || !Number.isFinite(this.selectionScratchB.y)) return null;
+
+    const height = Math.max(1, window.innerHeight);
+    return {
+      screenCenter: {
+        x: (this.selectionScratchB.x * 0.5 + 0.5) * window.innerWidth,
+        y: (-this.selectionScratchB.y * 0.5 + 0.5) * window.innerHeight
+      },
+      depth,
+      focal: height / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2))
+    };
   }
 
   isFollowCameraMode() {
@@ -1940,6 +2269,7 @@ export class GameManager {
   onResize() {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.updateCameraProjection();
+    this.targetingOverlay.resize();
   }
 
   dispose() {
@@ -1964,10 +2294,15 @@ export class GameManager {
     }
 
     this.ui.dispose();
+    this.targetingOverlay.dispose();
     this.worldMapManager.dispose();
     this.soundManager.dispose();
     this.resourceManager.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
+}
+
+function maxAbsComponent(vector) {
+  return Math.max(Math.abs(vector.x), Math.abs(vector.y), Math.abs(vector.z));
 }

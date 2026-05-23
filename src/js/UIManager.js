@@ -23,6 +23,7 @@ export class UIManager {
     this.objectListReturnFocus = null;
     this.cameraIconSwapTimer = 0;
     this.cameraIconSwapToken = 0;
+    this.selectedWorldObjectSummary = null;
     this.selectedObjectListTargetId = null;
     this.renderedObjectList = [];
     this.objectListPayload = { buildings: [], resources: [] };
@@ -34,7 +35,9 @@ export class UIManager {
     this.onKeyBindingsChange = null;
     this.onRequestObjectList = null;
     this.onNavigateToWorldObject = null;
+    this.onClearWorldSelection = null;
     this.boundBindingKeyDown = (event) => this.onBindingKeyDown(event);
+    this.boundSelectionSummaryGlobalPointerDown = (event) => this.onSelectionSummaryGlobalPointerDown(event);
     this.elements = {
       startScene: this.getElement("#startScene"),
       startGateScene: this.getElement("#startGateScene"),
@@ -84,6 +87,10 @@ export class UIManager {
       positionZValue: this.getElement("#positionZValue"),
       touchDpad: this.getElement("#touchDpad"),
       touchDpadKnob: this.getElement("#touchDpadKnob"),
+      targetingCanvas: this.getElement("#targetingCanvas"),
+      selectionSummary: this.getElement("#selectionSummary"),
+      selectionName: this.getElement("#selectionName"),
+      selectionClearButton: this.getElement("#selectionClearButton"),
       readout: this.getElement(".readout"),
       targetPopupBackdrop: this.getElement("#targetPopupBackdrop"),
       targetForm: this.getElement("#targetForm"),
@@ -162,12 +169,14 @@ export class UIManager {
     onNavRestoreCapChange,
     onRequestObjectList,
     onNavigateToWorldObject,
+    onClearWorldSelection,
     onToggleCameraMode
   }) {
     this.onSetSpeed = onSetSpeed;
     this.onKeyBindingsChange = onKeyBindingsChange;
     this.onRequestObjectList = typeof onRequestObjectList === "function" ? onRequestObjectList : null;
     this.onNavigateToWorldObject = typeof onNavigateToWorldObject === "function" ? onNavigateToWorldObject : null;
+    this.onClearWorldSelection = typeof onClearWorldSelection === "function" ? onClearWorldSelection : null;
 
     this.elements.startGateScene.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
@@ -316,6 +325,27 @@ export class UIManager {
       event.stopPropagation();
       if (typeof onToggleCameraMode === "function") onToggleCameraMode();
     });
+    this.elements.selectionSummary.addEventListener("click", async (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("#selectionClearButton")) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      await this.openSelectionSummaryBubble();
+    });
+    this.elements.selectionSummary.addEventListener("keydown", async (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (event.target === this.elements.selectionClearButton) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      await this.openSelectionSummaryBubble();
+    });
+    this.elements.selectionClearButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (this.onClearWorldSelection) this.onClearWorldSelection();
+    });
     this.elements.objectListCloseButton.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -394,6 +424,7 @@ export class UIManager {
     this.elements.speedControl.addEventListener("pointercancel", (event) => this.onSpeedPointerEnd(event));
     this.elements.speedGauge.addEventListener("keydown", (event) => this.onSpeedKeyDown(event));
     this.elements.errorToast.addEventListener("click", () => this.dismissErrorToast());
+    document.addEventListener("pointerdown", this.boundSelectionSummaryGlobalPointerDown, true);
   }
 
   openTargetPopup() {
@@ -447,10 +478,15 @@ export class UIManager {
     this.elements.bottomNavMenuButton.setAttribute("aria-label", "Open menu");
   }
 
-  async openObjectList() {
-    this.objectListReturnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
-      ? document.activeElement
-      : this.elements.bottomNavScanButton;
+  async openObjectList({ revealObject = null, returnFocus = null } = {}) {
+    const revealCategory = this.getObjectListCategoryForKind(revealObject?.kind);
+    if (revealCategory) this.objectListCategory = revealCategory;
+
+    this.objectListReturnFocus = returnFocus instanceof HTMLElement
+      ? returnFocus
+      : document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+        ? document.activeElement
+        : this.elements.bottomNavScanButton;
     this.selectedObjectListTargetId = null;
     this.elements.objectListContent.replaceChildren();
     this.renderObjectListSortControls();
@@ -467,10 +503,18 @@ export class UIManager {
       this.showErrorToast("scanner unavailable");
     }
 
+    const revealed = revealObject?.id
+      ? this.revealObjectListBubble(revealObject)
+      : null;
+    if (revealObject?.id && !revealed) {
+      this.showErrorToast("selected object unavailable");
+    }
+
+    const focusTarget = revealed?.querySelector("button") || this.elements.objectListCloseButton;
     try {
-      this.elements.objectListCloseButton.focus({ preventScroll: true });
+      focusTarget.focus({ preventScroll: true });
     } catch {
-      this.elements.objectListCloseButton.focus();
+      focusTarget.focus();
     }
   }
 
@@ -619,9 +663,9 @@ export class UIManager {
     this.selectObjectListItem(row.dataset.objectId);
   }
 
-  selectObjectListItem(objectId) {
+  selectObjectListItem(objectId, { scroll = false } = {}) {
     const object = this.findRenderedObject(objectId);
-    if (!object) return;
+    if (!object) return null;
 
     this.selectedObjectListTargetId = objectId;
     this.elements.objectListContent.querySelectorAll(".object-row").forEach((row) => {
@@ -634,11 +678,16 @@ export class UIManager {
     const row = Array.from(this.elements.objectListContent.querySelectorAll("[data-object-id]"))
       .find((element) => element.dataset.objectId === objectId);
     const wrapper = row?.parentElement;
-    if (!wrapper) return;
+    if (!wrapper) return null;
+
+    if (scroll) {
+      row.scrollIntoView({ block: "center", inline: "nearest" });
+    }
 
     const bubble = this.createObjectBubble(object);
     this.elements.objectListPanel.append(bubble);
     this.positionObjectBubble(bubble, row);
+    return bubble;
   }
 
   createObjectBubble(object) {
@@ -664,7 +713,14 @@ export class UIManager {
 
   openObjectDetailPopup(object) {
     this.closeObjectDetailPopup();
+    this.elements.objectListPanel.querySelectorAll(".object-detail-bubble").forEach((bubble) => bubble.remove());
 
+    const popup = this.createObjectDetailPopupElement(object, () => this.closeObjectDetailPopup());
+    this.elements.objectListPanel.append(popup);
+    this.focusObjectDetailPopup(popup);
+  }
+
+  createObjectDetailPopupElement(object, onClose) {
     const popup = document.createElement("section");
     popup.className = "object-detail-popup";
     popup.dataset.objectDetailPopupId = object.id;
@@ -686,7 +742,7 @@ export class UIManager {
     close.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      this.closeObjectDetailPopup();
+      onClose();
     });
 
     header.append(title, close);
@@ -719,7 +775,12 @@ export class UIManager {
     nav.textContent = this.t("ui.scanner.autoNavigate", "Auto Navigate");
 
     popup.append(header, ...lines, nav);
-    this.elements.objectListPanel.append(popup);
+    return popup;
+  }
+
+  focusObjectDetailPopup(popup) {
+    const close = popup.querySelector(".object-detail-popup-close");
+    if (!(close instanceof HTMLElement)) return;
     try {
       close.focus({ preventScroll: true });
     } catch {
@@ -729,6 +790,130 @@ export class UIManager {
 
   closeObjectDetailPopup() {
     this.elements.objectListPanel.querySelectorAll(".object-detail-popup").forEach((popup) => popup.remove());
+  }
+
+  async openSelectionSummaryBubble() {
+    if (!this.selectedWorldObjectSummary?.id) return;
+
+    const object = await this.getSelectedWorldObjectSummaryDetail();
+    if (!object) {
+      this.showErrorToast("selected object unavailable");
+      return;
+    }
+
+    this.closeSelectionSummaryBubble();
+    const bubble = this.createObjectBubble(object);
+    bubble.classList.add("selection-detail-bubble");
+    bubble.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const detailButton = target?.closest("[data-object-detail-id]");
+      if (detailButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.openStandaloneObjectDetailPopup(object);
+        return;
+      }
+
+      const navButton = target?.closest("[data-object-nav-id]");
+      if (navButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (this.onNavigateToWorldObject) this.onNavigateToWorldObject(object);
+        this.closeSelectionSummaryBubble();
+      }
+    });
+
+    document.body.append(bubble);
+    this.positionSelectionSummaryBubble(bubble);
+    const focusTarget = bubble.querySelector("button");
+    if (focusTarget instanceof HTMLElement) {
+      try {
+        focusTarget.focus({ preventScroll: true });
+      } catch {
+        focusTarget.focus();
+      }
+    }
+  }
+
+  async getSelectedWorldObjectSummaryDetail() {
+    const selected = this.selectedWorldObjectSummary;
+    if (!selected?.id) return null;
+
+    try {
+      const payload = this.onRequestObjectList ? await this.onRequestObjectList() : null;
+      return this.findObjectInPayload(payload, selected);
+    } catch {
+      return null;
+    }
+  }
+
+  findObjectInPayload(payload, objectRef) {
+    const category = this.getObjectListCategoryForKind(objectRef?.kind);
+    if (!category) return null;
+    return (payload?.[category] || []).find((item) => item.id === objectRef.id) || null;
+  }
+
+  positionSelectionSummaryBubble(bubble) {
+    requestAnimationFrame(() => {
+      if (!bubble.isConnected) return;
+
+      bubble.style.left = "0";
+      bubble.style.top = "0";
+      const summaryRect = this.elements.selectionSummary.getBoundingClientRect();
+      const bubbleRect = bubble.getBoundingClientRect();
+      const margin = 10;
+      const gap = 8;
+      const belowTop = summaryRect.bottom + gap;
+      const aboveTop = summaryRect.top - bubbleRect.height - gap;
+      const fitsBelow = belowTop + bubbleRect.height <= window.innerHeight - margin;
+      const top = Math.max(
+        margin,
+        Math.min(fitsBelow ? belowTop : aboveTop, window.innerHeight - bubbleRect.height - margin)
+      );
+      const left = Math.max(
+        margin,
+        Math.min(summaryRect.right - bubbleRect.width, window.innerWidth - bubbleRect.width - margin)
+      );
+
+      bubble.style.left = `${left}px`;
+      bubble.style.top = `${top}px`;
+    });
+  }
+
+  openStandaloneObjectDetailPopup(object) {
+    this.closeSelectionSummaryBubble();
+    this.closeStandaloneObjectDetailPopup();
+
+    const popup = this.createObjectDetailPopupElement(object, () => this.closeStandaloneObjectDetailPopup());
+    popup.classList.add("standalone");
+    popup.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const navButton = target?.closest("[data-object-nav-id]");
+      if (!navButton) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (this.onNavigateToWorldObject) this.onNavigateToWorldObject(object);
+      this.closeStandaloneObjectDetailPopup();
+    });
+
+    document.body.append(popup);
+    this.focusObjectDetailPopup(popup);
+  }
+
+  closeSelectionSummaryBubble() {
+    document.querySelectorAll(".object-detail-bubble.selection-detail-bubble").forEach((bubble) => bubble.remove());
+  }
+
+  closeStandaloneObjectDetailPopup() {
+    document.querySelectorAll(".object-detail-popup.standalone").forEach((popup) => popup.remove());
+  }
+
+  onSelectionSummaryGlobalPointerDown(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    if (target.closest(".selection-summary, .selection-detail-bubble, .object-detail-popup.standalone")) return;
+    this.closeSelectionSummaryBubble();
   }
 
   onObjectListGlobalClick(event) {
@@ -799,6 +984,22 @@ export class UIManager {
 
   findRenderedObject(objectId) {
     return this.renderedObjectList?.find((item) => item.id === objectId) || null;
+  }
+
+  getObjectListCategoryForKind(kind) {
+    if (kind === "building") return "buildings";
+    if (kind === "resource") return "resources";
+    return null;
+  }
+
+  revealObjectListBubble(objectRef) {
+    const category = this.getObjectListCategoryForKind(objectRef?.kind);
+    if (category && this.objectListCategory !== category) {
+      this.objectListCategory = category;
+      this.renderObjectListCategory();
+    }
+
+    return this.selectObjectListItem(objectRef?.id, { scroll: true });
   }
 
   setObjectListCategory(category) {
@@ -1297,6 +1498,27 @@ export class UIManager {
     }, 120);
   }
 
+  setSelectedWorldObjectName(name, objectRef = null) {
+    this.selectedWorldObjectSummary = objectRef && objectRef.id
+      ? {
+          id: objectRef.id,
+          kind: objectRef.kind
+        }
+      : null;
+    this.elements.selectionName.textContent = name || "UNKNOWN";
+    this.elements.selectionSummary.setAttribute("aria-label", `Open scanner detail for ${name || "selected object"}`);
+    this.elements.selectionSummary.hidden = false;
+  }
+
+  clearSelectedWorldObjectName() {
+    this.selectedWorldObjectSummary = null;
+    this.elements.selectionSummary.hidden = true;
+    this.elements.selectionSummary.removeAttribute("aria-label");
+    this.elements.selectionName.textContent = "";
+    this.closeSelectionSummaryBubble();
+    this.closeStandaloneObjectDetailPopup();
+  }
+
   hideStartScene() {
     this.elements.startScene.classList.add("hidden");
   }
@@ -1516,5 +1738,8 @@ export class UIManager {
     window.clearTimeout(this.cameraIconSwapTimer);
     this.cancelLoadingProgressAnimation();
     window.removeEventListener("keydown", this.boundBindingKeyDown, true);
+    document.removeEventListener("pointerdown", this.boundSelectionSummaryGlobalPointerDown, true);
+    this.closeSelectionSummaryBubble();
+    this.closeStandaloneObjectDetailPopup();
   }
 }

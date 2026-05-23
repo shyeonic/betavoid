@@ -760,6 +760,77 @@
       --svg-icon-source: url("./rss/svg/ui_arrow_right_01.svg");
     }
 
+    .targeting-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 7;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+    }
+
+    .selection-summary {
+      position: fixed;
+      z-index: 11;
+      right: 2vh;
+      top: 2vh;
+      min-width: 18vh;
+      max-width: min(34vh, calc(100vw - 4vh));
+      min-height: 4.4vh;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.2vh;
+      padding: 0.7vh 0.7vh 0.7vh 1.3vh;
+      border: 0.12vh solid rgba(43, 98, 140, 0.26);
+      border-radius: 1.1vh;
+      background: rgba(246, 251, 255, 0.82);
+      backdrop-filter: blur(2.5vh);
+      box-shadow: 0 0.4vh 1.6vh rgba(66, 139, 190, 0.18);
+      color: var(--text);
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    .selection-summary[hidden] {
+      display: none;
+    }
+
+    .selection-summary:hover,
+    .selection-summary:focus-visible {
+      border-color: rgba(43, 98, 140, 0.44);
+      background: rgba(246, 251, 255, 0.94);
+    }
+
+    .selection-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 1.45vh;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .selection-clear {
+      flex: 0 0 3vh;
+      width: 3vh;
+      height: 3vh;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      color: var(--svg-default-color);
+      cursor: pointer;
+    }
+
+    .selection-clear .svg-icon {
+      width: 2.2vh;
+      height: 2.2vh;
+    }
+
     .bottom-nav {
       position: fixed;
       z-index: 9;
@@ -771,13 +842,14 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      pointer-events: auto;
+      pointer-events: none;
     }
 
     .bottom-nav-slot {
       position: relative;
       display: flex;
       align-items: center;
+      pointer-events: auto;
     }
 
     .bottom-nav-slot-left {
@@ -1236,6 +1308,11 @@
       box-shadow: 0 1.1vh 3.2vh rgba(66, 139, 190, 0.2);
     }
 
+    .object-detail-bubble.selection-detail-bubble {
+      position: fixed;
+      z-index: 15;
+    }
+
     .object-bubble-button {
       height: 3vh;
       font-size: 1.2vh;
@@ -1283,6 +1360,12 @@
       border-radius: 1vh;
       background: rgba(246, 251, 255, 0.98);
       box-shadow: 0 1.8vh 5vh rgba(66, 139, 190, 0.26);
+    }
+
+    .object-detail-popup.standalone {
+      position: fixed;
+      z-index: 18;
+      max-height: calc(100dvh - 3.2vh);
     }
 
     .object-detail-popup-header {
@@ -1638,6 +1721,16 @@
     <div class="touch-dpad" id="touchDpad" aria-hidden="true" hidden>
       <div class="touch-dpad-ring"></div>
       <div class="touch-dpad-knob" id="touchDpadKnob"></div>
+    </div>
+
+    <canvas class="targeting-canvas" id="targetingCanvas" aria-hidden="true"></canvas>
+
+    <div class="selection-summary" id="selectionSummary" tabindex="0" hidden>
+      <div class="selection-name" id="selectionName"></div>
+      <button class="selection-clear" id="selectionClearButton" type="button" aria-label="Cancel selection"
+        title="Cancel selection">
+        <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
+      </button>
     </div>
 
     <div class="target-popup-backdrop" id="targetPopupBackdrop" hidden></div>
