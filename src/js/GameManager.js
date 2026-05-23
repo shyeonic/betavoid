@@ -2106,7 +2106,7 @@ export class GameManager {
     }
 
     selection.wasVisible = visible;
-    const projection = this.projectWorldSelectionCenter(center);
+    const projection = this.projectWorldSelectionCenter(center, { allowBehind: true });
     if (!projection) return null;
 
     return {
@@ -2115,10 +2115,11 @@ export class GameManager {
       depth: projection.depth,
       focal: projection.focal,
       radius,
-      forceMinimumSide,
+      forceMinimumSide: forceMinimumSide || projection.behind,
       startedAt: selection.startedAt,
       iconUrl: selection.iconUrl,
-      smoothFrame: performance.now() < selection.frameTransitionUntil
+      smoothFrame: performance.now() < selection.frameTransitionUntil,
+      iconOnly: projection.behind
     };
   }
 
@@ -2128,22 +2129,49 @@ export class GameManager {
     return objectsGroup.children.find((child) => child.userData?.kind === kind && child.userData?.id === id) || null;
   }
 
-  projectWorldSelectionCenter(center) {
+  projectWorldSelectionCenter(center, { allowBehind = false } = {}) {
     this.camera.getWorldDirection(this.selectionCameraDirection);
     const depth = this.selectionScratch.copy(center).sub(this.camera.position).dot(this.selectionCameraDirection);
-    if (depth <= this.camera.near) return null;
+    const height = Math.max(1, window.innerHeight);
+    const focal = height / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2));
+    if (depth <= this.camera.near) {
+      if (!allowBehind) return null;
+      return {
+        screenCenter: this.getBehindScreenCenter(center),
+        depth: this.camera.near,
+        focal,
+        behind: true
+      };
+    }
 
     this.selectionScratchB.copy(center).project(this.camera);
     if (!Number.isFinite(this.selectionScratchB.x) || !Number.isFinite(this.selectionScratchB.y)) return null;
 
-    const height = Math.max(1, window.innerHeight);
     return {
       screenCenter: {
         x: (this.selectionScratchB.x * 0.5 + 0.5) * window.innerWidth,
         y: (-this.selectionScratchB.y * 0.5 + 0.5) * window.innerHeight
       },
       depth,
-      focal: height / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2))
+      focal,
+      behind: false
+    };
+  }
+
+  getBehindScreenCenter(center) {
+    this.selectionScratchB.copy(center).applyMatrix4(this.camera.matrixWorldInverse);
+    let dx = this.selectionScratchB.x;
+    let dy = -this.selectionScratchB.y;
+    if (Math.abs(dx) < 0.0001 && Math.abs(dy) < 0.0001) {
+      dy = 1;
+    }
+
+    const halfWidth = Math.max(1, window.innerWidth * 0.5);
+    const halfHeight = Math.max(1, window.innerHeight * 0.5);
+    const scale = Math.max(Math.abs(dx) / halfWidth, Math.abs(dy) / halfHeight, 0.0001);
+    return {
+      x: halfWidth + dx / scale,
+      y: halfHeight + dy / scale
     };
   }
 

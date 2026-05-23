@@ -3,6 +3,7 @@ const TARGET_ICON_SCALE = 0.5;
 const TARGET_ICON_TRANSITION_DURATION = 520;
 const TARGET_ICON_INTRO_DURATION = 520;
 const TARGET_ICON_INTRO_RISE_UNIT = 1.5;
+const TARGET_ICON_EDGE_PADDING = 8;
 
 export class TargetingOverlay {
   constructor({ canvas }) {
@@ -53,6 +54,10 @@ export class TargetingOverlay {
 
     const baseFrame = this.calculateSquareFrame(target);
     if (!baseFrame || baseFrame.side < 10) return null;
+    if (target.iconOnly) {
+      this.drawTypeIcon(target, baseFrame, now);
+      return baseFrame;
+    }
 
     const frame = this.resolveDisplayFrame(target, baseFrame);
     this.drawLockFrame(target, frame, now);
@@ -144,8 +149,8 @@ export class TargetingOverlay {
     this.updateIconTransition(target, frame, metrics, now);
     const anchor = this.getIconAnchor(frame, metrics, size, now);
     const intro = this.getIconIntro(target, metrics, now);
-    const x = anchor.x - size * 0.5;
-    const y = anchor.y - size * 0.5 + intro.riseOffset;
+    const x = this.clampIconX(anchor.x - size * 0.5, size);
+    const y = this.clampIconY(anchor.y - size * 0.5 + intro.riseOffset, size);
     const ctx = this.ctx;
 
     ctx.save();
@@ -155,6 +160,16 @@ export class TargetingOverlay {
       ctx.drawImage(image, x, y, size, size);
     }
     ctx.restore();
+  }
+
+  clampIconX(x, size) {
+    const maxX = Math.max(TARGET_ICON_EDGE_PADDING, this.width - size - TARGET_ICON_EDGE_PADDING);
+    return clamp(x, TARGET_ICON_EDGE_PADDING, maxX);
+  }
+
+  clampIconY(y, size) {
+    const maxY = Math.max(TARGET_ICON_EDGE_PADDING, this.height - size - TARGET_ICON_EDGE_PADDING);
+    return clamp(y, TARGET_ICON_EDGE_PADDING, maxY);
   }
 
   updateIconTransition(target, frame, metrics, now) {
