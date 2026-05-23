@@ -630,11 +630,20 @@ export class UIManager {
     const main = document.createElement("div");
     main.className = "object-row-main";
 
+    const icon = document.createElement("img");
+    icon.className = "object-row-icon";
+    const iconUrl = item.iconUrl || (category === "buildings" ? "./rss/svg/ind_medium.svg" : "./rss/svg/ind_loot.svg");
+    icon.src = iconUrl;
+    icon.alt = "";
+    icon.decoding = "async";
+    icon.setAttribute("aria-hidden", "true");
+
     const name = document.createElement("div");
     name.className = "object-row-name";
     name.textContent = category === "buildings" ? item.name : item.typeLabel;
+    name.title = name.textContent;
 
-    main.append(name);
+    main.append(icon, name);
 
     const coordinates = document.createElement("div");
     coordinates.className = "object-row-coordinates";

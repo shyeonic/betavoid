@@ -1619,6 +1619,7 @@ export class GameManager {
         type,
         name: this.formatObjectName(label),
         typeLabel: this.formatObjectName(type),
+        iconUrl: this.getWorldSelectionIconUrl(kind, type),
         currentAmount: object.current_amount ?? null,
         totalCapacity: object.total_capacity ?? null,
         amountLabel: object.current_amount != null && object.total_capacity != null
