@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Camera-Parallel 2D Lock-on Selection Frame</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --hud: rgba(92, 245, 255, 0.95);
+      --hud-dim: rgba(92, 245, 255, 0.22);
+      --panel: rgba(5, 16, 28, 0.62);
+      --line: rgba(140, 230, 255, 0.25);
+      --text: rgba(232, 252, 255, 0.92);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 50% 40%, #13243c 0%, #06111f 45%, #02060d 100%);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: grab;
+    }
+
+    canvas.dragging { cursor: grabbing; }
+    canvas.pickable { cursor: crosshair; }
+
+    .hud {
+      position: fixed;
+      left: 20px;
+      top: 20px;
+      width: min(420px, calc(100vw - 40px));
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(6, 18, 32, 0.74), rgba(5, 12, 21, 0.45));
+      backdrop-filter: blur(12px);
+      border-radius: 18px;
+      box-shadow: 0 20px 50px rgba(0,0,0,.34), inset 0 0 30px rgba(64, 214, 255, .04);
+      color: var(--text);
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .hud strong {
+      display: block;
+      margin-bottom: 8px;
+      color: rgba(126, 245, 255, .98);
+      letter-spacing: .08em;
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+
+    .hud p {
+      margin: 0;
+      line-height: 1.55;
+      font-size: 13px;
+      color: rgba(223, 247, 255, .78);
+    }
+
+    .hud kbd {
+      display: inline-block;
+      padding: 1px 6px 2px;
+      border: 1px solid rgba(130, 230, 255, .25);
+      border-radius: 7px;
+      background: rgba(110, 218, 255, .08);
+      color: rgba(240, 254, 255, .9);
+      font: inherit;
+      font-size: 12px;
+    }
+
+    .status {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      min-width: 260px;
+      padding: 12px 14px;
+      border: 1px solid rgba(92, 245, 255, .20);
+      background: var(--panel);
+      border-radius: 16px;
+      color: rgba(231, 251, 255, .84);
+      font-size: 12px;
+      letter-spacing: .04em;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .status .value {
+      color: rgba(104, 246, 255, .96);
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene" aria-label="3D lock-on selection frame demo"></canvas>
+
+  <div class="hud">
+    <strong>2D Camera-Parallel Selection Frame</strong>
+    <p>
+      오브젝트를 클릭하면 화면에 평행한 2D 락온 프레임이 활성화됩니다.<br>
+      드래그: 카메라 회전 · 휠: 줌 · <kbd>Esc</kbd>: 락온 해제
+    </p>
+  </div>
+
+  <div class="status" id="status">
+    TARGET: <span class="value">NONE</span>
+  </div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const canvas = document.getElementById('scene');
+      const ctx = canvas.getContext('2d');
+      const status = document.getElementById('status');
+
+      const TAU = Math.PI * 2;
+      const worldUp = { x: 0, y: 1, z: 0 };
+      let W = 0;
+      let H = 0;
+      let DPR = 1;
+      let mouse = { x: -9999, y: -9999, down: false, moved: false, lastX: 0, lastY: 0, downX: 0, downY: 0 };
+      let hoverTarget = null;
+      let activeTarget = null;
+      let lockFrameStartedAt = 0;
+      const LOCK_INTRO_DURATION = 820;
+
+      const camera = {
+        yaw: -0.68,
+        pitch: 0.26,
+        distance: 13.4,
+        target: { x: 0, y: 1.1, z: 0 }
+      };
+
+      const targets = [
+        makeTarget('ALPHA-01', { x: -3.9, y: 1.25, z: -1.1 }, { x: 1.65, y: 1.05, z: 1.2 }, '#5ff3ff'),
+        makeTarget('BRAVO-02', { x: 0.35, y: 1.8, z: 1.7 }, { x: 1.05, y: 1.7, z: 1.05 }, '#ffcb66'),
+        makeTarget('CHARLIE-03', { x: 3.25, y: 1.1, z: -1.9 }, { x: 1.35, y: 1.35, z: 1.35 }, '#9dff92'),
+        makeTarget('DELTA-04', { x: -0.9, y: 0.9, z: -4.4 }, { x: 2.0, y: 0.8, z: 1.0 }, '#ff7ac8')
+      ];
+
+      const stars = Array.from({ length: 180 }, () => ({
+        x: (Math.random() - 0.5) * 2,
+        y: (Math.random() - 0.5) * 2,
+        size: Math.random() * 1.4 + 0.2,
+        alpha: Math.random() * 0.55 + 0.15
+      }));
+
+      const gridLines = buildGrid(12, 1);
+
+      function resize() {
+        DPR = Math.min(window.devicePixelRatio || 1, 2);
+        W = Math.floor(window.innerWidth);
+        H = Math.floor(window.innerHeight);
+        canvas.width = Math.floor(W * DPR);
+        canvas.height = Math.floor(H * DPR);
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      }
+
+      window.addEventListener('resize', resize);
+      resize();
+
+      function makeTarget(name, position, size, color) {
+        const hx = size.x / 2;
+        const hy = size.y / 2;
+        const hz = size.z / 2;
+        const vertices = [
+          { x: -hx, y: -hy, z: -hz }, { x: hx, y: -hy, z: -hz },
+          { x: hx, y: hy, z: -hz }, { x: -hx, y: hy, z: -hz },
+          { x: -hx, y: -hy, z: hz }, { x: hx, y: -hy, z: hz },
+          { x: hx, y: hy, z: hz }, { x: -hx, y: hy, z: hz }
+        ];
+
+        return {
+          name,
+          position,
+          size,
+          color,
+          baseVertices: vertices,
+          faces: [
+            [0, 1, 2, 3], [4, 7, 6, 5],
+            [0, 4, 5, 1], [3, 2, 6, 7],
+            [1, 5, 6, 2], [0, 3, 7, 4]
+          ],
+          edges: [
+            [0, 1], [1, 2], [2, 3], [3, 0],
+            [4, 5], [5, 6], [6, 7], [7, 4],
+            [0, 4], [1, 5], [2, 6], [3, 7]
+          ],
+          spin: Math.random() * TAU,
+          bob: Math.random() * TAU,
+          boundingRadius: Math.hypot(size.x, size.y, size.z) / 2,
+          projectedBounds: null,
+          squareFrame: null,
+          screenCenter: null,
+          worldVertices: []
+        };
+      }
+
+      function buildGrid(radius, step) {
+        const lines = [];
+        for (let i = -radius; i <= radius; i += step) {
+          lines.push([{ x: -radius, y: 0, z: i }, { x: radius, y: 0, z: i }]);
+          lines.push([{ x: i, y: 0, z: -radius }, { x: i, y: 0, z: radius }]);
+        }
+        return lines;
+      }
+
+      function add(a, b) { return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z }; }
+      function sub(a, b) { return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z }; }
+      function scale(a, s) { return { x: a.x * s, y: a.y * s, z: a.z * s }; }
+      function dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+      function cross(a, b) {
+        return {
+          x: a.y * b.z - a.z * b.y,
+          y: a.z * b.x - a.x * b.z,
+          z: a.x * b.y - a.y * b.x
+        };
+      }
+      function length(a) { return Math.hypot(a.x, a.y, a.z); }
+      function normalize(a) {
+        const len = length(a) || 1;
+        return { x: a.x / len, y: a.y / len, z: a.z / len };
+      }
+      function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+      function lerp(a, b, t) { return a + (b - a) * t; }
+      function saturate(v) { return clamp(v, 0, 1); }
+      function smoothstep(edge0, edge1, x) {
+        const t = saturate((x - edge0) / (edge1 - edge0 || 1));
+        return t * t * (3 - 2 * t);
+      }
+      function easeOutCubic(t) {
+        t = saturate(t);
+        return 1 - Math.pow(1 - t, 3);
+      }
+      function easeInOutCubic(t) {
+        t = saturate(t);
+        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      }
+
+      function hexToRgb(hex) {
+        const n = parseInt(hex.slice(1), 16);
+        return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+      }
+
+      function rgba(hex, alpha) {
+        const c = hexToRgb(hex);
+        return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
+      }
+
+      function getSelectionFrameMetrics() {
+        // 모퉁이 장식은 선택박스 크기나 카메라 줌이 아니라 화면 높이 기준으로 고정합니다.
+        // 모든 선택 프레임 시각 스타일은 마우스 호버 힌트의 얇고 담백한 라인감을 기준으로 통일합니다.
+        const vh = H * 0.01;
+        const unit = clamp(vh, 7, 11);
+        const hoverCorner = unit * 2.0;
+        return {
+          hoverCorner,
+          hoverOffset: unit * 0.72,
+          hoverLineWidth: clamp(unit * 0.13, 1, 1.45),
+          doubleOuterCorner: hoverCorner * 0.92,
+          doubleInnerCorner: hoverCorner * 0.82,
+          doubleGap: -4,
+          introFrameOutset: unit * 3.25,
+          connectorDrop: unit * 2.0,
+          frameAlpha: 0.24,
+          frameAlphaSoft: 0.16
+        };
+      }
+
+      function selectionFrameStroke(alpha) {
+        // 오브젝트 고유 색상 대신 호버 라인과 같은 중립적인 HUD 라인만 사용합니다.
+        return `rgba(232, 252, 255, ${alpha})`;
+      }
+
+      function rotateEuler(v, rx, ry, rz) {
+        let x = v.x, y = v.y, z = v.z;
+
+        let c = Math.cos(rx), s = Math.sin(rx);
+        let y1 = y * c - z * s;
+        let z1 = y * s + z * c;
+        y = y1; z = z1;
+
+        c = Math.cos(ry); s = Math.sin(ry);
+        let x1 = x * c + z * s;
+        z1 = -x * s + z * c;
+        x = x1; z = z1;
+
+        c = Math.cos(rz); s = Math.sin(rz);
+        x1 = x * c - y * s;
+        y1 = x * s + y * c;
+        return { x: x1, y: y1, z };
+      }
+
+      function getCameraBasis() {
+        const cp = {
+          x: camera.target.x + Math.sin(camera.yaw) * Math.cos(camera.pitch) * camera.distance,
+          y: camera.target.y + Math.sin(camera.pitch) * camera.distance,
+          z: camera.target.z + Math.cos(camera.yaw) * Math.cos(camera.pitch) * camera.distance
+        };
+        const forward = normalize(sub(camera.target, cp));
+        let right = normalize(cross(forward, worldUp));
+        if (!Number.isFinite(right.x)) right = { x: 1, y: 0, z: 0 };
+        const up = normalize(cross(right, forward));
+        return { position: cp, forward, right, up };
+      }
+
+      function project(point, basis) {
+        const rel = sub(point, basis.position);
+        const x = dot(rel, basis.right);
+        const y = dot(rel, basis.up);
+        const z = dot(rel, basis.forward);
+        if (z <= 0.18) return null;
+        const focal = Math.min(W, H) * 0.95;
+        return {
+          x: W / 2 + (x / z) * focal,
+          y: H / 2 - (y / z) * focal,
+          z
+        };
+      }
+
+      function updateTargetGeometry(target, t) {
+        const rx = Math.sin(t * 0.0007 + target.bob) * 0.24;
+        const ry = t * 0.00034 + target.spin;
+        const rz = Math.cos(t * 0.00053 + target.bob) * 0.12;
+        const hoverY = Math.sin(t * 0.0014 + target.bob) * 0.12;
+        target.worldVertices = target.baseVertices.map(v => add(rotateEuler(v, rx, ry, rz), add(target.position, { x: 0, y: hoverY, z: 0 })));
+        target.worldPosition = add(target.position, { x: 0, y: hoverY, z: 0 });
+      }
+
+      function calculateBounds(target, basis) {
+        const pts = target.worldVertices.map(v => project(v, basis)).filter(Boolean);
+        if (pts.length < 2) {
+          target.projectedBounds = null;
+          target.screenCenter = null;
+          return null;
+        }
+
+        const minX = Math.min(...pts.map(p => p.x));
+        const maxX = Math.max(...pts.map(p => p.x));
+        const minY = Math.min(...pts.map(p => p.y));
+        const maxY = Math.max(...pts.map(p => p.y));
+        const center = project(target.worldPosition, basis);
+        const z = pts.reduce((sum, p) => sum + p.z, 0) / pts.length;
+        const pad = clamp(Math.min(maxX - minX, maxY - minY) * 0.18, 8, 22);
+
+        const bounds = {
+          minX: minX - pad,
+          maxX: maxX + pad,
+          minY: minY - pad,
+          maxY: maxY + pad,
+          cx: center ? center.x : (minX + maxX) / 2,
+          cy: center ? center.y : (minY + maxY) / 2,
+          z
+        };
+
+        target.projectedBounds = bounds;
+        target.screenCenter = center;
+        return bounds;
+      }
+
+
+      function calculateSquareFrame(target, basis) {
+        const center = project(target.worldPosition, basis);
+        if (!center) {
+          target.squareFrame = null;
+          return null;
+        }
+
+        // 프레임 크기는 실시간 꼭짓점 bounds가 아니라 오브젝트의 3D 대각선 길이로 정합니다.
+        // 따라서 오브젝트가 회전하거나 자세가 바뀌어도 프레임의 폭/높이가 흔들리지 않습니다.
+        const focal = Math.min(W, H) * 0.95;
+        const radius = target.boundingRadius;
+        const nearestDepth = Math.max(center.z - radius, 0.18);
+        const projectedRadius = (radius / nearestDepth) * focal;
+        const margin = clamp(projectedRadius * 0.18, 16, 34);
+        const side = clamp(projectedRadius * 2 + margin * 2, 54, Math.max(W, H) * 0.92);
+        const half = side / 2;
+
+        const frame = {
+          minX: center.x - half,
+          maxX: center.x + half,
+          minY: center.y - half,
+          maxY: center.y + half,
+          cx: center.x,
+          cy: center.y,
+          side,
+          z: center.z
+        };
+
+        target.squareFrame = frame;
+        return frame;
+      }
+
+      function clear() {
+        const bg = ctx.createRadialGradient(W * 0.52, H * 0.42, 40, W * 0.5, H * 0.45, Math.max(W, H) * 0.78);
+        bg.addColorStop(0, '#132843');
+        bg.addColorStop(0.55, '#071320');
+        bg.addColorStop(1, '#02050b');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        for (const star of stars) {
+          ctx.globalAlpha = star.alpha;
+          ctx.fillStyle = '#bff8ff';
+          ctx.fillRect((star.x * W + W + performance.now() * 0.004 * star.size) % W, star.y * H + H / 2, star.size, star.size);
+        }
+        ctx.restore();
+      }
+
+      function drawGrid(basis) {
+        ctx.save();
+        ctx.lineWidth = 1;
+        for (const [a, b] of gridLines) {
+          const pa = project(a, basis);
+          const pb = project(b, basis);
+          if (!pa || !pb) continue;
+          const alpha = clamp(1 - (pa.z + pb.z) / 42, 0.04, 0.26);
+          ctx.strokeStyle = `rgba(80, 215, 255, ${alpha})`;
+          ctx.beginPath();
+          ctx.moveTo(pa.x, pa.y);
+          ctx.lineTo(pb.x, pb.y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function drawAxisMarker(basis) {
+        const origin = { x: -5.9, y: 0.05, z: 5.6 };
+        const axes = [
+          [{ x: 1, y: 0, z: 0 }, 'X', 'rgba(255,130,130,.85)'],
+          [{ x: 0, y: 1, z: 0 }, 'Y', 'rgba(150,255,150,.85)'],
+          [{ x: 0, y: 0, z: 1 }, 'Z', 'rgba(130,200,255,.85)']
+        ];
+        const po = project(origin, basis);
+        if (!po) return;
+        ctx.save();
+        ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.lineWidth = 2;
+        for (const [dir, label, color] of axes) {
+          const p = project(add(origin, scale(dir, 1.4)), basis);
+          if (!p) continue;
+          ctx.strokeStyle = color;
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(po.x, po.y);
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+          ctx.fillText(label, p.x + 5, p.y + 4);
+        }
+        ctx.restore();
+      }
+
+      function drawTargets(basis) {
+        const drawableFaces = [];
+
+        for (const target of targets) {
+          const projected = target.worldVertices.map(v => project(v, basis));
+          for (const face of target.faces) {
+            const pts = face.map(i => projected[i]);
+            if (pts.some(p => !p)) continue;
+            const avgZ = pts.reduce((sum, p) => sum + p.z, 0) / pts.length;
+            drawableFaces.push({ target, pts, avgZ, face });
+          }
+        }
+
+        drawableFaces.sort((a, b) => b.avgZ - a.avgZ);
+
+        ctx.save();
+        for (const item of drawableFaces) {
+          const selected = item.target === activeTarget;
+          const rgbAlpha = selected ? 0.34 : 0.20;
+          const edgeAlpha = selected ? 0.95 : 0.42;
+
+          ctx.beginPath();
+          ctx.moveTo(item.pts[0].x, item.pts[0].y);
+          for (let i = 1; i < item.pts.length; i++) ctx.lineTo(item.pts[i].x, item.pts[i].y);
+          ctx.closePath();
+          ctx.fillStyle = rgba(item.target.color, rgbAlpha);
+          ctx.fill();
+          ctx.strokeStyle = rgba(item.target.color, edgeAlpha);
+          ctx.lineWidth = selected ? 1.8 : 1.1;
+          ctx.stroke();
+        }
+
+        for (const target of targets) {
+          const projected = target.worldVertices.map(v => project(v, basis));
+          const selected = target === activeTarget;
+          ctx.lineWidth = selected ? 2.4 : 1.2;
+          ctx.strokeStyle = selected ? rgba(target.color, 0.98) : rgba(target.color, 0.52);
+          ctx.shadowColor = selected ? target.color : 'transparent';
+          ctx.shadowBlur = selected ? 12 : 0;
+          for (const [a, b] of target.edges) {
+            const pa = projected[a];
+            const pb = projected[b];
+            if (!pa || !pb) continue;
+            ctx.beginPath();
+            ctx.moveTo(pa.x, pa.y);
+            ctx.lineTo(pb.x, pb.y);
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
+
+      function drawTransparentHover() {
+        // 호버 상태는 선택 가능 여부만 판단하고, 별도의 시각 효과는 표시하지 않습니다.
+      }
+
+      function drawLockFrame(target, basis, t) {
+        if (!target) return;
+        const b = calculateSquareFrame(target, basis);
+        if (!b || b.side < 10) return;
+
+        // 2중 모퉁이는 하나의 그룹으로 취급합니다.
+        // 선택 시에는 코너 선분 길이를 키우는 대신, 프레임 자체가 바깥에서 안쪽으로 좁혀지며 타게팅됩니다.
+        const minX = b.minX;
+        const minY = b.minY;
+        const maxX = b.maxX;
+        const maxY = b.maxY;
+        const dist = length(sub(target.worldPosition, basis.position));
+        const metrics = getSelectionFrameMetrics();
+        const elapsed = Math.max(0, t - lockFrameStartedAt);
+        const intro = getLockFrameIntro(elapsed, metrics);
+        const frameMinX = minX - intro.frameOutset;
+        const frameMinY = minY - intro.frameOutset;
+        const frameMaxX = maxX + intro.frameOutset;
+        const frameMaxY = maxY + intro.frameOutset;
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.lineCap = 'square';
+        ctx.lineJoin = 'miter';
+        ctx.lineWidth = metrics.hoverLineWidth;
+
+        drawAnimatedDoubleCornerGroup(frameMinX, frameMinY, 1, 1, intro);
+        drawAnimatedDoubleCornerGroup(frameMaxX, frameMinY, -1, 1, intro);
+        drawAnimatedDoubleCornerGroup(frameMaxX, frameMaxY, -1, -1, intro);
+        drawAnimatedDoubleCornerGroup(frameMinX, frameMaxY, 1, -1, intro);
+
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        const labelX = clamp(maxX + 18, 16, W - 190);
+        const labelY = clamp(minY + 7, 58, H - 72);
+        ctx.strokeStyle = selectionFrameStroke(metrics.frameAlphaSoft);
+        ctx.lineWidth = metrics.hoverLineWidth;
+        ctx.beginPath();
+        ctx.moveTo(frameMaxX + metrics.hoverOffset, frameMinY + metrics.hoverOffset + metrics.connectorDrop);
+        ctx.lineTo(labelX - 8, labelY + 15);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(2, 14, 24, 0.62)';
+        ctx.strokeStyle = selectionFrameStroke(metrics.frameAlphaSoft);
+        roundRect(ctx, labelX, labelY, 172, 54, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = '700 12px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.fillStyle = selectionFrameStroke(0.72);
+        ctx.fillText('LOCKED  ' + target.name, labelX + 12, labelY + 21);
+        ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.fillStyle = 'rgba(230, 252, 255, 0.62)';
+        ctx.fillText('DIST ' + dist.toFixed(1).padStart(4, '0') + 'm  FRAME:DOUBLE-LOCK', labelX + 12, labelY + 39);
+        ctx.restore();
+
+        function getLockFrameIntro(elapsed, metrics) {
+          const p = saturate(elapsed / LOCK_INTRO_DURATION);
+          const segment1End = 0.42;
+          const settle = easeOutCubic((p - segment1End) / (1 - segment1End));
+
+          // 구간 1: 최종 프레임보다 바깥쪽에 있는 큰 선택박스가 doubleGap 10 상태로 짧게 2회 깜빡입니다.
+          // 구간 2: 선택박스 전체가 타겟을 향해 안쪽으로 좁혀지며 doubleGap 6의 기본 규격으로 정착합니다.
+          const blinkA = smoothPulse(p, 0.04, 0.15);
+          const blinkB = smoothPulse(p, 0.23, 0.34);
+          const settleAlpha = smoothstep(0.39, 0.56, p);
+          const alpha = Math.max(blinkA, blinkB, settleAlpha);
+          const gap = lerp(10, metrics.doubleGap, settle);
+          const frameOutset = lerp(metrics.introFrameOutset, 0, settle);
+
+          return { alpha, gap, frameOutset };
+        }
+
+        function smoothPulse(t, start, end) {
+          const mid = (start + end) * 0.5;
+          const rise = smoothstep(start, mid, t);
+          const fall = 1 - smoothstep(mid, end, t);
+          return rise * fall;
+        }
+
+        function drawAnimatedDoubleCornerGroup(baseX, baseY, sx, sy, intro) {
+          const offset = metrics.hoverOffset;
+          const x = baseX + sx * offset;
+          const y = baseY + sy * offset;
+          const gap = intro.gap;
+          const outerLen = metrics.doubleOuterCorner;
+          const innerLen = metrics.doubleInnerCorner;
+
+          ctx.strokeStyle = selectionFrameStroke(metrics.frameAlpha * intro.alpha);
+          drawCorner(x, y, sx * outerLen, sy * outerLen);
+
+          ctx.strokeStyle = selectionFrameStroke(metrics.frameAlphaSoft * intro.alpha);
+          drawCorner(x + sx * gap, y + sy * gap, sx * innerLen, sy * innerLen);
+        }
+
+        function drawCorner(x, y, dx, dy) {
+          ctx.beginPath();
+          ctx.moveTo(x, y + dy);
+          ctx.lineTo(x, y);
+          ctx.lineTo(x + dx, y);
+          ctx.stroke();
+        }
+      }
+
+      function roundRect(c, x, y, w, h, r) {
+        c.beginPath();
+        c.moveTo(x + r, y);
+        c.lineTo(x + w - r, y);
+        c.quadraticCurveTo(x + w, y, x + w, y + r);
+        c.lineTo(x + w, y + h - r);
+        c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        c.lineTo(x + r, y + h);
+        c.quadraticCurveTo(x, y + h, x, y + h - r);
+        c.lineTo(x, y + r);
+        c.quadraticCurveTo(x, y, x + r, y);
+      }
+
+      function hitTest(x, y) {
+        const hits = [];
+        for (const target of targets) {
+          const b = target.projectedBounds;
+          if (!b) continue;
+          const pad = 12;
+          if (x >= b.minX - pad && x <= b.maxX + pad && y >= b.minY - pad && y <= b.maxY + pad) {
+            const d = Math.hypot(x - b.cx, y - b.cy);
+            hits.push({ target, d, z: b.z });
+          }
+        }
+        hits.sort((a, b) => a.d - b.d || a.z - b.z);
+        return hits[0]?.target || null;
+      }
+
+      function updateHover() {
+        hoverTarget = hitTest(mouse.x, mouse.y);
+        canvas.classList.toggle('pickable', !!hoverTarget && !mouse.down);
+      }
+
+      function updateStatus() {
+        if (!activeTarget) {
+          status.innerHTML = 'TARGET: <span class="value">NONE</span>';
+          return;
+        }
+        status.innerHTML = `TARGET: <span class="value">${activeTarget.name}</span>`;
+      }
+
+      canvas.addEventListener('pointerdown', e => {
+        canvas.setPointerCapture(e.pointerId);
+        mouse.down = true;
+        mouse.moved = false;
+        mouse.lastX = mouse.downX = e.clientX;
+        mouse.lastY = mouse.downY = e.clientY;
+        canvas.classList.add('dragging');
+      });
+
+      canvas.addEventListener('pointermove', e => {
+        mouse.x = e.clientX;
+        mouse.y = e.clientY;
+
+        if (mouse.down) {
+          const dx = e.clientX - mouse.lastX;
+          const dy = e.clientY - mouse.lastY;
+          const total = Math.hypot(e.clientX - mouse.downX, e.clientY - mouse.downY);
+          if (total > 4) mouse.moved = true;
+
+          camera.yaw += dx * 0.005;
+          camera.pitch = clamp(camera.pitch + dy * 0.0048, -1.15, 1.15);
+          mouse.lastX = e.clientX;
+          mouse.lastY = e.clientY;
+        }
+        updateHover();
+      });
+
+      canvas.addEventListener('pointerup', e => {
+        canvas.releasePointerCapture(e.pointerId);
+        canvas.classList.remove('dragging');
+        mouse.down = false;
+
+        if (!mouse.moved) {
+          const picked = hitTest(e.clientX, e.clientY);
+          const nextTarget = picked === activeTarget ? null : picked;
+          if (nextTarget && nextTarget !== activeTarget) lockFrameStartedAt = performance.now();
+          if (!nextTarget) lockFrameStartedAt = 0;
+          activeTarget = nextTarget;
+          updateStatus();
+        }
+        updateHover();
+      });
+
+      canvas.addEventListener('pointerleave', () => {
+        mouse.x = -9999;
+        mouse.y = -9999;
+        hoverTarget = null;
+        canvas.classList.remove('pickable');
+      });
+
+      window.addEventListener('wheel', e => {
+        e.preventDefault();
+        camera.distance = clamp(camera.distance + e.deltaY * 0.012, 5.8, 24);
+      }, { passive: false });
+
+      window.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+          activeTarget = null;
+          updateStatus();
+        }
+      });
+
+      function animate(t) {
+        const basis = getCameraBasis();
+
+        clear();
+        drawGrid(basis);
+        drawAxisMarker(basis);
+
+        for (const target of targets) {
+          updateTargetGeometry(target, t);
+          calculateBounds(target, basis);
+        }
+
+        drawTargets(basis);
+        updateHover();
+        drawLockFrame(activeTarget, basis, t);
+
+        requestAnimationFrame(animate);
+      }
+
+      requestAnimationFrame(animate);
+    })();
+  </script>
+</body>
+</html>

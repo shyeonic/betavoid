@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Start Button Sample - Void Zero</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --text: #243241;
+      --muted: #7d8997;
+      --line: rgba(126, 222, 255, 0.82);
+      --line-soft: rgba(80, 112, 138, 0.13);
+      --panel: rgba(255, 255, 255, 0.58);
+      --panel-quiet: rgba(255, 255, 255, 0.34);
+      --accent: #71dcff;
+      --accent-strong: #31baf4;
+      --shadow: rgba(60, 102, 130, 0.18);
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #edf6fb;
+      color: var(--text);
+      letter-spacing: 0;
+      user-select: none;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .scene {
+      position: relative;
+      min-height: 100dvh;
+      display: grid;
+      place-items: center;
+      padding: clamp(20px, 6vmin, 64px);
+      isolation: isolate;
+      background:
+        radial-gradient(ellipse 82% 48% at 50% 32%, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.36) 45%, transparent 76%),
+        linear-gradient(180deg, #f7fbfd 0%, #eaf3f8 52%, #e2ebf0 100%);
+    }
+
+    .scene::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -3;
+      background:
+        radial-gradient(ellipse 44% 10% at 26% 48%, rgba(170, 180, 188, 0.2) 0 38%, transparent 70%),
+        radial-gradient(ellipse 48% 11% at 70% 45%, rgba(180, 188, 194, 0.18) 0 42%, transparent 74%),
+        radial-gradient(ellipse 62% 13% at 48% 59%, rgba(255, 255, 255, 0.7) 0 46%, transparent 73%),
+        linear-gradient(180deg, transparent 0 38%, rgba(209, 220, 228, 0.36) 62%, rgba(232, 238, 241, 0.8) 100%);
+      filter: blur(0.2px);
+    }
+
+    .scene::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 34dvh;
+      z-index: -2;
+      background:
+        linear-gradient(142deg, transparent 0 20%, rgba(178, 188, 196, 0.62) 20.2% 45%, transparent 45.2%) 0 100% / 38% 78% no-repeat,
+        linear-gradient(32deg, transparent 0 38%, rgba(242, 246, 248, 0.9) 38.2% 58%, transparent 58.2%) 0 100% / 38% 78% no-repeat,
+        linear-gradient(216deg, transparent 0 16%, rgba(158, 170, 180, 0.42) 16.2% 47%, transparent 47.2%) 100% 100% / 42% 88% no-repeat,
+        linear-gradient(312deg, transparent 0 45%, rgba(245, 248, 250, 0.88) 45.2% 60%, transparent 60.2%) 100% 100% / 42% 88% no-repeat;
+      opacity: 0.95;
+    }
+
+    .menu-shell {
+      width: min(86vw, 460px);
+      display: grid;
+      gap: clamp(16px, 2.8vmin, 26px);
+      transform: translateY(-2dvh);
+    }
+
+    .menu-header {
+      display: grid;
+      gap: clamp(12px, 2vmin, 18px);
+      justify-items: center;
+      color: #8a97a7;
+      text-transform: uppercase;
+      font-size: clamp(11px, 1.65vmin, 14px);
+      line-height: 1;
+      text-align: center;
+    }
+
+    .ornament {
+      width: min(100%, 420px);
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .ornament::before,
+    .ornament::after {
+      content: "";
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(105, 124, 146, 0.48));
+    }
+
+    .ornament::after {
+      background: linear-gradient(90deg, rgba(105, 124, 146, 0.48), transparent);
+    }
+
+    .ornament-mark {
+      width: 15px;
+      height: 15px;
+      display: grid;
+      place-items: center;
+      transform: rotate(45deg);
+      border: 1px solid rgba(130, 146, 166, 0.7);
+    }
+
+    .ornament-mark::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      background: rgba(130, 146, 166, 0.74);
+    }
+
+    .menu-stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .menu-button {
+      --edge: 22px;
+      --inner-edge: calc(var(--edge) - 1px);
+      --button-border: var(--line-soft);
+      --button-face: linear-gradient(180deg, var(--panel), var(--panel-quiet));
+      position: relative;
+      z-index: 0;
+      width: 100%;
+      min-height: clamp(54px, 9vmin, 66px);
+      display: grid;
+      grid-template-columns: 46px minmax(0, 1fr) 46px;
+      align-items: center;
+      padding: 0 clamp(18px, 4vmin, 28px);
+      border: 0;
+      color: var(--text);
+      background: transparent;
+      text-transform: uppercase;
+      cursor: pointer;
+      clip-path: polygon(var(--edge) 0, calc(100% - var(--edge)) 0, 100% 50%, calc(100% - var(--edge)) 100%, var(--edge) 100%, 0 50%);
+      filter: drop-shadow(0 14px 24px var(--shadow));
+      transition: transform 140ms ease, color 160ms ease, filter 160ms ease;
+    }
+
+    .menu-button::before,
+    .menu-button::after {
+      content: "";
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .menu-button::before {
+      z-index: -2;
+      inset: 0;
+      background: var(--button-border);
+      clip-path: inherit;
+    }
+
+    .menu-button::after {
+      z-index: -1;
+      inset: 1px;
+      background:
+        linear-gradient(90deg, transparent 0 8%, rgba(255, 255, 255, 0.46) 24%, transparent 58%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent 46%),
+        var(--button-face);
+      clip-path: polygon(
+        var(--inner-edge) 0,
+        calc(100% - var(--inner-edge)) 0,
+        100% 50%,
+        calc(100% - var(--inner-edge)) 100%,
+        var(--inner-edge) 100%,
+        0 50%
+      );
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
+    }
+
+    .menu-button.is-selected {
+      --button-border: var(--line);
+      --button-face: linear-gradient(180deg, rgba(241, 253, 255, 0.86), rgba(224, 248, 255, 0.58));
+    }
+
+    .menu-button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      color: #112c40;
+      filter: drop-shadow(0 10px 18px rgba(49, 186, 244, 0.14));
+    }
+
+    .menu-button:active:not(:disabled) {
+      transform: translateY(1px) scale(0.99);
+    }
+
+    .menu-button:focus-visible {
+      outline: 2px solid rgba(49, 186, 244, 0.72);
+      outline-offset: 4px;
+    }
+
+    .menu-button:disabled {
+      cursor: progress;
+      opacity: 0.52;
+    }
+
+    .menu-icon {
+      justify-self: start;
+      width: 22px;
+      height: 22px;
+      position: relative;
+      z-index: 1;
+      color: #89939e;
+    }
+
+    .menu-button.is-selected .menu-icon {
+      color: var(--accent-strong);
+    }
+
+    .icon-diamond::before,
+    .icon-diamond::after {
+      content: "";
+      position: absolute;
+      inset: 5px;
+      border: 2px solid currentColor;
+      transform: rotate(45deg);
+    }
+
+    .icon-diamond::after {
+      inset: 9px;
+      border: 0;
+      background: currentColor;
+    }
+
+    .icon-gear {
+      display: grid;
+      place-items: center;
+    }
+
+    .icon-gear::before {
+      content: "";
+      width: 12px;
+      height: 12px;
+      border: 2px solid currentColor;
+      border-radius: 50%;
+      box-shadow:
+        0 -7px 0 -4px currentColor,
+        0 7px 0 -4px currentColor,
+        -7px 0 0 -4px currentColor,
+        7px 0 0 -4px currentColor,
+        5px 5px 0 -4px currentColor,
+        -5px 5px 0 -4px currentColor,
+        5px -5px 0 -4px currentColor,
+        -5px -5px 0 -4px currentColor;
+    }
+
+    .icon-gear::after {
+      content: "";
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .icon-power::before {
+      content: "";
+      position: absolute;
+      left: 4px;
+      right: 4px;
+      bottom: 3px;
+      height: 15px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+    }
+
+    .icon-power::after {
+      content: "";
+      position: absolute;
+      left: 10px;
+      top: 1px;
+      width: 2px;
+      height: 12px;
+      background: currentColor;
+      border-radius: 2px;
+    }
+
+    .menu-label {
+      position: relative;
+      z-index: 1;
+      justify-self: center;
+      min-width: 0;
+      font-size: clamp(12px, 1.9vmin, 15px);
+      font-weight: 700;
+      line-height: 1;
+      text-align: center;
+    }
+
+    .scan-line {
+      position: absolute;
+      left: 12%;
+      right: 12%;
+      top: 1px;
+      height: 1px;
+      opacity: 0;
+      background: linear-gradient(90deg, transparent, rgba(49, 186, 244, 0.68), transparent);
+    }
+
+    .menu-button.is-selected .scan-line {
+      opacity: 1;
+      animation: breathe 2.8s ease-in-out infinite;
+    }
+
+    .test-bar {
+      position: fixed;
+      left: 50%;
+      bottom: clamp(14px, 3vmin, 28px);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-height: 42px;
+      padding: 9px 16px;
+      transform: translateX(-50%);
+      border: 1px solid rgba(80, 112, 138, 0.14);
+      background: rgba(255, 255, 255, 0.68);
+      color: #687787;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 12px 36px rgba(60, 102, 130, 0.13);
+      font-size: 12px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .test-bar label {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+    }
+
+    .test-bar input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent-strong);
+      cursor: pointer;
+    }
+
+    @keyframes breathe {
+      0%,
+      100% {
+        opacity: 0.42;
+      }
+
+      50% {
+        opacity: 1;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .menu-shell {
+        width: min(92vw, 380px);
+      }
+
+      .menu-button {
+        --edge: 18px;
+        grid-template-columns: 36px minmax(0, 1fr) 36px;
+        padding: 0 16px;
+      }
+
+      .test-bar {
+        width: calc(100% - 28px);
+        justify-content: center;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="scene">
+    <section class="menu-shell" aria-label="Start menu sample">
+      <header class="menu-header">
+        <div class="ornament" aria-hidden="true">
+          <span class="ornament-mark"></span>
+        </div>
+        <div>Explore. Discover. Become.</div>
+      </header>
+
+      <div class="menu-stack">
+        <button class="menu-button is-selected" id="startButton" type="button">
+          <span class="scan-line" aria-hidden="true"></span>
+          <span class="menu-icon icon-diamond" aria-hidden="true"></span>
+          <span class="menu-label">New Game</span>
+          <span aria-hidden="true"></span>
+        </button>
+        <button class="menu-button" type="button">
+          <span class="menu-icon icon-gear" aria-hidden="true"></span>
+          <span class="menu-label">Settings</span>
+          <span aria-hidden="true"></span>
+        </button>
+        <button class="menu-button" type="button">
+          <span class="menu-icon icon-power" aria-hidden="true"></span>
+          <span class="menu-label">Exit</span>
+          <span aria-hidden="true"></span>
+        </button>
+      </div>
+    </section>
+
+    <div class="test-bar">
+      <span>Test</span>
+      <label>
+        <input type="checkbox" id="disabledToggle">
+        Disabled
+      </label>
+    </div>
+  </main>
+
+  <script>
+    const startButton = document.getElementById("startButton");
+    const disabledToggle = document.getElementById("disabledToggle");
+
+    disabledToggle.addEventListener("change", () => {
+      startButton.disabled = disabledToggle.checked;
+    });
+  </script>
+</body>
+</html>

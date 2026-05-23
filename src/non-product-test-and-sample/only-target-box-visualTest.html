@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Target Box Visual Test</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --panel: rgba(246, 251, 255, 0.82);
+      --line: rgba(43, 98, 140, 0.22);
+      --text: #133047;
+      --muted: #537083;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      background: #ffffff;
+      color: var(--text);
+      font-family: Arial, sans-serif;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .controls {
+      position: fixed;
+      left: 16px;
+      top: 16px;
+      z-index: 2;
+      width: min(360px, calc(100vw - 32px));
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid rgba(43, 98, 140, 0.18);
+      background: var(--panel);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 8px 28px rgba(66, 139, 190, 0.16);
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 116px 1fr 48px;
+      align-items: center;
+      gap: 10px;
+      min-height: 28px;
+      font-size: 13px;
+    }
+
+    .row strong {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    input[type="color"] {
+      width: 100%;
+      height: 28px;
+      padding: 0;
+      border: 1px solid rgba(43, 98, 140, 0.18);
+      background: transparent;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    output {
+      color: var(--muted);
+      font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      text-align: right;
+    }
+
+    button {
+      height: 34px;
+      border: 1px solid rgba(43, 98, 140, 0.24);
+      background: rgba(246, 251, 255, 0.78);
+      color: var(--text);
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: rgba(99, 210, 255, 0.16);
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="scene" aria-label="target box visual test"></canvas>
+
+  <form class="controls" id="controls">
+    <div class="row">
+      <strong>Outer</strong>
+      <input id="outerColor" type="color" value="#e8fcff">
+      <output id="outerColorValue">#e8fcff</output>
+    </div>
+    <div class="row">
+      <strong>Outer Alpha</strong>
+      <input id="outerAlpha" type="range" min="0" max="1" step="0.01" value="0.24">
+      <output id="outerAlphaValue">0.24</output>
+    </div>
+    <div class="row">
+      <strong>Inner</strong>
+      <input id="innerColor" type="color" value="#e8fcff">
+      <output id="innerColorValue">#e8fcff</output>
+    </div>
+    <div class="row">
+      <strong>Inner Alpha</strong>
+      <input id="innerAlpha" type="range" min="0" max="1" step="0.01" value="0.16">
+      <output id="innerAlphaValue">0.16</output>
+    </div>
+    <div class="row">
+      <strong>Radius</strong>
+      <input id="targetRadius" type="range" min="0.05" max="0.9" step="0.01" value="0.2">
+      <output id="targetRadiusValue">0.20</output>
+    </div>
+    <button id="replayButton" type="button">Replay Intro</button>
+  </form>
+
+  <script>
+    const LOCK_INTRO_DURATION = 820;
+    const canvas = document.querySelector("#scene");
+    const ctx = canvas.getContext("2d");
+    const controls = {
+      outerColor: document.querySelector("#outerColor"),
+      outerAlpha: document.querySelector("#outerAlpha"),
+      innerColor: document.querySelector("#innerColor"),
+      innerAlpha: document.querySelector("#innerAlpha"),
+      targetRadius: document.querySelector("#targetRadius"),
+      replayButton: document.querySelector("#replayButton")
+    };
+    const outputs = {
+      outerColor: document.querySelector("#outerColorValue"),
+      outerAlpha: document.querySelector("#outerAlphaValue"),
+      innerColor: document.querySelector("#innerColorValue"),
+      innerAlpha: document.querySelector("#innerAlphaValue"),
+      targetRadius: document.querySelector("#targetRadiusValue")
+    };
+    let W = 0;
+    let H = 0;
+    let dpr = 1;
+    let startedAt = performance.now();
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = Math.floor(window.innerWidth);
+      H = Math.floor(window.innerHeight);
+      canvas.width = Math.floor(W * dpr);
+      canvas.height = Math.floor(H * dpr);
+      canvas.style.width = `${W}px`;
+      canvas.style.height = `${H}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function draw(now) {
+      ctx.clearRect(0, 0, W, H);
+      drawBackdrop();
+
+      const target = {
+        worldPosition: {
+          x: 0,
+          y: 0,
+          z: 7.2
+        },
+        boundingRadius: Number(controls.targetRadius.value)
+      };
+      drawLockFrame(target, now);
+      requestAnimationFrame(draw);
+    }
+
+    function drawBackdrop() {
+      ctx.save();
+      ctx.strokeStyle = "rgba(43, 98, 140, 0.055)";
+      ctx.lineWidth = 1;
+      const step = 48;
+      for (let x = W % step; x < W; x += step) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+      }
+      for (let y = H % step; y < H; y += step) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function calculateSquareFrame(target) {
+      const center = {
+        x: W * 0.5 + target.worldPosition.x,
+        y: H * 0.52 + target.worldPosition.y,
+        z: target.worldPosition.z
+      };
+
+      const focal = Math.min(W, H) * 0.95;
+      const radius = target.boundingRadius;
+      const nearestDepth = Math.max(center.z - radius, 0.18);
+      const projectedRadius = (radius / nearestDepth) * focal;
+      const margin = clamp(projectedRadius * 0.18, 16, 34);
+      const rawSide = projectedRadius * 2 + margin * 2;
+      const side = clamp(rawSide, 54, Math.max(W, H) * 0.92);
+      const half = side / 2;
+
+      return {
+        minX: center.x - half,
+        maxX: center.x + half,
+        minY: center.y - half,
+        maxY: center.y + half,
+        cx: center.x,
+        cy: center.y,
+        side,
+        z: center.z
+      };
+    }
+
+    function drawLockFrame(target, now) {
+      const frame = calculateSquareFrame(target);
+      if (!frame || frame.side < 10) return;
+      const metrics = getSelectionFrameMetrics();
+      const elapsed = Math.max(0, now - startedAt);
+      const intro = getLockFrameIntro(elapsed, metrics);
+      const frameMinX = frame.minX - intro.frameOutset;
+      const frameMinY = frame.minY - intro.frameOutset;
+      const frameMaxX = frame.maxX + intro.frameOutset;
+      const frameMaxY = frame.maxY + intro.frameOutset;
+
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.lineCap = "square";
+      ctx.lineJoin = "miter";
+      ctx.lineWidth = metrics.hoverLineWidth;
+
+      drawAnimatedDoubleCornerGroup(frameMinX, frameMinY, 1, 1, intro, metrics);
+      drawAnimatedDoubleCornerGroup(frameMaxX, frameMinY, -1, 1, intro, metrics);
+      drawAnimatedDoubleCornerGroup(frameMaxX, frameMaxY, -1, -1, intro, metrics);
+      drawAnimatedDoubleCornerGroup(frameMinX, frameMaxY, 1, -1, intro, metrics);
+      ctx.restore();
+    }
+
+    function getSelectionFrameMetrics() {
+      const vh = H * 0.01;
+      const unit = clamp(vh, 7, 11);
+      const hoverCorner = unit * 2.0;
+      const hoverOffset = unit * 0.72;
+      const doubleGap = -4;
+      const doubleOuterCorner = hoverCorner * 0.92;
+      const doubleInnerCorner = hoverCorner * 0.82;
+
+      return {
+        hoverCorner,
+        hoverOffset,
+        hoverLineWidth: clamp(unit * 0.13, 1, 1.45),
+        doubleOuterCorner,
+        doubleInnerCorner,
+        doubleGap,
+        introFrameOutset: unit * 3.25,
+        frameAlpha: Number(controls.outerAlpha.value),
+        frameAlphaSoft: Number(controls.innerAlpha.value)
+      };
+    }
+
+    function getLockFrameIntro(elapsed, metrics) {
+      const p = saturate(elapsed / LOCK_INTRO_DURATION);
+      const segment1End = 0.42;
+      const settle = easeOutCubic((p - segment1End) / (1 - segment1End));
+      const blinkA = smoothPulse(p, 0.04, 0.15);
+      const blinkB = smoothPulse(p, 0.23, 0.34);
+      const settleAlpha = smoothstep(0.39, 0.56, p);
+      const alpha = Math.max(blinkA, blinkB, settleAlpha);
+      const gap = lerp(10, metrics.doubleGap, settle);
+      const frameOutset = lerp(metrics.introFrameOutset, 0, settle);
+
+      return { alpha, gap, frameOutset };
+    }
+
+    function drawAnimatedDoubleCornerGroup(baseX, baseY, sx, sy, intro, metrics) {
+      const offset = metrics.hoverOffset;
+      const x = baseX + sx * offset;
+      const y = baseY + sy * offset;
+      const gap = intro.gap;
+      const outerLen = metrics.doubleOuterCorner;
+      const innerLen = metrics.doubleInnerCorner;
+
+      ctx.strokeStyle = frameStroke(controls.outerColor.value, metrics.frameAlpha * intro.alpha);
+      drawCorner(x, y, sx * outerLen, sy * outerLen);
+
+      ctx.strokeStyle = frameStroke(controls.innerColor.value, metrics.frameAlphaSoft * intro.alpha);
+      drawCorner(x + sx * gap, y + sy * gap, sx * innerLen, sy * innerLen);
+    }
+
+    function drawCorner(x, y, dx, dy) {
+      ctx.beginPath();
+      ctx.moveTo(x, y + dy);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x + dx, y);
+      ctx.stroke();
+    }
+
+    function syncOutputs() {
+      outputs.outerColor.value = controls.outerColor.value;
+      outputs.outerAlpha.value = Number(controls.outerAlpha.value).toFixed(2);
+      outputs.innerColor.value = controls.innerColor.value;
+      outputs.innerAlpha.value = Number(controls.innerAlpha.value).toFixed(2);
+      outputs.targetRadius.value = Number(controls.targetRadius.value).toFixed(2);
+    }
+
+    function frameStroke(hex, alpha) {
+      const rgb = hexToRgb(hex);
+      return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+    }
+
+    function hexToRgb(hex) {
+      const value = parseInt(hex.slice(1), 16);
+      return {
+        r: (value >> 16) & 255,
+        g: (value >> 8) & 255,
+        b: value & 255
+      };
+    }
+
+    function clamp(v, min, max) {
+      return Math.max(min, Math.min(max, v));
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function saturate(v) {
+      return clamp(v, 0, 1);
+    }
+
+    function smoothstep(edge0, edge1, x) {
+      const t = saturate((x - edge0) / (edge1 - edge0 || 1));
+      return t * t * (3 - 2 * t);
+    }
+
+    function easeOutCubic(t) {
+      t = saturate(t);
+      return 1 - Math.pow(1 - t, 3);
+    }
+
+    function smoothPulse(t, start, end) {
+      const mid = (start + end) * 0.5;
+      const rise = smoothstep(start, mid, t);
+      const fall = 1 - smoothstep(mid, end, t);
+      return rise * fall;
+    }
+
+    Object.values(controls).forEach((control) => {
+      control.addEventListener("input", syncOutputs);
+    });
+    controls.replayButton.addEventListener("click", () => {
+      startedAt = performance.now();
+    });
+    window.addEventListener("resize", resize);
+
+    resize();
+    syncOutputs();
+    requestAnimationFrame(draw);
+  </script>
+</body>
+
+</html>

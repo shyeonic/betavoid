@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Target Icon Anchor Test</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --panel: rgba(246, 251, 255, 0.86);
+      --text: #133047;
+      --muted: #537083;
+      --line: rgba(43, 98, 140, 0.2);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      background: #fff;
+      color: var(--text);
+      font-family: Arial, sans-serif;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .controls {
+      position: fixed;
+      left: 16px;
+      top: 16px;
+      z-index: 2;
+      width: min(380px, calc(100vw - 32px));
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 8px 28px rgba(66, 139, 190, 0.16);
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 126px 1fr 54px;
+      align-items: center;
+      gap: 10px;
+      min-height: 30px;
+      font-size: 13px;
+    }
+
+    .row strong {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    input,
+    select {
+      min-width: 0;
+      height: 30px;
+    }
+
+    output {
+      color: var(--muted);
+      font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      text-align: right;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="scene" aria-label="target icon anchor test"></canvas>
+
+  <form class="controls">
+    <div class="row">
+      <strong>Icon</strong>
+      <select id="iconSelect">
+        <option value="./rss/svg/ind_loot.svg">Loot</option>
+        <option value="./rss/svg/ind_small.svg">Small</option>
+        <option value="./rss/svg/ind_medium.svg">Medium</option>
+        <option value="./rss/svg/ind_large.svg">Large</option>
+        <option value="./rss/svg/ind_ex.svg">EX</option>
+      </select>
+      <output></output>
+    </div>
+    <div class="row">
+      <strong>Icon Scale</strong>
+      <input id="iconScale" type="range" min="0.2" max="1" step="0.05" value="0.5">
+      <output id="iconScaleValue">0.50</output>
+    </div>
+    <div class="row">
+      <strong>Frame Side</strong>
+      <input id="frameSide" type="range" min="54" max="260" step="1" value="132">
+      <output id="frameSideValue">132</output>
+    </div>
+  </form>
+
+  <script>
+    const canvas = document.querySelector("#scene");
+    const ctx = canvas.getContext("2d");
+    const iconSelect = document.querySelector("#iconSelect");
+    const iconScale = document.querySelector("#iconScale");
+    const frameSide = document.querySelector("#frameSide");
+    const iconScaleValue = document.querySelector("#iconScaleValue");
+    const frameSideValue = document.querySelector("#frameSideValue");
+    const imageCache = new Map();
+    const iconTransition = {
+      fromMode: "center",
+      toMode: "center",
+      startedAt: 0,
+      duration: 520
+    };
+    let lastNow = 0;
+    let W = 0;
+    let H = 0;
+    let dpr = 1;
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = Math.floor(window.innerWidth);
+      H = Math.floor(window.innerHeight);
+      canvas.width = Math.floor(W * dpr);
+      canvas.height = Math.floor(H * dpr);
+      canvas.style.width = `${W}px`;
+      canvas.style.height = `${H}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw();
+    }
+
+    function draw(now = performance.now()) {
+      lastNow = now;
+      ctx.clearRect(0, 0, W, H);
+      drawGrid();
+
+      const metrics = getSelectionFrameMetrics();
+      const side = Math.max(metrics.minSelectionSide, Number(frameSide.value));
+      const scale = Number(iconScale.value);
+      const icon = getImage(iconSelect.value);
+      const frame = {
+        x: W * 0.5 - side * 0.5,
+        y: H * 0.52 - side * 0.5,
+        side
+      };
+
+      updateIconTransition(frame, metrics, now);
+      drawTarget(frame, metrics, icon, scale, now);
+
+      if (isIconTransitionActive(now)) requestAnimationFrame(draw);
+    }
+
+    function drawTarget(frame, metrics, image, scale, now) {
+      drawFrame(frame);
+      const iconBox = getIconRect(frame, metrics, scale, now);
+
+      ctx.save();
+      ctx.strokeStyle = "rgba(0, 0, 255, 0.16)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(frame.x, frame.y, metrics.minSelectionSide, metrics.minSelectionSide);
+
+      ctx.strokeStyle = "rgba(227, 111, 111, 0.7)";
+      ctx.beginPath();
+      ctx.moveTo(iconBox.anchorX - 5, iconBox.anchorY);
+      ctx.lineTo(iconBox.anchorX + 5, iconBox.anchorY);
+      ctx.moveTo(iconBox.anchorX, iconBox.anchorY - 5);
+      ctx.lineTo(iconBox.anchorX, iconBox.anchorY + 5);
+      ctx.stroke();
+
+      if (image.complete && image.naturalWidth > 0) {
+        ctx.drawImage(image, iconBox.x, iconBox.y, iconBox.size, iconBox.size);
+      }
+
+      ctx.fillStyle = "#133047";
+      ctx.font = "12px Arial, sans-serif";
+      ctx.fillText(`frame ${Math.round(frame.side)} / min ${metrics.minSelectionSide} / icon ${Math.round(iconBox.size)} / ${iconBox.mode}`, frame.x, frame.y + frame.side + 22);
+      ctx.restore();
+    }
+
+    function updateIconTransition(frame, metrics, now) {
+      const nextMode = getIconLayoutMode(frame, metrics);
+      if (isIconTransitionActive(now)) return;
+      if (nextMode === iconTransition.toMode) return;
+
+      iconTransition.fromMode = iconTransition.toMode;
+      iconTransition.toMode = nextMode;
+      iconTransition.startedAt = now;
+      requestAnimationFrame(draw);
+    }
+
+    function getIconRect(frame, metrics, scale, now) {
+      const size = metrics.minSelectionSide * scale;
+      const progress = getIconTransitionProgress(now);
+      const fromAnchor = getIconAnchor(frame, metrics, size, iconTransition.fromMode);
+      const toAnchor = getIconAnchor(frame, metrics, size, iconTransition.toMode);
+      const eased = easeInOutCubic(progress);
+      const anchorX = lerp(fromAnchor.x, toAnchor.x, eased);
+      const anchorY = lerp(fromAnchor.y, toAnchor.y, eased);
+      return {
+        x: anchorX - size * 0.5,
+        y: anchorY - size * 0.5,
+        size,
+        anchorX,
+        anchorY,
+        mode: progress < 1 ? `${iconTransition.fromMode}->${iconTransition.toMode}` : iconTransition.toMode
+      };
+    }
+
+    function getIconLayoutMode(frame, metrics) {
+      return frame.side <= metrics.minSelectionSide + 0.001 ? "center" : "topLeft";
+    }
+
+    function getIconAnchor(frame, metrics, size, mode) {
+      if (mode === "center") {
+        return {
+          x: frame.x + frame.side * 0.5,
+          y: frame.y + frame.side * 0.5
+        };
+      }
+
+      return {
+        x: frame.x + size * 0.5,
+        y: frame.y + size * 0.5
+      };
+    }
+
+    function isIconTransitionActive(now = lastNow) {
+      return getIconTransitionProgress(now) < 1;
+    }
+
+    function getIconTransitionProgress(now) {
+      return clamp((now - iconTransition.startedAt) / iconTransition.duration, 0, 1);
+    }
+
+    function drawFrame(frame) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(0, 0, 255, 0.15)";
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(frame.x, frame.y, frame.side, frame.side);
+      ctx.strokeStyle = "rgba(0, 0, 255, 0.45)";
+      const corner = 15;
+      drawCorner(frame.x, frame.y, corner, corner);
+      drawCorner(frame.x + frame.side, frame.y, -corner, corner);
+      drawCorner(frame.x + frame.side, frame.y + frame.side, -corner, -corner);
+      drawCorner(frame.x, frame.y + frame.side, corner, -corner);
+      ctx.restore();
+    }
+
+    function drawCorner(x, y, dx, dy) {
+      ctx.beginPath();
+      ctx.moveTo(x, y + dy);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x + dx, y);
+      ctx.stroke();
+    }
+
+    function getSelectionFrameMetrics() {
+      const vh = H * 0.01;
+      const unit = clamp(vh, 7, 11);
+      const hoverCorner = unit * 2.0;
+      const hoverOffset = unit * 0.72;
+      const doubleOuterCorner = hoverCorner * 0.92;
+      const doubleInnerCorner = hoverCorner * 0.82;
+      const cornerReach = Math.max(doubleOuterCorner, 6 + doubleInnerCorner);
+      const minSelectionSide = Math.ceil((hoverOffset + cornerReach) * 2 + unit * 1.35);
+      return { minSelectionSide };
+    }
+
+    function drawGrid() {
+      ctx.save();
+      ctx.strokeStyle = "rgba(43, 98, 140, 0.055)";
+      ctx.lineWidth = 1;
+      for (let x = W % 48; x < W; x += 48) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+      }
+      for (let y = H % 48; y < H; y += 48) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function getImage(src) {
+      if (imageCache.has(src)) return imageCache.get(src);
+      const image = new Image();
+      image.onload = draw;
+      image.src = src;
+      imageCache.set(src, image);
+      return image;
+    }
+
+    function sync() {
+      iconScaleValue.value = Number(iconScale.value).toFixed(2);
+      frameSideValue.value = frameSide.value;
+      requestAnimationFrame(draw);
+    }
+
+    function clamp(v, min, max) {
+      return Math.max(min, Math.min(max, v));
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function easeInOutCubic(t) {
+      t = clamp(t, 0, 1);
+      return t < 0.5
+        ? 4 * t * t * t
+        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    window.addEventListener("resize", resize);
+    iconSelect.addEventListener("change", sync);
+    iconScale.addEventListener("input", sync);
+    frameSide.addEventListener("input", sync);
+    resize();
+    sync();
+  </script>
+</body>
+
+</html>

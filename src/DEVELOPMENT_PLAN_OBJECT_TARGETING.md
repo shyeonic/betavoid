@@ -61,22 +61,14 @@ function getSelectionFrameMetrics() {
   const vh = H * 0.01;
   const unit = clamp(vh, 7, 11);
   const hoverCorner = unit * 2.0;
-  const hoverOffset = unit * 0.72;
-  const doubleGap = 6;
-  const doubleOuterCorner = hoverCorner * 0.92;
-  const doubleInnerCorner = hoverCorner * 0.82;
-  const cornerReach = Math.max(doubleOuterCorner, doubleGap + doubleInnerCorner);
-  const minSelectionSide = Math.ceil((hoverOffset + cornerReach) * 2 + unit * 1.35);
 
   return {
     hoverCorner,
-    hoverOffset,
+    hoverOffset: unit * 0.72,
     hoverLineWidth: clamp(unit * 0.13, 1, 1.45),
-    doubleOuterCorner,
-    doubleInnerCorner,
-    doubleGap,
-    introGap: 10,
-    minSelectionSide,
+    doubleOuterCorner: hoverCorner * 0.92,
+    doubleInnerCorner: hoverCorner * 0.82,
+    doubleGap: -4,
     introFrameOutset: unit * 3.25,
     connectorDrop: unit * 2.0,
     frameAlpha: 0.24,
@@ -94,7 +86,7 @@ function getLockFrameIntro(elapsed, metrics) {
   const blinkB = smoothPulse(p, 0.23, 0.34);
   const settleAlpha = smoothstep(0.39, 0.56, p);
   const alpha = Math.max(blinkA, blinkB, settleAlpha);
-  const gap = lerp(metrics.introGap, metrics.doubleGap, settle);
+  const gap = lerp(10, metrics.doubleGap, settle);
   const frameOutset = lerp(metrics.introFrameOutset, 0, settle);
 
   return { alpha, gap, frameOutset };
@@ -109,6 +101,14 @@ function getLockFrameIntro(elapsed, metrics) {
 - 현재 승인 후보 차이: `getSelectionFrameMetrics()`의 비율 계산은 유지하되, 최종 metric 값은 `snap(value, step)`으로 정규화한다.
 
 ### 3.1 Animation Timing
+
+최신 애니메이션 기준 파일은 `sample-targeting-onlyAnimation.html`이다. 애니메이션 효과에 한해서는 이 파일의 코드 흐름을 따른다.
+
+중요 차이:
+
+- `doubleGap = -4`
+- intro gap은 `lerp(10, metrics.doubleGap, settle)`로 계산한다.
+- 아이콘은 샘플 애니메이션 대상이 아니므로 `intro.alpha`로 깜빡이게 하지 않는다.
 
 샘플의 선택 프레임 intro 흐름을 충실히 따른다.
 
@@ -126,6 +126,16 @@ function getLockFrameIntro(elapsed, metrics) {
 - double corner 내부 gap이 `10`에서 `metrics.doubleGap`으로 수렴
 
 ### 3.2 Frame Metrics
+
+최신 결정: `getSelectionFrameMetrics()`는 샘플 코드 수식 그 자체를 따른다. 이전에 검토했던 `snap(value, step)` 정규화는 폐기한다.
+
+구현 규칙:
+
+- `unit = clamp(H * 0.01, 7, 11)`을 그대로 사용한다.
+- `hoverCorner`, `hoverOffset`, `doubleOuterCorner`, `doubleInnerCorner`, `introFrameOutset`, `hoverLineWidth`는 샘플과 같은 부동소수점 값을 유지한다.
+- `margin = clamp(projectedRadius * 0.18, 16, 34)`도 샘플과 동일하게 정규화 없이 사용한다.
+- CSS animation, 다른 duration/easing, 다른 gap 보간, line width scale을 사용하지 않는다.
+- 색상 테스트용 파일에서도 기본 애니메이션과 metric은 샘플과 동일해야 하며, 변경 가능한 값은 색상/알파처럼 의도적으로 테스트하려는 값으로 제한한다.
 
 샘플의 `getSelectionFrameMetrics()` 개념을 유지한다.
 
@@ -208,12 +218,22 @@ const side = clamp(rawSide, metrics.minSelectionSide, maxSelectionSide);
 
 대상 모델이 현재 `objectsGroup`에 존재할 때:
 
-1. `THREE.Box3().setFromObject(object)`로 실제 world bounds를 구한다.
-2. `box.getCenter(center)`로 중심점을 구한다.
-3. `box.getSize(size)`로 크기를 구한다.
-4. `radius = size.length() / 2`를 계산한다.
-5. 중심점을 camera space 또는 NDC로 투영한다.
-6. 샘플의 `calculateSquareFrame()`과 같은 방식으로 화면상 사각 프레임을 계산한다.
+1. 선택 프레임의 크기 기준은 world AABB가 아니라 object root 기준 local bounds다.
+2. `THREE.Box3().setFromObject(object)`는 사용하지 않는다. 이 방식은 오브젝트 회전에 따라 AABB 크기가 달라져 타겟박스가 흔들린다.
+3. root local space에서 child mesh geometry bounds를 합산해 고정 local bounds를 만든다.
+4. `localRadius = localSize.length() / 2`를 계산한다.
+5. `radius = localRadius * maxAbs(worldScale)`로 world radius를 계산한다. root 회전은 radius에 반영하지 않는다.
+6. 중심점은 root object의 world position을 사용한다. 모델 geometry의 local center가 root 회전에 따라 움직이더라도 타겟박스 중심은 흔들리지 않아야 한다.
+7. root world position을 camera space 또는 NDC로 투영한다.
+8. 샘플의 `calculateSquareFrame()`과 같은 방식으로 화면에 평행한 square frame을 계산한다.
+
+프레임 고정 규칙:
+
+- 타겟박스 프레임은 항상 화면 좌표계에 평행해야 한다.
+- 타겟박스 전체 크기는 오브젝트 회전에 비례하여 재계산되면 안 된다.
+- 오브젝트가 자전하거나 임의 축으로 회전해도 동일 거리/동일 scale에서는 선택 프레임의 side가 고정되어야 한다.
+- 화면에서 변하는 것은 투영된 중심점과 거리/scale에 따른 side뿐이다.
+- 코너 효과, 내부 코너 효과, gap, 선 두께, 아이콘 크기는 선택박스 side에 따라 scale되지 않는다.
 
 프레임 크기 계산 원칙:
 
@@ -253,16 +273,16 @@ side = clamp(rawSide, metrics.minSelectionSide, maxSelectionSide);
 
 이유:
 
-- 렌더링되지 않는 대상은 실제 `Box3`를 계산할 수 없다.
+- 렌더링되지 않는 대상은 실제 mesh geometry 기반 root local bounds를 계산할 수 없다.
 - definition의 `visual.scale`만으로 정확한 mesh bounds를 추정하면 모델별 오차가 생긴다.
 - 먼 대상은 사용자가 큰 프레임보다 "선택 유지 여부와 방향성"을 확인하는 것이 우선이다.
-- 실제 모델이 렌더링되는 시점에 `Box3` 기반 규격으로 전환하면 정확도를 회복할 수 있다.
+- 실제 모델이 렌더링되는 시점에 root local bounds 기반 규격으로 전환하면 정확도를 회복할 수 있다.
 
 Option B 구현 방식:
 
 1. invisible/remote 상태에서는 저장된 `worldCenter`만 투영한다.
 2. frame side는 `metrics.minSelectionSide`로 둔다.
-3. 대상 모델이 다시 렌더링되어 `Box3`가 계산되면 `actualSide`를 계산한다.
+3. 대상 모델이 다시 렌더링되어 root local bounds가 계산되면 `actualSide`를 계산한다.
 4. `displaySide = lerp(previousDisplaySide, actualSide, transition)` 방식으로 최소 크기에서 실제 크기로 자연스럽게 변화시킨다.
 5. 이 전환은 선택 intro animation과 별개로, 규격 변경 smoothing으로만 처리한다.
 
@@ -273,7 +293,7 @@ Option B 구현 방식:
 선택된 오브젝트가 다시 가시 청크에 들어와 `objectsGroup`에 생성되면:
 
 - 같은 `kind + id`를 찾아 실제 object 참조를 다시 연결한다.
-- 이후 프레임은 다시 `Box3().setFromObject(object)` 기준으로 계산한다.
+- 이후 프레임은 다시 root local bounds 기준으로 계산한다.
 - invisible 최소 프레임에서 실제 프레임으로 갑자기 튀지 않도록 side/center를 짧은 시간 보간한다.
 
 ## 5. Input Rules
@@ -352,14 +372,16 @@ CSS:
 
 ## 7. Icon Rules
 
-아이콘은 선택박스 바깥 좌측 상단에 표시한다.
+아이콘은 선택박스 내부 좌측 상단에 표시한다.
 
 규격:
 
-- 아이콘 박스 크기 고정
-- SVG 크기 고정
-- 선택박스 크기에 따라 scale되지 않음
-- 위치만 선택박스의 최종 `frameMinX/frameMinY`에 따라 이동
+- 대시 형태의 아이콘 테두리나 별도 아이콘 박스 배경은 사용하지 않는다.
+- SVG 자체만 그린다.
+- SVG 표시 크기는 `metrics.minSelectionSide`와 일치시킨다.
+- 선택박스가 최소 규격일 때에는 아이콘 크기와 프레임 크기가 일치하므로 아이콘이 프레임 중앙에 찬 것처럼 보인다.
+- 선택박스가 최소 규격보다 커져도 아이콘 크기는 같이 커지지 않는다.
+- 위치만 선택박스의 최종 `frame.minX/frame.minY`에 따라 이동한다.
 
 아이콘 선택 기준 초안:
 
@@ -434,7 +456,7 @@ CSS:
    - drag/pinch/D-pad와 구분
 
 6. 매 프레임 overlay 갱신
-   - visible object면 Box3 기준
+   - visible object면 root local bounds 기준
    - invisible/remote object면 saved center + minimum side 기준
    - reappearing object면 minimum side에서 actual side로 smoothing
 
@@ -521,9 +543,9 @@ DOM/CSS로 구현하면 layout은 쉬우나, 샘플의 `drawLockFrame()` 흐름�
 
 샘플은 오브젝트 회전으로 프레임이 흔들리지 않도록 bounding radius 기반 square frame을 사용한다.
 
-현재 요구도 "오브젝트 크기를 계산하여 기준으로 박스"를 요구하므로, `Box3`에서 radius를 얻고 샘플 방식으로 square frame을 계산하는 것이 적합하다.
+현재 요구도 "오브젝트 크기를 계산하여 기준으로 박스"를 요구하므로, root local bounds에서 rotation-invariant radius를 얻고 샘플 방식으로 square frame을 계산하는 것이 적합하다.
 
-결정 제안: `Box3 -> radius -> sample calculateSquareFrame` 사용.
+결정: `root local bounds -> fixed radius -> sample calculateSquareFrame` 사용.
 
 ### 11.3 Invisible Target Frame
 
@@ -534,7 +556,7 @@ DOM/CSS로 구현하면 layout은 쉬우나, 샘플의 `drawLockFrame()` 흐름�
 - 실제 추정 radius 저장
 - 최소 규격으로 유지 후 실제 렌더링 시 전환
 
-결정 제안: `savedCenter`는 반드시 저장하고, invisible/remote 상태는 최소 규격으로 표시한다. 모델이 렌더링되면 실제 `Box3` 기준 크기로 smoothing 전환한다.
+결정 제안: `savedCenter`는 반드시 저장하고, invisible/remote 상태는 최소 규격으로 표시한다. 모델이 렌더링되면 실제 root local bounds 기준 크기로 smoothing 전환한다.
 
 ## 12. Non-goals
 
