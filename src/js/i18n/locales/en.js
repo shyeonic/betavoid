@@ -77,6 +77,24 @@ export const en = {
     weapon_factory: { name: "Weapon Factory", description: "A factory that produces standard ship weapon systems." },
     advanced_weapon_factory: { name: "Advanced Weapon Factory", description: "A factory for prototype and special weapon systems." }
   },
+  buildingSize: {
+    EX: "Exclusive",
+    L: "Large",
+    M: "Medium",
+    S: "Small"
+  },
+  buildingCategory: {
+    defense_turret: "Defence Turret",
+    factory: "Factory",
+    habitation: "Habitation",
+    headquarters: "Headquarters",
+    hyperdrive_energy: "Hyperdrive Energy Facility",
+    outpost: "Outpost",
+    power_plant: "Power Plant",
+    resource_production: "Resource Production Facility",
+    shipyard: "Shipyard",
+    trade_port: "Trade Port"
+  },
   sector: {
     "SEC-001": { name: "EPSILON PRIME", theme: "Volcanic Industrial" },
     "SEC-002": { name: "NOVA STATION", theme: "Trade Hub" },

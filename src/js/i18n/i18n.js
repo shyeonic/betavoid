@@ -103,7 +103,7 @@ export function validateDefinitionI18nKeys(definitionGroups, {
   });
 
   definitions.forEach(({ groupName, definition }) => {
-    ["label_key", "description_key", "theme_key"].forEach((field) => {
+    Object.keys(definition || {}).filter((field) => field.endsWith("_key")).forEach((field) => {
       const key = definition?.[field];
       if (!key) return;
 

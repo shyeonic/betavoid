@@ -77,6 +77,24 @@ export const ko = {
     weapon_factory: { name: "무기 공장", description: "표준 함선 무기 체계를 생산하는 공장" },
     advanced_weapon_factory: { name: "특수 무기 공장", description: "실험적 프로토타입과 특수 병기를 생산하는 공장" }
   },
+  buildingSize: {
+    EX: "전용",
+    L: "대형",
+    M: "중형",
+    S: "소형"
+  },
+  buildingCategory: {
+    defense_turret: "방어 포탑",
+    factory: "공장",
+    habitation: "거주 시설",
+    headquarters: "헤드쿼터",
+    hyperdrive_energy: "하이퍼드라이브 에너지 생산 시설",
+    outpost: "전초기지",
+    power_plant: "발전소",
+    resource_production: "자원 생산 시설",
+    shipyard: "조선소",
+    trade_port: "거래소"
+  },
   sector: {
     "SEC-001": { name: "엡실론 프라임", theme: "화산 산업지대" },
     "SEC-002": { name: "노바 스테이션", theme: "무역 허브" },

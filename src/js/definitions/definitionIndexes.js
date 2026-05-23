@@ -55,6 +55,12 @@ export function validateDefinitionCatalog() {
     if (building.building_id !== buildingId) errors.push(`Building key mismatch: ${buildingId}`);
     if (!building.label_key) errors.push(`Building ${buildingId} is missing label_key`);
     if (!building.description_key) errors.push(`Building ${buildingId} is missing description_key`);
+    if (!["EX", "L", "M", "S"].includes(building.size)) {
+      errors.push(`Building ${buildingId} has invalid size ${building.size}`);
+    }
+    if (!building.size_key) errors.push(`Building ${buildingId} is missing size_key`);
+    if (!building.category) errors.push(`Building ${buildingId} is missing category`);
+    if (!building.category_key) errors.push(`Building ${buildingId} is missing category_key`);
     validateBuildingProductionProfile(building, errors);
   }
 

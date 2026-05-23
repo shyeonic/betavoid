@@ -110,8 +110,10 @@
   building_id: "mine",
   label_key: "building.mine.name",
   description_key: "building.mine.description",
-  size: "중형",
-  category: "자원 생산 시설",
+  size: "M",
+  size_key: "buildingSize.M",
+  category: "resource_production",
+  category_key: "buildingCategory.resource_production",
   hp: 1000,
   admin_cost: 0,
   placement_rule: {
@@ -153,6 +155,8 @@
 샘플 코드의 `build_range`는 코드 단계에서 `placement_rule`로 정규화한다.
 
 기존 샘플의 `base_production`, `production` boolean 필드는 신규 정의 체계에서 사용하지 않는다. 생산 규칙은 `production_profile`을 유일한 원본으로 삼는다. `recipe_id`는 `FACTORY` 프로필에만 사용하며, recipe catalog의 내부 구조는 별도 단계에서 정의한다.
+
+건물 크기는 `EX`, `L`, `M`, `S` 코드만 사용한다. 표시 문자열은 `size_key`로 locale catalog에서 가져온다. 건물 카테고리도 `category`에는 안정적인 코드만 저장하고, 표시 문자열은 `category_key`로 가져온다.
 
 | 샘플 `build_range.type` | 3D `placement_rule.type` | 설명 |
 |---|---|---|
