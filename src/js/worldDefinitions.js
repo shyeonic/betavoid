@@ -22,7 +22,7 @@ export const WORLD_CONFIG = {
     y: 10,
     z: 10
   },
-  renderChunkRadius: 1,
+  renderChunkRadius: 2,
   resourceCheckInterval: 86400000,
   placementMargin: 800,
   resourceMinDistance: 1200,

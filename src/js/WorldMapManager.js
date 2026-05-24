@@ -26,6 +26,10 @@ export class WorldMapManager {
     this.visibleChunkIds = new Set();
     this.lastVisibleChunkId = null;
     this.lastVisibleChunkRadius = null;
+    this.objectBuildQueue = [];
+    this.pendingObjectKeys = new Set();
+    this.objectBuildBatchSize = 8;
+    this.objectBuildBudgetMs = 3;
   }
 
   async loadAssets(resourceManager) {
@@ -102,38 +106,126 @@ export class WorldMapManager {
       }
     }
 
+    if (force) this.resetVisibleWorldRenderState();
+
+    const previousVisibleChunkIds = force ? new Set() : this.visibleChunkIds;
     this.visibleChunkIds = nextVisibleChunkIds;
     this.lastVisibleChunkId = chunkId;
     this.lastVisibleChunkRadius = radius;
-    this.renderVisibleWorld();
+    this.renderVisibleWorld(previousVisibleChunkIds);
     return this.visibleChunkIds.size;
   }
 
-  renderVisibleWorld() {
-    this.clearGroup(this.sectorBoundsGroup);
-    this.clearGroup(this.objectsGroup);
-    this.animatedObjects = [];
+  renderVisibleWorld(previousVisibleChunkIds = new Set()) {
     if (!this.snapshot) return;
 
+    const removedChunkIds = [...previousVisibleChunkIds]
+      .filter((chunkId) => !this.visibleChunkIds.has(chunkId));
+    const addedChunkIds = [...this.visibleChunkIds]
+      .filter((chunkId) => !previousVisibleChunkIds.has(chunkId));
+    const addedChunkIdSet = new Set(addedChunkIds);
+
+    this.removeSectorBoundsForChunks(removedChunkIds);
+    this.removeObjectsForChunks(removedChunkIds);
+    this.pruneObjectBuildQueue();
+
     this.snapshot.sectors
-      .filter((sector) => this.visibleChunkIds.has(sector.chunk_id))
+      .filter((sector) => addedChunkIdSet.has(sector.chunk_id))
       .forEach((sector) => this.sectorBoundsGroup.add(this.createSectorBounds(sector)));
 
     this.renderChunkBounds();
 
     this.snapshot.resourceNodes
-      .filter((resourceNode) => this.visibleChunkIds.has(resourceNode.chunk_id))
-      .forEach((resourceNode) => {
-        const mesh = this.createResourceMesh(resourceNode);
-        if (mesh) this.objectsGroup.add(mesh);
-      });
+      .filter((resourceNode) => addedChunkIdSet.has(resourceNode.chunk_id))
+      .forEach((resourceNode) => this.enqueueObjectBuild("resource", resourceNode));
 
     this.snapshot.buildings
-      .filter((building) => this.visibleChunkIds.has(building.chunk_id))
-      .forEach((building) => {
-        const mesh = this.createBuildingMesh(building);
-        if (mesh) this.objectsGroup.add(mesh);
-      });
+      .filter((building) => addedChunkIdSet.has(building.chunk_id))
+      .forEach((building) => this.enqueueObjectBuild("building", building));
+  }
+
+  resetVisibleWorldRenderState() {
+    this.animatedObjects = [];
+    this.resetObjectBuildQueue();
+    this.clearGroup(this.sectorBoundsGroup);
+    this.clearGroup(this.objectsGroup);
+  }
+
+  removeSectorBoundsForChunks(chunkIds) {
+    if (chunkIds.length === 0) return;
+    const chunkIdSet = new Set(chunkIds);
+    for (let index = this.sectorBoundsGroup.children.length - 1; index >= 0; index -= 1) {
+      const child = this.sectorBoundsGroup.children[index];
+      if (!chunkIdSet.has(child.userData?.chunk_id)) continue;
+      this.sectorBoundsGroup.remove(child);
+      this.disposeObject(child);
+    }
+  }
+
+  removeObjectsForChunks(chunkIds) {
+    if (chunkIds.length === 0) return;
+    const chunkIdSet = new Set(chunkIds);
+    for (let index = this.objectsGroup.children.length - 1; index >= 0; index -= 1) {
+      const child = this.objectsGroup.children[index];
+      if (!chunkIdSet.has(child.userData?.chunk_id)) continue;
+      this.objectsGroup.remove(child);
+      this.disposeObject(child);
+    }
+    this.animatedObjects = this.animatedObjects
+      .filter((item) => !chunkIdSet.has(item.object.userData?.chunk_id));
+  }
+
+  enqueueObjectBuild(kind, data) {
+    const key = this.getObjectBuildKey(kind, data);
+    if (!key || this.pendingObjectKeys.has(key)) return;
+    this.pendingObjectKeys.add(key);
+    this.objectBuildQueue.push({
+      kind,
+      key,
+      chunkId: data.chunk_id,
+      data
+    });
+  }
+
+  getObjectBuildKey(kind, data) {
+    if (kind === "resource") return data.resource_instance_id ? `resource:${data.resource_instance_id}` : null;
+    if (kind === "building") return data.building_instance_id ? `building:${data.building_instance_id}` : null;
+    return null;
+  }
+
+  resetObjectBuildQueue() {
+    this.objectBuildQueue = [];
+    this.pendingObjectKeys.clear();
+  }
+
+  pruneObjectBuildQueue() {
+    if (this.objectBuildQueue.length === 0) return;
+    this.objectBuildQueue = this.objectBuildQueue.filter((task) => {
+      const keep = this.visibleChunkIds.has(task.chunkId);
+      if (!keep) this.pendingObjectKeys.delete(task.key);
+      return keep;
+    });
+  }
+
+  processObjectBuildQueue() {
+    if (!this.snapshot || this.objectBuildQueue.length === 0) return;
+
+    const startedAt = performance.now();
+    let processed = 0;
+
+    while (this.objectBuildQueue.length > 0 && processed < this.objectBuildBatchSize) {
+      if (processed > 0 && performance.now() - startedAt >= this.objectBuildBudgetMs) break;
+
+      const task = this.objectBuildQueue.shift();
+      this.pendingObjectKeys.delete(task.key);
+      if (!this.visibleChunkIds.has(task.chunkId)) continue;
+
+      const mesh = task.kind === "resource"
+        ? this.createResourceMesh(task.data)
+        : this.createBuildingMesh(task.data);
+      if (mesh) this.objectsGroup.add(mesh);
+      processed += 1;
+    }
   }
 
   createResourceMesh(resourceNode) {
@@ -339,6 +431,7 @@ export class WorldMapManager {
     lines.userData = {
       kind: "sector",
       sector_id: sector.sector_id,
+      chunk_id: sector.chunk_id,
       name: sector.name
     };
     return lines;
@@ -418,6 +511,8 @@ export class WorldMapManager {
   }
 
   update(dt) {
+    this.processObjectBuildQueue();
+
     for (const item of this.animatedObjects) {
       item.object.rotation.y += dt * item.spin;
     }
@@ -431,6 +526,7 @@ export class WorldMapManager {
     this.visibleChunkIds.clear();
     this.lastVisibleChunkId = null;
     this.lastVisibleChunkRadius = null;
+    this.resetObjectBuildQueue();
     this.clearGroup(this.sectorBoundsGroup);
     this.clearGroup(this.chunkBoundsGroup);
     this.clearGroup(this.objectsGroup);

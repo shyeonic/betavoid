@@ -1679,6 +1679,8 @@ export class GameManager {
 
     if (this.state.phase === "running") {
       this.update(dt);
+    } else {
+      this.worldMapManager?.update(dt);
     }
 
     this.updateTargetMarker(dt);
