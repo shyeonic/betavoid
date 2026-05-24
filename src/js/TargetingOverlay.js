@@ -270,7 +270,7 @@ export class TargetingOverlay {
       doubleInnerCorner,
       doubleGap,
       minSelectionSide,
-      introFrameOutset: unit * 3.25,
+      introFrameOutset: unit * 2.25,
       connectorDrop: unit * 2.0,
       frameAlpha: 0.15,
       frameAlphaSoft: 0.45
@@ -285,7 +285,7 @@ export class TargetingOverlay {
     const blinkB = smoothPulse(p, 0.23, 0.34);
     const settleAlpha = smoothstep(0.39, 0.56, p);
     const alpha = Math.max(blinkA, blinkB, settleAlpha);
-    const gap = lerp(10, metrics.doubleGap, settle);
+    const gap = lerp(6, metrics.doubleGap, settle);
     const frameOutset = lerp(metrics.introFrameOutset, 0, settle);
 
     return { alpha, gap, frameOutset };

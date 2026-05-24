@@ -492,11 +492,15 @@
     }
 
     .start-title strong {
-      font-size: 5vh;
-      line-height: 1.1;
-      text-transform: uppercase;
-      letter-spacing: 0;
-      color: #fff;
+      display: flex;
+      align-items: center;
+      width: 36vh;
+      height: 9vh;
+    }
+
+    .start-title strong .svg-icon {
+      width: 100%;
+      height: 100%;
     }
 
     .start-prompt {
@@ -507,7 +511,7 @@
       font-size: 1.6vh;
       text-align: center;
       text-transform: uppercase;
-      color: #333;
+      color: #999;
       letter-spacing: 0;
       text-shadow: 0 0 1.8vh rgba(99, 210, 255, 0.46);
     }
@@ -583,7 +587,7 @@
       border-radius: 0;
       background: transparent;
       clip-path: polygon(var(--ready-button-edge) 0, calc(100% - var(--ready-button-edge)) 0, 100% 50%, calc(100% - var(--ready-button-edge)) 100%, var(--ready-button-edge) 100%, 0 50%);
-      color: #243241;
+      color: #257ad4;
       filter: drop-shadow(0 1.4vh 2.4vh rgba(60, 102, 130, 0.18));
       font-size: 1.65vh;
       font-weight: 700;
@@ -623,12 +627,6 @@
       box-shadow: inset 0 0.12vh 0 rgba(255, 255, 255, 0.56);
     }
 
-    .start-ready-scene .ready-button:hover:not(:disabled) {
-      color: #112c40;
-      filter: drop-shadow(0 1vh 1.8vh rgba(49, 186, 244, 0.16));
-      transform: translateY(-0.22vh);
-    }
-
     .start-ready-scene .ready-button:active:not(:disabled) {
       transform: translateY(0.12vh) scale(0.99);
       background: transparent;
@@ -665,6 +663,7 @@
       width: min(54vh, calc(100vw - 7vh));
       height: 7.8vh;
       pointer-events: auto;
+      font-size: 2.4vh;
     }
 
     .start-ready-scene .ready-start-button .ready-button-icon {
@@ -680,7 +679,8 @@
       height: 6.5vh;
       grid-template-columns: 5.4vh minmax(0, 1fr) 5.4vh;
       padding: 0 2.4vh;
-      font-size: 1.35vh;
+      font-size: 1.6vh;
+      color: #999;
     }
 
     .start-ready-scene .ready-settings-button .ready-button-icon {
@@ -738,6 +738,11 @@
     .svg-icon-logo-void {
       color: #fff;
       --svg-icon-source: url("./rss/svg/logo_void.svg");
+    }
+
+    .svg-icon-logo-void-title {
+      color: #fff;
+      --svg-icon-source: url("./rss/svg/logo_void_title.svg");
     }
 
     .svg-icon-to-do {
@@ -1834,8 +1839,7 @@
             <div class="settings-language-label" id="settingsLanguageLabel">Language</div>
             <div class="settings-language-hint" id="settingsLanguageHint">Applies after reload</div>
           </div>
-          <select class="settings-language-select" id="settingsLanguageSelect"
-            aria-labelledby="settingsLanguageLabel">
+          <select class="settings-language-select" id="settingsLanguageSelect" aria-labelledby="settingsLanguageLabel">
             <option value="en">English</option>
             <option value="ko">한국어</option>
           </select>
@@ -1909,16 +1913,17 @@
             <span class="start-logo" aria-hidden="true">
               <span class="svg-icon svg-icon-logo-void"></span>
             </span>
-            <strong id="startTitle">Void Zero</strong>
+            <strong id="startTitle" aria-label="Void Zero"><span class="svg-icon svg-icon-logo-void-title"
+                aria-hidden="true"></span></strong>
           </div>
-          <div class="start-prompt">Click anywhere</div>
+          <div class="start-prompt">Touch to Start</div>
           <div class="start-status">
             <div class="loading-track" aria-hidden="true">
               <div class="loading-fill" id="loadingBar"></div>
             </div>
             <div class="loading-copy">
               <div id="loadingText">Standby</div>
-              <div class="loading-detail" id="loadingDetail">click anywhere</div>
+              <div class="loading-detail" id="loadingDetail">Touch to Start</div>
             </div>
           </div>
         </div>
