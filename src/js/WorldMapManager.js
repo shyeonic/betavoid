@@ -439,8 +439,8 @@ export class WorldMapManager {
 
   createChunkBounds(chunk) {
     const lines = this.createBoxBounds(chunk.global_bounds, {
-      color: 0x49657a,
-      opacity: 0.28
+      color: 0xE7F2F9,
+      opacity: 1
     });
     lines.userData = {
       kind: "chunk",
@@ -471,9 +471,10 @@ export class WorldMapManager {
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     const material = new THREE.LineBasicMaterial({
       color,
-      transparent: true,
+      transparent: false,
       opacity,
-      fog: false
+      fog: false,
+      toneMapped: false
     });
     return new THREE.LineSegments(geometry, material);
   }
