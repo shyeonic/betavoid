@@ -6,9 +6,15 @@ const TARGET_ICON_INTRO_RISE_UNIT = 1.5;
 const TARGET_ICON_EDGE_PADDING = 8;
 
 export class TargetingOverlay {
-  constructor({ canvas }) {
+  constructor({ canvas, frameStyle = {} }) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
+    this.frameStyle = {
+      outerColor: frameStyle.outerColor || "#0000ff",
+      outerOpacity: Number.isFinite(Number(frameStyle.outerOpacity)) ? Number(frameStyle.outerOpacity) : 0.15,
+      innerColor: frameStyle.innerColor || "#0000ff",
+      innerOpacity: Number.isFinite(Number(frameStyle.innerOpacity)) ? Number(frameStyle.innerOpacity) : 0.45
+    };
     this.width = 0;
     this.height = 0;
     this.dpr = 1;
@@ -42,6 +48,13 @@ export class TargetingOverlay {
 
   clear() {
     this.ctx.clearRect(0, 0, this.width, this.height);
+  }
+
+  setFrameStyle({ outerColor, outerOpacity, innerColor, innerOpacity } = {}) {
+    if (typeof outerColor === "string" && outerColor) this.frameStyle.outerColor = outerColor;
+    if (Number.isFinite(Number(outerOpacity))) this.frameStyle.outerOpacity = Number(outerOpacity);
+    if (typeof innerColor === "string" && innerColor) this.frameStyle.innerColor = innerColor;
+    if (Number.isFinite(Number(innerOpacity))) this.frameStyle.innerOpacity = Number(innerOpacity);
   }
 
   render(target, now = performance.now()) {
@@ -271,9 +284,7 @@ export class TargetingOverlay {
       doubleGap,
       minSelectionSide,
       introFrameOutset: unit * 2.25,
-      connectorDrop: unit * 2.0,
-      frameAlpha: 0.15,
-      frameAlphaSoft: 0.45
+      connectorDrop: unit * 2.0
     };
   }
 
@@ -299,10 +310,10 @@ export class TargetingOverlay {
     const outerLen = metrics.doubleOuterCorner;
     const innerLen = metrics.doubleInnerCorner;
 
-    this.ctx.strokeStyle = selectionFrameStroke("#0000ff", metrics.frameAlpha * intro.alpha);
+    this.ctx.strokeStyle = selectionFrameStroke(this.frameStyle.outerColor, this.frameStyle.outerOpacity * intro.alpha);
     this.drawCorner(x, y, sx * outerLen, sy * outerLen);
 
-    this.ctx.strokeStyle = selectionFrameStroke("#0000ff", metrics.frameAlphaSoft * intro.alpha);
+    this.ctx.strokeStyle = selectionFrameStroke(this.frameStyle.innerColor, this.frameStyle.innerOpacity * intro.alpha);
     this.drawCorner(x + sx * gap, y + sy * gap, sx * innerLen, sy * innerLen);
   }
 

@@ -258,6 +258,13 @@
           <input type="number" data-engine-max="pointIntensity" min="0" max="8" step="0.01">
         </div>
       </div>
+      <div class="star-bloom-controls" id="highlightControls">
+        <p class="section-title">Highlight Material</p>
+        <div class="control-row">
+          <label for="highlightColorInput">Highlight_01</label>
+          <input id="highlightColorInput" type="color" value="#ff97c2">
+        </div>
+      </div>
       <div class="star-bloom-controls" id="starBloomControls">
         <p class="section-title">Star Bloom</p>
         <div class="toggle-list">
@@ -288,109 +295,267 @@
     import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
     import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 
-    const GLB_URL = "./rss/ships/ship_01.glb";
-    const REFLECTION_INTENSITY = 0.32;
-    const BLUE_EMISSIVE_MATERIAL = "EmissiveMTL_light";
-    const BLUE_EMISSIVE_COLOR = 0xffffff;
-    const BLOOM_LAYER = 1;
-    const BLOOM_STRENGTH = 0.2;
-    const BLOOM_RADIUS = 0.1;
-    const BLOOM_THRESHOLD = 0.14;
-    const STAR_BLOOM_LAYER = 2;
-    const STAR_BLOOM_STRENGTH = 1;
-    const STAR_BLOOM_RADIUS = 2;
-    const STAR_BLOOM_THRESHOLD = 0.02;
-    const STAR_BLOOM_SIZE_SCALE = 1.2;
-    const STAR_BLOOM_OPACITY_SCALE = 0.2;
-    const STAR_BLOOM_COLOR_INTENSITY = 1;
-    const STAR_BLOOM_OCCLUSION_STRENGTH = 1;
-    const STAR_BLOOM_RADIUS_SIZE_SCALE = 2;
-    const STAR_FIELD_LAYERS = [
-      { count: 1800, radius: 8500, size: 32.8, opacity: 0.98 },
-      { count: 900, radius: 24000, size: 51.2, opacity: 0.74 },
-      { count: 420, radius: 52000, size: 73.6, opacity: 0.5 }
-    ];
     const VFX_LIGHT_ENGINE_ID = "vfx_light_engine_001";
     const VFX_LIGHT_SUB_HEAD_ID = "vfx_light_sub_001";
     const VFX_LIGHT_SUB_AUX_ID = "vfx_light_sub_002";
-    const VFX_LIGHT_DEFINITIONS = [
-      {
-        id: VFX_LIGHT_ENGINE_ID,
-        label: "vfx_light_engine_001",
-        objectMatches: ["EmissivePlate_ship_01.001", "EmissivePlate_ship_01001", "큐브001_1"],
-        settings: {
-          color: "#9b9bff",
-          emissiveIntensity: 12,
-          lightRangeScale: 2,
-          minLightRange: 0.18,
-          maxLightRange: 0.95,
-          glowSpriteSpreadScale: 1.5,
-          glowSpriteOpacity: 0.58,
-          pointIntensity: 0.72,
-          pointRangeScale: 0.86
-        }
-      },
-      {
-        id: VFX_LIGHT_SUB_HEAD_ID,
-        label: "vfx_light_sub_001",
-        objectMatches: ["EmissivePlate_ship_01.002", "EmissivePlate_ship_01002", "큐브002_1"],
-        settings: {
-          color: "#ff0000",
-          emissiveIntensity: 12,
-          lightRangeScale: 2,
-          minLightRange: 0.52,
-          maxLightRange: 1.45,
-          glowSpriteSpreadScale: 1.2,
-          glowSpriteOpacity: 0.38,
-          pointLightEnabled: false,
-          pointIntensity: 0.52,
-          pointRangeScale: 0.82
-        }
-      },
-      {
-        id: VFX_LIGHT_SUB_AUX_ID,
-        label: "vfx_light_sub_002",
-        objectMatches: [
-          "EmissivePlate_ship_01.003",
-          "EmissivePlate_ship_01003",
-          "EmissivePlate_ship_01.004",
-          "EmissivePlate_ship_01004",
-          "EmissivePlate_ship_01.005",
-          "EmissivePlate_ship_01005",
-          "EmissivePlate_ship_01.006",
-          "EmissivePlate_ship_01006"
-        ],
-        settings: {
-          color: "#9b9bff",
-          emissiveIntensity: 3,
-          lightRangeScale: 2,
-          minLightRange: 0.52,
-          maxLightRange: 1.45,
-          glowSpriteSpreadScale: 0.8,
-          glowSpriteOpacity: 0.28,
-          pointLightEnabled: false,
-          pointIntensity: 0.2,
-          pointRangeScale: 0.2
+
+    const SHIP_RENDER_DEFINITIONS = {
+      ship_01: {
+        id: "ship_01",
+        label: "ship_01",
+        asset: {
+          type: "glb",
+          url: "./rss/ships/ship_01.glb"
+        },
+        modelTransform: {
+          normalizeLongestSide: 7,
+          rotation: [0, Math.PI, 0]
+        },
+        materials: {
+          reflectionIntensity: 0.32,
+          emissiveSurface: {
+            materialName: "EmissiveMTL_light",
+            fallbackColor: 0xffffff
+          },
+          highlights: {
+            highlight_01: {
+              id: "highlight_01",
+              label: "Highlight_01",
+              materialName: "Highlight_01",
+              defaultColor: "#ff97c2"
+            }
+          }
+        },
+        vfx: {
+          defaultLightType: VFX_LIGHT_SUB_HEAD_ID,
+          engineOutput: {
+            controlledLightType: VFX_LIGHT_ENGINE_ID,
+            value: 100,
+            min: {
+              emissiveIntensity: 0.2,
+              glowSpriteOpacity: 0.04,
+              pointIntensity: 0.05
+            }
+          },
+          lightParts: [
+            {
+              id: VFX_LIGHT_ENGINE_ID,
+              label: "vfx_light_engine_001",
+              objectMatches: ["EmissivePlate_ship_01.001"],
+              settings: {
+                color: "#9b9bff",
+                emissiveIntensity: 12,
+                lightRangeScale: 2,
+                minLightRange: 0.18,
+                maxLightRange: 0.95,
+                glowSpriteSpreadScale: 1.5,
+                glowSpriteOpacity: 0.58,
+                pointIntensity: 0.72,
+                pointRangeScale: 0.86
+              }
+            },
+            {
+              id: VFX_LIGHT_SUB_HEAD_ID,
+              label: "vfx_light_sub_001",
+              objectMatches: ["EmissivePlate_ship_01.002"],
+              settings: {
+                color: "#ff0000",
+                emissiveIntensity: 12,
+                lightRangeScale: 2,
+                minLightRange: 0.52,
+                maxLightRange: 1.45,
+                glowSpriteSpreadScale: 1.2,
+                glowSpriteOpacity: 0.38,
+                pointLightEnabled: false,
+                pointIntensity: 0.52,
+                pointRangeScale: 0.82
+              }
+            },
+            {
+              id: VFX_LIGHT_SUB_AUX_ID,
+              label: "vfx_light_sub_002",
+              objectMatches: [
+                "EmissivePlate_ship_01.003",
+                "EmissivePlate_ship_01.004",
+                "EmissivePlate_ship_01.005",
+                "EmissivePlate_ship_01.006"
+              ],
+              settings: {
+                color: "#9b9bff",
+                emissiveIntensity: 3,
+                lightRangeScale: 2,
+                minLightRange: 0.52,
+                maxLightRange: 1.45,
+                glowSpriteSpreadScale: 0.8,
+                glowSpriteOpacity: 0.28,
+                pointLightEnabled: false,
+                pointIntensity: 0.2,
+                pointRangeScale: 0.2
+              }
+            }
+          ]
         }
       }
-    ];
-    const VFX_LIGHT_PROFILE_MATCHES = VFX_LIGHT_DEFINITIONS.map((definition) => ({
-      id: definition.id,
-      names: definition.objectMatches
-    }));
-    const VFX_LIGHT_PROFILES = Object.fromEntries(
-      VFX_LIGHT_DEFINITIONS.map((definition) => [
+    };
+
+    const SPACE_ENVIRONMENT_PRESETS = {
+      deep_blue_void: {
+        id: "deep_blue_void",
+        scene: {
+          background: 0x030811,
+          fog: { type: "exp2", color: 0x05101b, density: 0.000004 },
+          environment: { source: "room", blur: 0.04 }
+        },
+        renderer: {
+          toneMappingExposure: 0.82
+        },
+        lights: [
+          { type: "ambient", color: 0x9fb9d8, intensity: 0.28 },
+          { type: "directional", color: 0xd9f1ff, intensity: 0.36, position: [7, 8, 6] },
+          { type: "directional", color: 0x5cc8ff, intensity: 0.32, position: [-8, 4, -8] },
+          { type: "hemisphere", skyColor: 0x93b6d5, groundColor: 0x08131c, intensity: 0.18 }
+        ],
+        objectBloom: {
+          layer: 1,
+          strength: 0.2,
+          radius: 0.1,
+          threshold: 0.14
+        },
+        starBloom: {
+          layer: 2,
+          enabled: true,
+          strength: 1,
+          radius: 2,
+          threshold: 0.02,
+          sizeScale: 1.2,
+          opacityScale: 0.2,
+          colorIntensity: 1,
+          occlusionStrength: 1,
+          radiusSizeScale: 2
+        },
+        starField: {
+          layers: [
+            { count: 1800, radius: 8500, size: 32.8, opacity: 0.98 },
+            { count: 900, radius: 24000, size: 51.2, opacity: 0.74 },
+            { count: 420, radius: 52000, size: 73.6, opacity: 0.5 }
+          ]
+        }
+      }
+    };
+
+    const VIEWER_SCENARIO = {
+      shipId: "ship_01",
+      environmentId: "deep_blue_void"
+    };
+    const ACTIVE_SHIP_DEFINITION = SHIP_RENDER_DEFINITIONS[VIEWER_SCENARIO.shipId];
+    const ACTIVE_SPACE_ENVIRONMENT = SPACE_ENVIRONMENT_PRESETS[VIEWER_SCENARIO.environmentId];
+    const BLOOM_LAYER = ACTIVE_SPACE_ENVIRONMENT.objectBloom.layer;
+    const BLOOM_STRENGTH = ACTIVE_SPACE_ENVIRONMENT.objectBloom.strength;
+    const BLOOM_RADIUS = ACTIVE_SPACE_ENVIRONMENT.objectBloom.radius;
+    const BLOOM_THRESHOLD = ACTIVE_SPACE_ENVIRONMENT.objectBloom.threshold;
+    const STAR_BLOOM_LAYER = ACTIVE_SPACE_ENVIRONMENT.starBloom.layer;
+    const STAR_BLOOM_RADIUS_SIZE_SCALE = ACTIVE_SPACE_ENVIRONMENT.starBloom.radiusSizeScale;
+    const STAR_FIELD_LAYERS = ACTIVE_SPACE_ENVIRONMENT.starField.layers;
+    function createLightProfileMatches(shipDefinition) {
+      return shipDefinition.vfx.lightParts.map((definition) => ({
+        id: definition.id,
+        normalizedNames: definition.objectMatches.map((name) => normalizeSceneName(name))
+      }));
+    }
+
+    function createBaseLightProfiles(shipDefinition) {
+      return Object.fromEntries(shipDefinition.vfx.lightParts.map((definition) => [
         definition.id,
         {
           id: definition.id,
           type: definition.id,
           label: definition.label,
           objectMatches: definition.objectMatches,
+          fallbackColor: shipDefinition.materials.emissiveSurface.fallbackColor,
           ...definition.settings
         }
-      ])
-    );
-    const DEFAULT_VFX_LIGHT_PROFILE = VFX_LIGHT_PROFILES[VFX_LIGHT_SUB_HEAD_ID];
+      ]));
+    }
+
+    function cloneLightProfiles(shipDefinition) {
+      return Object.fromEntries(
+        Object.entries(createBaseLightProfiles(shipDefinition)).map(([type, profile]) => [
+          type,
+          {
+            ...profile,
+            objectMatches: [...profile.objectMatches]
+          }
+        ])
+      );
+    }
+
+    function createLightControlState(lightProfiles) {
+      return Object.fromEntries(
+        Object.entries(lightProfiles).map(([type, profile]) => [
+          type,
+          {
+            emissiveBloom: profile.emissiveBloomEnabled !== false,
+            billboard: profile.glowSpriteEnabled !== false,
+            pointLight: profile.pointLightEnabled !== false
+          }
+        ])
+      );
+    }
+
+    function createEngineOutputSettings(shipDefinition, lightProfiles) {
+      const outputDefinition = shipDefinition.vfx.engineOutput;
+      const controlledLightType = outputDefinition.controlledLightType;
+      const engineProfile = lightProfiles[controlledLightType];
+      return {
+        controlledLightType,
+        value: outputDefinition.value,
+        min: { ...outputDefinition.min },
+        max: {
+          emissiveIntensity: engineProfile.emissiveIntensity,
+          glowSpriteOpacity: engineProfile.glowSpriteOpacity,
+          pointIntensity: engineProfile.pointIntensity
+        }
+      };
+    }
+
+    function createHighlightPartStates(shipDefinition) {
+      return Object.fromEntries(
+        Object.entries(shipDefinition.materials.highlights).map(([partId, part]) => [
+          partId,
+          {
+            id: part.id,
+            label: part.label,
+            materialName: part.materialName,
+            settings: {
+              color: part.defaultColor
+            },
+            materials: []
+          }
+        ])
+      );
+    }
+
+    function createShipVfxState(shipDefinition = ACTIVE_SHIP_DEFINITION, object = null) {
+      const lightProfiles = cloneLightProfiles(shipDefinition);
+      const highlightParts = createHighlightPartStates(shipDefinition);
+      return {
+        definition: shipDefinition,
+        object,
+        lightProfiles,
+        lightProfileMatches: createLightProfileMatches(shipDefinition),
+        lightControlState: createLightControlState(lightProfiles),
+        engineOutputSettings: createEngineOutputSettings(shipDefinition, lightProfiles),
+        highlight: {
+          activePartId: Object.keys(highlightParts)[0],
+          parts: highlightParts
+        },
+        blueLightRuntimeAnchors: [],
+        blueLightRuntimeAnchorsDirty: true,
+        blueEmissionTargets: []
+      };
+    }
+
+    let activeShipVfxState = createShipVfxState(ACTIVE_SHIP_DEFINITION);
 
     const status = document.querySelector("#status");
     const summary = document.querySelector("#summary");
@@ -405,62 +570,63 @@
     const engineOutputValue = document.querySelector("#engineOutputValue");
     const engineMinInputs = Array.from(engineOutputControls.querySelectorAll("[data-engine-min]"));
     const engineMaxInputs = Array.from(engineOutputControls.querySelectorAll("[data-engine-max]"));
+    const highlightColorInput = document.querySelector("#highlightColorInput");
+    const highlightColorLabel = document.querySelector("label[for='highlightColorInput']");
     const starBloomEnabledInput = document.querySelector("#starBloomEnabledInput");
     const starBloomParamInputs = Array.from(document.querySelectorAll("[data-star-bloom-param]"));
 
-    const lightControlState = Object.fromEntries(
-      Object.entries(VFX_LIGHT_PROFILES).map(([type, profile]) => [
-        type,
-        {
-          emissiveBloom: profile.emissiveBloomEnabled !== false,
-          billboard: profile.glowSpriteEnabled !== false,
-          pointLight: profile.pointLightEnabled !== false
+    function populateLightTypeSelect(shipDefinition) {
+      lightTypeSelect.replaceChildren(
+        ...shipDefinition.vfx.lightParts.map((lightPart) => {
+          const option = document.createElement("option");
+          option.value = lightPart.id;
+          option.textContent = lightPart.label;
+          return option;
+        })
+      );
+    }
+
+    populateLightTypeSelect(ACTIVE_SHIP_DEFINITION);
+
+    function createEnvironmentVfxState(environmentPreset) {
+      return {
+        preset: environmentPreset,
+        starBloom: {
+          enabled: environmentPreset.starBloom.enabled,
+          strength: environmentPreset.starBloom.strength,
+          radius: environmentPreset.starBloom.radius,
+          threshold: environmentPreset.starBloom.threshold,
+          sizeScale: environmentPreset.starBloom.sizeScale,
+          opacityScale: environmentPreset.starBloom.opacityScale,
+          colorIntensity: environmentPreset.starBloom.colorIntensity,
+          occlusionStrength: environmentPreset.starBloom.occlusionStrength
         }
-      ])
-    );
-    const engineOutputSettings = {
-      value: 100,
-      min: {
-        emissiveIntensity: 0.2,
-        glowSpriteOpacity: 0.04,
-        pointIntensity: 0.05
-      },
-      max: {
-        emissiveIntensity: VFX_LIGHT_PROFILES[VFX_LIGHT_ENGINE_ID].emissiveIntensity,
-        glowSpriteOpacity: VFX_LIGHT_PROFILES[VFX_LIGHT_ENGINE_ID].glowSpriteOpacity,
-        pointIntensity: VFX_LIGHT_PROFILES[VFX_LIGHT_ENGINE_ID].pointIntensity
-      }
-    };
-    const starBloomSettings = {
-      enabled: true,
-      strength: STAR_BLOOM_STRENGTH,
-      radius: STAR_BLOOM_RADIUS,
-      threshold: STAR_BLOOM_THRESHOLD,
-      sizeScale: STAR_BLOOM_SIZE_SCALE,
-      opacityScale: STAR_BLOOM_OPACITY_SCALE,
-      colorIntensity: STAR_BLOOM_COLOR_INTENSITY,
-      occlusionStrength: STAR_BLOOM_OCCLUSION_STRENGTH
-    };
+      };
+    }
+
+    const activeEnvironmentVfxState = createEnvironmentVfxState(ACTIVE_SPACE_ENVIRONMENT);
+    const starBloomSettings = activeEnvironmentVfxState.starBloom;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x030811);
-    scene.fog = new THREE.FogExp2(0x05101b, 0.000004);
+    scene.background = new THREE.Color(ACTIVE_SPACE_ENVIRONMENT.scene.background);
+    scene.fog = new THREE.FogExp2(
+      ACTIVE_SPACE_ENVIRONMENT.scene.fog.color,
+      ACTIVE_SPACE_ENVIRONMENT.scene.fog.density
+    );
 
     const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 80000);
     camera.position.set(0, 4, 12);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
-      powerPreference: "high-performance",
-      preserveDrawingBuffer: true
+      powerPreference: "high-performance"
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.82;
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMappingExposure = ACTIVE_SPACE_ENVIRONMENT.renderer.toneMappingExposure;
+    renderer.shadowMap.enabled = false;
     container.append(renderer.domElement);
 
     const bloomLayer = new THREE.Layers();
@@ -487,9 +653,9 @@
       stencilBuffer: false
     });
     const starBloomPass = {
-      strength: STAR_BLOOM_STRENGTH,
-      radius: STAR_BLOOM_RADIUS,
-      threshold: STAR_BLOOM_THRESHOLD
+      strength: starBloomSettings.strength,
+      radius: starBloomSettings.radius,
+      threshold: starBloomSettings.threshold
     };
 
     const starOcclusionRenderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
@@ -508,6 +674,7 @@
           bloomTexture: { value: bloomComposer.renderTarget2.texture },
           starBloomTexture: { value: starBloomRenderTarget.texture },
           starOcclusionTexture: { value: starOcclusionRenderTarget.texture },
+          starBloomCompositeStrength: { value: 1 },
           starBloomOcclusionStrength: { value: starBloomSettings.occlusionStrength }
         },
         vertexShader: `
@@ -523,6 +690,7 @@
           uniform sampler2D bloomTexture;
           uniform sampler2D starBloomTexture;
           uniform sampler2D starOcclusionTexture;
+          uniform float starBloomCompositeStrength;
           uniform float starBloomOcclusionStrength;
           varying vec2 vUv;
 
@@ -531,7 +699,7 @@
             vec4 objectBloom = texture2D(bloomTexture, vUv);
             vec4 starBloom = texture2D(starBloomTexture, vUv);
             float starOcclusion = texture2D(starOcclusionTexture, vUv).r * starBloomOcclusionStrength;
-            gl_FragColor = baseColor + objectBloom + starBloom * (1.0 - clamp(starOcclusion, 0.0, 1.0));
+            gl_FragColor = baseColor + objectBloom + starBloom * starBloomCompositeStrength * (1.0 - clamp(starOcclusion, 0.0, 1.0));
           }
         `
       }),
@@ -555,6 +723,10 @@
     window.__glbViewerStarBloomRenderTarget = starBloomRenderTarget;
     window.__glbViewerStarBloomPass = starBloomPass;
     window.__glbViewerStarBloomLayer = starBloomLayer;
+    window.__glbViewerShipDefinitions = SHIP_RENDER_DEFINITIONS;
+    window.__glbViewerEnvironmentPresets = SPACE_ENVIRONMENT_PRESETS;
+    window.__glbViewerScenario = VIEWER_SCENARIO;
+    window.__glbViewerEnvironmentVfxState = activeEnvironmentVfxState;
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -562,23 +734,35 @@
     controls.minDistance = 3;
     controls.maxDistance = 80;
 
-    const globalLight = new THREE.AmbientLight(0x9fb9d8, 0.28);
-    scene.add(globalLight);
-
-    const keyLight = new THREE.DirectionalLight(0xd9f1ff, 0.36);
-    keyLight.position.set(7, 8, 6);
-    scene.add(keyLight);
-
-    const rimLight = new THREE.DirectionalLight(0x5cc8ff, 0.32);
-    rimLight.position.set(-8, 4, -8);
-    scene.add(rimLight);
-
-    const softUnderLight = new THREE.HemisphereLight(0x93b6d5, 0x08131c, 0.18);
-    scene.add(softUnderLight);
+    const environmentLights = ACTIVE_SPACE_ENVIRONMENT.lights.map((lightDefinition) => {
+      let light;
+      if (lightDefinition.type === "ambient") {
+        light = new THREE.AmbientLight(lightDefinition.color, lightDefinition.intensity);
+      } else if (lightDefinition.type === "directional") {
+        light = new THREE.DirectionalLight(lightDefinition.color, lightDefinition.intensity);
+        light.position.set(...lightDefinition.position);
+      } else if (lightDefinition.type === "hemisphere") {
+        light = new THREE.HemisphereLight(
+          lightDefinition.skyColor,
+          lightDefinition.groundColor,
+          lightDefinition.intensity
+        );
+      }
+      if (light) scene.add(light);
+      return light;
+    }).filter(Boolean);
 
     const starBloomObjects = [];
     const starPointMaterials = [];
     const starPointScaleSize = new THREE.Vector2();
+    const lastStarCameraPosition = new THREE.Vector3();
+    const lastStarCameraQuaternion = new THREE.Quaternion();
+    const lastStarCameraProjectionMatrix = new THREE.Matrix4();
+    const starRenderPreviousClearColor = new THREE.Color();
+    const starOcclusionBackgroundColor = new THREE.Color(0x000000);
+    let starBloomRenderDirty = true;
+    let starOcclusionRenderDirty = true;
+    let hasStarCameraSnapshot = false;
 
     STAR_FIELD_LAYERS
       .map((starLayer) => createStars(starLayer))
@@ -668,6 +852,38 @@
       });
     }
 
+    function isStarBloomActive() {
+      return starBloomSettings.enabled
+        && starBloomSettings.strength > 0
+        && starBloomSettings.sizeScale > 0
+        && starBloomSettings.opacityScale > 0
+        && starBloomSettings.colorIntensity > 0;
+    }
+
+    function isStarOcclusionActive() {
+      return isStarBloomActive() && starBloomSettings.occlusionStrength > 0;
+    }
+
+    function markStarRenderDirty() {
+      starBloomRenderDirty = true;
+      starOcclusionRenderDirty = true;
+    }
+
+    function updateStarRenderDirtyForCamera() {
+      const cameraChanged = !hasStarCameraSnapshot
+        || !lastStarCameraPosition.equals(camera.position)
+        || !lastStarCameraQuaternion.equals(camera.quaternion)
+        || !lastStarCameraProjectionMatrix.equals(camera.projectionMatrix);
+
+      if (!cameraChanged) return;
+
+      lastStarCameraPosition.copy(camera.position);
+      lastStarCameraQuaternion.copy(camera.quaternion);
+      lastStarCameraProjectionMatrix.copy(camera.projectionMatrix);
+      hasStarCameraSnapshot = true;
+      markStarRenderDirty();
+    }
+
     function createStars({ count, radius, size, opacity }) {
       const geometry = new THREE.BufferGeometry();
       const positions = new Float32Array(count * 3);
@@ -705,6 +921,7 @@
       const stars = new THREE.Points(geometry, material);
       stars.name = "StarField";
       stars.userData.skipStarOcclusionMask = true;
+      stars.userData.skipObjectBloomPass = true;
 
       const bloomMaterial = createRoundStarMaterial({
         size: getStarBloomPointSize(size),
@@ -728,6 +945,7 @@
       bloomStars.name = "StarFieldBloom";
       bloomStars.layers.set(STAR_BLOOM_LAYER);
       bloomStars.userData.skipStarOcclusionMask = true;
+      bloomStars.userData.skipObjectBloomPass = true;
       bloomStars.userData.baseSize = size;
       bloomStars.userData.baseOpacity = opacity;
       starBloomObjects.push(bloomStars);
@@ -739,23 +957,35 @@
       return starGroup;
     }
 
-    function normalizeObject(object) {
+    function normalizeObject(object, shipDefinition = ACTIVE_SHIP_DEFINITION) {
       const box = new THREE.Box3().setFromObject(object);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
       const longest = Math.max(size.x, size.y, size.z) || 1;
-      const scale = 7 / longest;
+      const scale = shipDefinition.modelTransform.normalizeLongestSide / longest;
       object.scale.setScalar(scale);
       object.position.copy(center).multiplyScalar(-scale);
-      object.rotation.y = Math.PI;
+      object.rotation.set(...shipDefinition.modelTransform.rotation);
       return object;
     }
 
-    function isBlueEmissiveMaterial(material) {
-      return normalizeSceneName(material?.name || "").includes(normalizeSceneName(BLUE_EMISSIVE_MATERIAL));
+    function isBlueEmissiveMaterial(material, shipDefinition = ACTIVE_SHIP_DEFINITION) {
+      return normalizeSceneName(material?.name || "")
+        .includes(normalizeSceneName(shipDefinition.materials.emissiveSurface.materialName));
     }
 
-    function getBlueLightProfile(mesh, materials) {
+    function getActiveHighlightPart(shipState = activeShipVfxState) {
+      return shipState.highlight.parts[shipState.highlight.activePartId];
+    }
+
+    function findHighlightPartForMaterial(material, shipState = activeShipVfxState) {
+      const materialName = normalizeSceneName(material?.name || "");
+      return Object.values(shipState.highlight.parts).find((part) => {
+        return materialName === normalizeSceneName(part.materialName);
+      });
+    }
+
+    function getBlueLightProfile(mesh, materials, shipState = activeShipVfxState) {
       const names = [
         mesh.name,
         mesh.parent?.name,
@@ -763,14 +993,15 @@
       ].filter(Boolean);
       const normalizedNames = names.map((name) => normalizeSceneName(name));
 
-      const match = VFX_LIGHT_PROFILE_MATCHES.find((profileMatch) => {
-        const normalizedTargets = profileMatch.names.map((name) => normalizeSceneName(name));
-        return normalizedTargets.some((target) => {
+      const match = shipState.lightProfileMatches.find((profileMatch) => {
+        return profileMatch.normalizedNames.some((target) => {
           return normalizedNames.some((name) => name.includes(target) || target.includes(name));
         });
       });
 
-      return match ? VFX_LIGHT_PROFILES[match.id] : DEFAULT_VFX_LIGHT_PROFILE;
+      return match
+        ? shipState.lightProfiles[match.id]
+        : shipState.lightProfiles[shipState.definition.vfx.defaultLightType];
     }
 
     function normalizeSceneName(name) {
@@ -778,7 +1009,7 @@
     }
 
     function getProfileColor(profile) {
-      return new THREE.Color(profile.color || BLUE_EMISSIVE_COLOR);
+      return new THREE.Color(profile.color || profile.fallbackColor);
     }
 
     function addBlueSurfacePointLight(origin, distance, profile, surfaceSize) {
@@ -803,17 +1034,39 @@
     const starOcclusionMaskMaterial = new THREE.MeshBasicMaterial({ color: "white", side: THREE.DoubleSide });
     const starOcclusionLineMaskMaterial = new THREE.LineBasicMaterial({ color: "white" });
     const darkenedDuringBloom = [];
+    const objectBloomDarkenTargets = [];
+    const objectBloomHiddenTargets = [];
     const maskedDuringStarOcclusion = [];
     let activeBloomLayer = bloomLayer;
+    let objectBloomTargetsDirty = true;
 
     function isRenderableObject(object) {
       return object.isMesh || object.isPoints || object.isLine || object.isSprite;
     }
 
-    function darkenNonBloomed(object) {
-      if (!isRenderableObject(object) || activeBloomLayer.test(object.layers)) return;
-      darkenedDuringBloom.push({ object, material: object.material });
-      object.material = object.isPoints
+    function markObjectBloomTargetsDirty() {
+      objectBloomTargetsDirty = true;
+    }
+
+    function collectObjectBloomTargets() {
+      objectBloomDarkenTargets.length = 0;
+      objectBloomHiddenTargets.length = 0;
+
+      scene.traverse((object) => {
+        if (!isRenderableObject(object) || bloomLayer.test(object.layers)) return;
+
+        if (object.userData.skipObjectBloomPass) {
+          objectBloomHiddenTargets.push(object);
+        } else {
+          objectBloomDarkenTargets.push(object);
+        }
+      });
+
+      objectBloomTargetsDirty = false;
+    }
+
+    function getObjectBloomDarkMaterial(object) {
+      return object.isPoints
         ? darkPointsMaterial
         : object.isLine
           ? darkLineMaterial
@@ -822,9 +1075,48 @@
             : darkMaterial;
     }
 
+    function prepareObjectBloomTargets() {
+      if (objectBloomTargetsDirty) collectObjectBloomTargets();
+
+      objectBloomHiddenTargets.forEach((object) => {
+        if (!object.visible) return;
+        darkenedDuringBloom.push({
+          object,
+          material: object.material,
+          visible: object.visible
+        });
+        object.visible = false;
+      });
+
+      objectBloomDarkenTargets.forEach((object) => {
+        if (!object.visible) return;
+        darkenedDuringBloom.push({
+          object,
+          material: object.material,
+          visible: object.visible
+        });
+        object.material = getObjectBloomDarkMaterial(object);
+      });
+    }
+
+    function darkenNonBloomed(object) {
+      if (!isRenderableObject(object) || activeBloomLayer.test(object.layers)) return;
+      darkenedDuringBloom.push({
+        object,
+        material: object.material,
+        visible: object.visible
+      });
+      if (object.userData.skipObjectBloomPass) {
+        object.visible = false;
+        return;
+      }
+      object.material = getObjectBloomDarkMaterial(object);
+    }
+
     function restoreBloomMaterials() {
-      darkenedDuringBloom.forEach(({ object, material }) => {
+      darkenedDuringBloom.forEach(({ object, material, visible }) => {
         object.material = material;
+        object.visible = visible;
       });
       darkenedDuringBloom.length = 0;
     }
@@ -862,7 +1154,7 @@
       const originalRenderTarget = renderer.getRenderTarget();
 
       scene.traverse(prepareStarOcclusionMask);
-      scene.background = new THREE.Color(0x000000);
+      scene.background = starOcclusionBackgroundColor;
       scene.fog = null;
       renderer.setRenderTarget(starOcclusionRenderTarget);
       renderer.clear();
@@ -871,6 +1163,7 @@
       scene.background = originalBackground;
       scene.fog = originalFog;
       restoreStarOcclusionMask();
+      starOcclusionRenderDirty = false;
     }
 
     function renderBloom(composer, layer, cameraLayerId = null) {
@@ -878,7 +1171,11 @@
 
       activeBloomLayer = layer;
       if (cameraLayerId !== null) camera.layers.set(cameraLayerId);
-      scene.traverse(darkenNonBloomed);
+      if (layer === bloomLayer) {
+        prepareObjectBloomTargets();
+      } else {
+        scene.traverse(darkenNonBloomed);
+      }
       composer.render();
       restoreBloomMaterials();
       camera.layers.mask = originalCameraLayerMask;
@@ -889,7 +1186,7 @@
       const originalRenderTarget = renderer.getRenderTarget();
       const originalBackground = scene.background;
       const originalFog = scene.fog;
-      const originalClearColor = renderer.getClearColor(new THREE.Color());
+      const originalClearColor = renderer.getClearColor(starRenderPreviousClearColor);
       const originalClearAlpha = renderer.getClearAlpha();
 
       camera.layers.set(STAR_BLOOM_LAYER);
@@ -904,11 +1201,12 @@
       scene.background = originalBackground;
       scene.fog = originalFog;
       camera.layers.mask = originalCameraLayerMask;
+      starBloomRenderDirty = false;
     }
 
-    function getSelectedMaterialIndices(materials) {
+    function getSelectedMaterialIndices(materials, shipDefinition = ACTIVE_SHIP_DEFINITION) {
       return materials
-        .map((material, index) => (isBlueEmissiveMaterial(material) ? index : -1))
+        .map((material, index) => (isBlueEmissiveMaterial(material, shipDefinition) ? index : -1))
         .filter((index) => index >= 0);
     }
 
@@ -1106,16 +1404,19 @@
       sprite.renderOrder = 20;
       sprite.layers.enable(BLOOM_LAYER);
       scene.add(sprite);
+      markObjectBloomTargetsDirty();
       return sprite;
     }
 
-    const blueLightRuntimeAnchors = [];
+    function markBlueLightRuntimeAnchorsDirty(shipState = activeShipVfxState) {
+      shipState.blueLightRuntimeAnchorsDirty = true;
+    }
 
-    function addBlueLightRuntimeAnchor(type, mesh, surface, surfaceSize, lightRange, glowSprite, pointLight, materials) {
+    function addBlueLightRuntimeAnchor(shipState, type, mesh, surface, surfaceSize, lightRange, glowSprite, pointLight, materials) {
       const worldToLocalDirectionMatrix = new THREE.Matrix4().copy(mesh.matrixWorld).invert();
       const anchor = {
         type,
-        profile: VFX_LIGHT_PROFILES[type],
+        profile: shipState.lightProfiles[type],
         mesh,
         materials,
         surface,
@@ -1133,7 +1434,7 @@
         lightOrigin: new THREE.Vector3()
       };
 
-      blueLightRuntimeAnchors.push(anchor);
+      shipState.blueLightRuntimeAnchors.push(anchor);
       updateBlueLightRuntimeAnchor(anchor);
       return anchor;
     }
@@ -1152,8 +1453,10 @@
       }
     }
 
-    function updateBlueLightRuntimeAnchors() {
-      blueLightRuntimeAnchors.forEach(updateBlueLightRuntimeAnchor);
+    function updateBlueLightRuntimeAnchors(shipState = activeShipVfxState) {
+      if (!shipState.blueLightRuntimeAnchorsDirty) return;
+      shipState.blueLightRuntimeAnchors.forEach(updateBlueLightRuntimeAnchor);
+      shipState.blueLightRuntimeAnchorsDirty = false;
     }
 
     function setBloomLayerEnabled(object, enabled) {
@@ -1162,13 +1465,14 @@
       } else {
         object.layers.disable(BLOOM_LAYER);
       }
+      markObjectBloomTargetsDirty();
     }
 
-    function applyLightControlState(type) {
-      const state = lightControlState[type];
+    function applyLightControlState(type, shipState = activeShipVfxState) {
+      const state = shipState.lightControlState[type];
       if (!state) return;
 
-      blueLightRuntimeAnchors
+      shipState.blueLightRuntimeAnchors
         .filter((anchor) => anchor.type === type)
         .forEach((anchor) => {
           setBloomLayerEnabled(anchor.mesh, state.emissiveBloom);
@@ -1177,16 +1481,16 @@
         });
     }
 
-    function applyAllLightControlStates() {
-      Object.keys(lightControlState).forEach(applyLightControlState);
+    function applyAllLightControlStates(shipState = activeShipVfxState) {
+      Object.keys(shipState.lightControlState).forEach((type) => applyLightControlState(type, shipState));
     }
 
-    function applyLightProfileSettings(type) {
-      const profile = VFX_LIGHT_PROFILES[type];
+    function applyLightProfileSettings(type, shipState = activeShipVfxState) {
+      const profile = shipState.lightProfiles[type];
       if (!profile) return;
 
       const color = getProfileColor(profile);
-      blueLightRuntimeAnchors
+      shipState.blueLightRuntimeAnchors
         .filter((anchor) => anchor.type === type)
         .forEach((anchor) => {
           const { lightRange } = getBlueLightSize(anchor.surface, profile);
@@ -1199,14 +1503,12 @@
           anchor.materials.forEach((material) => {
             if ("emissive" in material) material.emissive.copy(color);
             if ("emissiveIntensity" in material) material.emissiveIntensity = profile.emissiveIntensity;
-            material.needsUpdate = true;
           });
 
           if (anchor.glowSprite) {
             anchor.glowSprite.scale.set(spriteDimensions.width, spriteDimensions.height, 1);
             anchor.glowSprite.material.color.copy(color);
             anchor.glowSprite.material.opacity = profile.glowSpriteOpacity;
-            anchor.glowSprite.material.needsUpdate = true;
           }
 
           if (anchor.pointLight) {
@@ -1217,46 +1519,51 @@
         });
     }
 
-    function applyAllLightProfileSettings() {
-      Object.keys(VFX_LIGHT_PROFILES).forEach(applyLightProfileSettings);
+    function applyAllLightProfileSettings(shipState = activeShipVfxState) {
+      Object.keys(shipState.lightProfiles).forEach((type) => applyLightProfileSettings(type, shipState));
     }
 
-    function interpolateEngineOutputValue(key) {
-      const t = THREE.MathUtils.clamp(engineOutputSettings.value / 100, 0, 1);
-      return THREE.MathUtils.lerp(engineOutputSettings.min[key], engineOutputSettings.max[key], t);
+    function interpolateEngineOutputValue(key, shipState = activeShipVfxState) {
+      const settings = shipState.engineOutputSettings;
+      const t = THREE.MathUtils.clamp(settings.value / 100, 0, 1);
+      return THREE.MathUtils.lerp(settings.min[key], settings.max[key], t);
     }
 
-    function applyEngineOutputSettings() {
-      const profile = VFX_LIGHT_PROFILES[VFX_LIGHT_ENGINE_ID];
+    function applyEngineOutputSettings(shipState = activeShipVfxState) {
+      const controlledLightType = shipState.engineOutputSettings.controlledLightType;
+      const profile = shipState.lightProfiles[controlledLightType];
       ["emissiveIntensity", "glowSpriteOpacity", "pointIntensity"].forEach((key) => {
-        profile[key] = interpolateEngineOutputValue(key);
+        profile[key] = interpolateEngineOutputValue(key, shipState);
       });
-      applyLightProfileSettings(VFX_LIGHT_ENGINE_ID);
-      if (lightTypeSelect.value === VFX_LIGHT_ENGINE_ID) syncLightControlPanel();
+      applyLightProfileSettings(controlledLightType, shipState);
+      if (lightTypeSelect.value === controlledLightType) syncLightControlPanel(shipState);
     }
 
-    function syncEngineOutputControls() {
-      engineOutputControls.hidden = lightTypeSelect.value !== VFX_LIGHT_ENGINE_ID;
-      engineOutputSlider.value = engineOutputSettings.value;
-      engineOutputValue.value = `${Math.round(engineOutputSettings.value)}%`;
+    function syncEngineOutputControls(shipState = activeShipVfxState) {
+      const settings = shipState.engineOutputSettings;
+      engineOutputControls.hidden = lightTypeSelect.value !== settings.controlledLightType;
+      engineOutputSlider.value = settings.value;
+      engineOutputValue.value = `${Math.round(settings.value)}%`;
       engineMinInputs.forEach((input) => {
-        input.value = engineOutputSettings.min[input.dataset.engineMin];
+        input.value = settings.min[input.dataset.engineMin];
       });
       engineMaxInputs.forEach((input) => {
-        input.value = engineOutputSettings.max[input.dataset.engineMax];
+        input.value = settings.max[input.dataset.engineMax];
       });
     }
 
     function applyStarBloomSettings() {
-      starBloomPass.strength = starBloomSettings.enabled ? starBloomSettings.strength : 0;
+      const starBloomActive = isStarBloomActive();
+      starBloomPass.strength = starBloomActive ? starBloomSettings.strength : 0;
       starBloomPass.radius = starBloomSettings.radius;
       starBloomPass.threshold = starBloomSettings.threshold;
-      bloomCompositePass.material.uniforms.starBloomOcclusionStrength.value = starBloomSettings.enabled
+      bloomCompositePass.material.uniforms.starBloomCompositeStrength.value = starBloomActive ? 1 : 0;
+      bloomCompositePass.material.uniforms.starBloomOcclusionStrength.value = isStarOcclusionActive()
         ? starBloomSettings.occlusionStrength
         : 0;
 
       starBloomObjects.forEach((stars) => {
-        stars.visible = starBloomSettings.enabled;
+        stars.visible = starBloomActive;
         stars.material.uniforms.pointSize.value = getStarBloomPointSize(stars.userData.baseSize);
         stars.material.uniforms.opacity.value = THREE.MathUtils.clamp(
           stars.userData.baseOpacity * starBloomSettings.opacityScale,
@@ -1272,6 +1579,7 @@
           starBloomSettings.colorIntensity * starBloomSettings.strength
         );
       });
+      markStarRenderDirty();
     }
 
     function syncStarBloomControls() {
@@ -1281,9 +1589,9 @@
       });
     }
 
-    function syncLightControlPanel() {
-      const state = lightControlState[lightTypeSelect.value];
-      const profile = VFX_LIGHT_PROFILES[lightTypeSelect.value];
+    function syncLightControlPanel(shipState = activeShipVfxState) {
+      const state = shipState.lightControlState[lightTypeSelect.value];
+      const profile = shipState.lightProfiles[lightTypeSelect.value];
       if (!state || !profile) return;
 
       lightControlInputs.forEach((input) => {
@@ -1294,51 +1602,51 @@
       lightParamInputs.forEach((input) => {
         input.value = profile[input.dataset.lightParam];
       });
-      syncEngineOutputControls();
+      syncEngineOutputControls(shipState);
     }
 
-    lightTypeSelect.addEventListener("change", syncLightControlPanel);
+    lightTypeSelect.addEventListener("change", () => syncLightControlPanel(activeShipVfxState));
     lightColorInput.addEventListener("input", () => {
-      const profile = VFX_LIGHT_PROFILES[lightTypeSelect.value];
+      const profile = activeShipVfxState.lightProfiles[lightTypeSelect.value];
       if (!profile) return;
 
       profile.color = lightColorInput.value;
-      applyLightProfileSettings(profile.type);
+      applyLightProfileSettings(profile.type, activeShipVfxState);
     });
     lightControlInputs.forEach((input) => {
       input.addEventListener("change", () => {
         const type = lightTypeSelect.value;
-        const state = lightControlState[type];
+        const state = activeShipVfxState.lightControlState[type];
         if (!state) return;
 
         state[input.dataset.lightControl] = input.checked;
-        applyLightControlState(type);
+        applyLightControlState(type, activeShipVfxState);
       });
     });
     lightParamInputs.forEach((input) => {
       input.addEventListener("input", () => {
-        const profile = VFX_LIGHT_PROFILES[lightTypeSelect.value];
+        const profile = activeShipVfxState.lightProfiles[lightTypeSelect.value];
         if (!profile) return;
 
         const value = Number(input.value);
         if (!Number.isFinite(value)) return;
 
         profile[input.dataset.lightParam] = value;
-        applyLightProfileSettings(profile.type);
+        applyLightProfileSettings(profile.type, activeShipVfxState);
       });
     });
     engineOutputSlider.addEventListener("input", () => {
-      engineOutputSettings.value = Number(engineOutputSlider.value);
-      engineOutputValue.value = `${Math.round(engineOutputSettings.value)}%`;
-      applyEngineOutputSettings();
+      activeShipVfxState.engineOutputSettings.value = Number(engineOutputSlider.value);
+      engineOutputValue.value = `${Math.round(activeShipVfxState.engineOutputSettings.value)}%`;
+      applyEngineOutputSettings(activeShipVfxState);
     });
     engineMinInputs.forEach((input) => {
       input.addEventListener("input", () => {
         const value = Number(input.value);
         if (!Number.isFinite(value)) return;
 
-        engineOutputSettings.min[input.dataset.engineMin] = value;
-        applyEngineOutputSettings();
+        activeShipVfxState.engineOutputSettings.min[input.dataset.engineMin] = value;
+        applyEngineOutputSettings(activeShipVfxState);
       });
     });
     engineMaxInputs.forEach((input) => {
@@ -1346,8 +1654,8 @@
         const value = Number(input.value);
         if (!Number.isFinite(value)) return;
 
-        engineOutputSettings.max[input.dataset.engineMax] = value;
-        applyEngineOutputSettings();
+        activeShipVfxState.engineOutputSettings.max[input.dataset.engineMax] = value;
+        applyEngineOutputSettings(activeShipVfxState);
       });
     });
     starBloomEnabledInput.addEventListener("change", () => {
@@ -1366,19 +1674,68 @@
     syncStarBloomControls();
     applyStarBloomSettings();
 
-    function applySubtleBlueEmission(object) {
+    function collectHighlightMaterials(object, shipState = activeShipVfxState) {
+      const materialsByPart = Object.fromEntries(
+        Object.keys(shipState.highlight.parts).map((partId) => [partId, new Map()])
+      );
+
+      object.traverse((child) => {
+        if (!child.isMesh || !child.material) return;
+
+        const materialList = Array.isArray(child.material) ? child.material : [child.material];
+        materialList.forEach((material) => {
+          const highlightPart = findHighlightPartForMaterial(material, shipState);
+          if (!highlightPart) return;
+          materialsByPart[highlightPart.id].set(material.uuid, material);
+        });
+      });
+
+      Object.entries(materialsByPart).forEach(([partId, materials]) => {
+        shipState.highlight.parts[partId].materials.length = 0;
+        shipState.highlight.parts[partId].materials.push(...materials.values());
+      });
+
+      const allMaterials = Object.values(shipState.highlight.parts).flatMap((part) => part.materials);
+      window.__glbViewerHighlightMaterials = allMaterials;
+      return allMaterials;
+    }
+
+    function applyHighlightMaterialColor(shipState = activeShipVfxState) {
+      const highlightPart = getActiveHighlightPart(shipState);
+      const color = new THREE.Color(highlightPart.settings.color);
+
+      highlightPart.materials.forEach((material) => {
+        if ("color" in material) material.color.copy(color);
+      });
+    }
+
+    function syncHighlightControls(shipState = activeShipVfxState) {
+      const highlightPart = getActiveHighlightPart(shipState);
+      highlightColorLabel.textContent = highlightPart.label;
+      highlightColorInput.value = highlightPart.settings.color;
+    }
+
+    highlightColorInput.addEventListener("input", () => {
+      getActiveHighlightPart(activeShipVfxState).settings.color = highlightColorInput.value;
+      applyHighlightMaterialColor(activeShipVfxState);
+    });
+    syncHighlightControls(activeShipVfxState);
+
+    function applySubtleBlueEmission(object, shipState = activeShipVfxState) {
       const affectedLights = [];
       const modelCenter = new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3());
 
+      shipState.blueLightRuntimeAnchors.length = 0;
+      shipState.blueEmissionTargets.length = 0;
       object.updateWorldMatrix(true, true);
       object.traverse((child) => {
         if (!child.isMesh || !child.material) return;
 
         const originalMaterials = Array.isArray(child.material) ? child.material : [child.material];
-        const selectedMaterialIndices = getSelectedMaterialIndices(originalMaterials);
+        const selectedMaterialIndices = getSelectedMaterialIndices(originalMaterials, shipState.definition);
         if (selectedMaterialIndices.length === 0) return;
 
-        const profile = getBlueLightProfile(child, originalMaterials);
+        const profile = getBlueLightProfile(child, originalMaterials, shipState);
         let meshWasAffected = false;
         const affectedMaterials = [];
         const nextMaterials = originalMaterials.map((material, index) => {
@@ -1409,6 +1766,7 @@
         const pointLight = addBlueSurfacePointLight(lightOrigin, lightRange, profile, surfaceSize);
         const glowSprite = addBlueGlowSprite(surface, profile);
         addBlueLightRuntimeAnchor(
+          shipState,
           profile.type,
           child,
           surface,
@@ -1433,12 +1791,13 @@
         });
       });
 
-      window.__glbViewerBlueLights = affectedLights;
-      window.__glbViewerBlueLightRuntimeAnchors = blueLightRuntimeAnchors;
+      shipState.blueEmissionTargets.push(...affectedLights);
+      window.__glbViewerBlueLights = shipState.blueEmissionTargets;
+      window.__glbViewerBlueLightRuntimeAnchors = shipState.blueLightRuntimeAnchors;
       return affectedLights;
     }
 
-    function summarizeModel(object) {
+    function summarizeModel(object, shipDefinition = ACTIVE_SHIP_DEFINITION) {
       const materials = new Map();
       let meshCount = 0;
       let textureSlotCount = 0;
@@ -1453,7 +1812,7 @@
         materialList.forEach((material) => {
           if (!material) return;
           if ("envMapIntensity" in material) {
-            material.envMapIntensity = REFLECTION_INTENSITY;
+            material.envMapIntensity = shipDefinition.materials.reflectionIntensity;
             material.needsUpdate = true;
           }
           materials.set(material.uuid, material);
@@ -1475,14 +1834,20 @@
 
     async function loadViewerModel() {
       const loader = new GLTFLoader();
-      const gltf = await loader.loadAsync(GLB_URL);
-      const object = normalizeObject(gltf.scene);
+      const gltf = await loader.loadAsync(ACTIVE_SHIP_DEFINITION.asset.url);
+      const object = normalizeObject(gltf.scene, ACTIVE_SHIP_DEFINITION);
+      const shipState = createShipVfxState(ACTIVE_SHIP_DEFINITION, object);
+      activeShipVfxState = shipState;
       scene.add(object);
-      const blueEmissionTargets = applySubtleBlueEmission(object);
-      applyAllLightProfileSettings();
-      applyAllLightControlStates();
+      markObjectBloomTargetsDirty();
+      const blueEmissionTargets = applySubtleBlueEmission(object, shipState);
+      const highlightTargets = collectHighlightMaterials(object, shipState);
+      applyHighlightMaterialColor(shipState);
+      applyAllLightProfileSettings(shipState);
+      applyAllLightControlStates(shipState);
       lightControls.hidden = false;
-      syncLightControlPanel();
+      syncHighlightControls(shipState);
+      syncLightControlPanel(shipState);
 
       const box = new THREE.Box3().setFromObject(object);
       const sphere = box.getBoundingSphere(new THREE.Sphere());
@@ -1492,16 +1857,21 @@
       camera.far = Math.max(80000, sphere.radius * 100);
       camera.updateProjectionMatrix();
       controls.update();
+      markStarRenderDirty();
+      markObjectBloomTargetsDirty();
+      markBlueLightRuntimeAnchorsDirty(shipState);
 
-      const modelSummary = summarizeModel(object);
+      const modelSummary = summarizeModel(object, ACTIVE_SHIP_DEFINITION);
       status.textContent = `Loaded GLB: ${modelSummary.meshCount} meshes, ${modelSummary.materialCount} materials, ${modelSummary.textureSlotCount} texture slots. Bloom targets: ${blueEmissionTargets.length}.`;
       summary.textContent = [
-        GLB_URL,
+        `${ACTIVE_SHIP_DEFINITION.id}: ${ACTIVE_SHIP_DEFINITION.asset.url}`,
+        `Environment: ${ACTIVE_SPACE_ENVIRONMENT.id}`,
         "",
         `Meshes: ${modelSummary.meshCount}`,
         `Materials: ${modelSummary.materialCount}`,
         `Texture slots: ${modelSummary.textureSlotCount}`,
         `Bloom targets: ${blueEmissionTargets.length}`,
+        `Highlight targets: ${highlightTargets.length}, color ${getActiveHighlightPart(shipState).settings.color}`,
         `Selective bloom: strength ${BLOOM_STRENGTH}, radius ${BLOOM_RADIUS}, threshold ${BLOOM_THRESHOLD}`,
         `Star bloom: strength ${starBloomSettings.strength}, radius ${starBloomSettings.radius}, threshold ${starBloomSettings.threshold}, occlusion ${starBloomSettings.occlusionStrength}`,
         ...blueEmissionTargets.map((light) => {
@@ -1513,15 +1883,22 @@
       ].join("\n");
 
       window.__glbViewerModel = object;
+      window.__glbViewerShipVfxState = shipState;
+      window.__glbViewerShipVfxStates = [shipState];
       window.__glbViewerSummary = modelSummary;
     }
 
     function animate() {
       controls.update();
       updateBlueLightRuntimeAnchors();
-      renderStarOcclusionMask();
+      updateStarRenderDirtyForCamera();
+      if (isStarOcclusionActive() && starOcclusionRenderDirty) {
+        renderStarOcclusionMask();
+      }
       renderBloom(bloomComposer, bloomLayer);
-      renderStarBloom();
+      if (isStarBloomActive() && starBloomRenderDirty) {
+        renderStarBloom();
+      }
       finalComposer.render();
       requestAnimationFrame(animate);
     }
@@ -1531,6 +1908,7 @@
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
       updateStarPointScales();
+      markStarRenderDirty();
       bloomComposer.setSize(window.innerWidth, window.innerHeight);
       starBloomRenderTarget.setSize(window.innerWidth, window.innerHeight);
       starOcclusionRenderTarget.setSize(window.innerWidth, window.innerHeight);

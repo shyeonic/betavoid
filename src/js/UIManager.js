@@ -67,6 +67,8 @@ export class UIManager {
       worldRegenerateButton: this.getElement("#worldRegenerateButton"),
       worldReloadButton: this.getElement("#worldReloadButton"),
       dataClearButton: this.getElement("#dataClearButton"),
+      environmentLightButton: this.getElement("#environmentLightButton"),
+      environmentDarkButton: this.getElement("#environmentDarkButton"),
       chunkBoundsAllButton: this.getElement("#chunkBoundsAllButton"),
       chunkBoundsSectorButton: this.getElement("#chunkBoundsSectorButton"),
       chunkBoundsOffButton: this.getElement("#chunkBoundsOffButton"),
@@ -116,6 +118,7 @@ export class UIManager {
     };
     this.navActive = false;
     this.settingsTab = "keys";
+    this.environmentMode = "light";
     this.chunkBoundsMode = "all";
     this.navRestoreMode = "fixed";
     this.speedPointerId = null;
@@ -165,6 +168,7 @@ export class UIManager {
     onRegenerateWorld,
     onClearAllData,
     onReloadWorldData,
+    onEnvironmentModeChange,
     onChunkBoundsModeChange,
     onNavRestoreModeChange,
     onNavRestoreCapChange,
@@ -245,6 +249,18 @@ export class UIManager {
       event.preventDefault();
       event.stopPropagation();
       onReloadWorldData();
+    });
+    [
+      this.elements.environmentLightButton,
+      this.elements.environmentDarkButton
+    ].forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof onEnvironmentModeChange === "function") {
+          onEnvironmentModeChange(button.dataset.environmentMode);
+        }
+      });
     });
     [
       this.elements.chunkBoundsAllButton,
@@ -1461,6 +1477,15 @@ export class UIManager {
 
     buttons.forEach((button) => {
       const active = button.dataset.chunkBoundsMode === this.chunkBoundsMode;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+  }
+
+  setEnvironmentMode(mode) {
+    this.environmentMode = mode === "dark" ? "dark" : "light";
+    [this.elements.environmentLightButton, this.elements.environmentDarkButton].forEach((button) => {
+      const active = button.dataset.environmentMode === this.environmentMode;
       button.classList.toggle("active", active);
       button.setAttribute("aria-pressed", active ? "true" : "false");
     });

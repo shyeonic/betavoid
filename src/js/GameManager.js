@@ -1,22 +1,25 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { BloomRenderPipeline } from "./BloomRenderPipeline.js";
 import { CONFIG, CONTROL_SETTINGS, DEFAULT_KEY_BINDINGS, KEY_BINDING_GROUPS } from "./config.js";
 import { ResourceManager } from "./ResourceManager.js";
+import { ShipVisualManager } from "./ShipVisualManager.js";
 import { SoundManager } from "./SoundManager.js";
 import { TargetingOverlay } from "./TargetingOverlay.js";
 import { UIManager } from "./UIManager.js";
 import { WorldDataManager } from "./WorldDataManager.js";
 import { WorldMapManager } from "./WorldMapManager.js";
+import {
+  ENVIRONMENT_SETTINGS_KEY,
+  ENVIRONMENT_MODES,
+  SPACE_ENVIRONMENT_PRESETS,
+  normalizeEnvironmentMode
+} from "./definitions/environmentDefinitions.js";
+import { SHIP_VISUAL_IDS, getShipVisualDefinition } from "./definitions/shipVisualDefinitions.js";
 import { BUILDING_DEFINITIONS, ITEM_DEFINITIONS, RESOURCE_DEFINITIONS, WORLD_CONFIG } from "./worldDefinitions.js";
 import { createI18n } from "./i18n/i18n.js";
 
 const LIGHTING_SETTINGS = {
-  world: {
-    ambient: { color: 0xf2fbff, intensity: 0.9 },
-    key: { color: 0xffffff, intensity: 6, position: [7, 8, 6] },
-    rim: { color: 0x8fdcff, intensity: 0.55, position: [-8, 4, -8] },
-    hemisphere: { skyColor: 0xf7fcff, groundColor: 0x8bb8c8, intensity: 0.45 }
-  },
   ship: {
     reflectionIntensity: 0.9,
     roughnessOffset: 0.02,
@@ -25,12 +28,20 @@ const LIGHTING_SETTINGS = {
   }
 };
 
+const RENDERER_TONE_MAPPINGS = {
+  acesFilmic: THREE.ACESFilmicToneMapping,
+  neutral: THREE.NeutralToneMapping ?? THREE.LinearToneMapping,
+  linear: THREE.LinearToneMapping,
+  none: THREE.NoToneMapping
+};
+
 export class GameManager {
   constructor({ root }) {
     this.root = root;
     this.config = CONFIG;
     this.keyBindingStorageKey = "void-zero-key-bindings";
     this.keyBindings = this.loadKeyBindings();
+    this.environmentMode = ENVIRONMENT_MODES.light;
     this.i18n = createI18n();
     this.worldViewSettings = { chunkBoundsMode: "all" };
     this.navDeadReckonSettings = { mode: "fixed", capMinutes: 5 };
@@ -62,7 +73,10 @@ export class GameManager {
     this.soundManager = new SoundManager(this.resourceManager);
     this.worldDataManager = new WorldDataManager();
     this.worldMapManager = null;
-    this.targetingOverlay = new TargetingOverlay({ canvas: this.ui.elements.targetingCanvas });
+    this.targetingOverlay = new TargetingOverlay({
+      canvas: this.ui.elements.targetingCanvas,
+      frameStyle: this.getEnvironmentPreset().targeting.frame
+    });
     this.raycaster = new THREE.Raycaster();
     this.pointerNdc = new THREE.Vector2();
     this.selectedWorldObject = null;
@@ -148,6 +162,7 @@ export class GameManager {
     };
 
     this.starLayers = [];
+    this.worldLights = null;
     this.loadingStarted = false;
     this.starting = false;
     this.disposed = false;
@@ -165,12 +180,19 @@ export class GameManager {
     this.shipRoughnessOffset = LIGHTING_SETTINGS.ship.roughnessOffset;
     this.shipFillLight = null;
     this.shipRimLight = null;
+    this.renderPipeline = null;
+    this.shipVisualManager = null;
+    this.playerShipVisualState = null;
+    this.shipEngineOutputPercent = null;
   }
 
   async init() {
     await this.handleDataResetRequest();
+    await this.worldDataManager.init();
+    await this.loadSavedEnvironmentSettings();
     this.setupRenderer();
     this.setupScene();
+    this.setupRenderPipeline();
     this.setupWorldSystems();
     this.setupWorld();
     this.setupTargetMarker();
@@ -186,6 +208,7 @@ export class GameManager {
       onClearAllData: () => this.clearAllData(),
       onReloadWorldData: () => this.reloadWorldData(),
       onChunkBoundsModeChange: (mode) => this.setChunkBoundsMode(mode),
+      onEnvironmentModeChange: (mode) => this.setEnvironmentMode(mode),
       onNavRestoreModeChange: (mode) => {
         this.navDeadReckonSettings.mode = mode === "infinite" ? "infinite" : "fixed";
         this.ui.setNavRestoreMode(this.navDeadReckonSettings.mode);
@@ -202,6 +225,7 @@ export class GameManager {
       onToggleCameraMode: () => this.requestCameraToggle()
     });
     this.ui.setChunkBoundsMode(this.worldViewSettings.chunkBoundsMode);
+    this.ui.setEnvironmentMode(this.environmentMode);
 
     this.ui.setInteractionGate();
     this.updateCameraProjection();
@@ -211,9 +235,12 @@ export class GameManager {
   }
 
   setupWorldSystems() {
+    const preset = this.getEnvironmentPreset();
     this.worldMapManager = new WorldMapManager({
       scene: this.scene,
-      renderScale: WORLD_CONFIG.renderScale
+      renderScale: WORLD_CONFIG.renderScale,
+      environmentVisuals: preset.worldMap,
+      onRenderMutation: () => this.renderPipeline?.markTargetsDirty()
     });
     this.worldMapManager.setChunkBoundsMode(this.worldViewSettings.chunkBoundsMode);
   }
@@ -224,6 +251,36 @@ export class GameManager {
       return this.normalizeKeyBindings(savedBindings);
     } catch {
       return { ...DEFAULT_KEY_BINDINGS };
+    }
+  }
+
+  getEnvironmentPreset(mode = this.environmentMode) {
+    const normalizedMode = normalizeEnvironmentMode(mode);
+    return SPACE_ENVIRONMENT_PRESETS[normalizedMode] || SPACE_ENVIRONMENT_PRESETS[ENVIRONMENT_MODES.light];
+  }
+
+  async loadSavedEnvironmentSettings() {
+    const saved = await this.worldDataManager.getStoreValue("settings", ENVIRONMENT_SETTINGS_KEY);
+    const savedMode = saved?.mode;
+    const nextMode = savedMode ? normalizeEnvironmentMode(savedMode) : this.environmentMode;
+    this.environmentMode = nextMode;
+    this.applyEnvironmentPreset(this.getEnvironmentPreset(nextMode));
+    this.ui.setEnvironmentMode(nextMode);
+
+    if (!saved && nextMode !== ENVIRONMENT_MODES.light) {
+      await this.saveEnvironmentSettings();
+    }
+  }
+
+  async saveEnvironmentSettings() {
+    if (!this.worldDataManager.db) return;
+    try {
+      await this.worldDataManager.putStoreValue("settings", {
+        key: ENVIRONMENT_SETTINGS_KEY,
+        mode: this.environmentMode
+      });
+    } catch {
+      this.ui.showErrorToast("settings storage unavailable");
     }
   }
 
@@ -331,8 +388,8 @@ export class GameManager {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMapping = this.getRendererToneMapping(this.getEnvironmentPreset().renderer.toneMapping);
+    this.renderer.toneMappingExposure = this.getEnvironmentPreset().renderer.toneMappingExposure;
     this.root.appendChild(this.renderer.domElement);
     this.setupShipReflectionTexture();
   }
@@ -346,14 +403,38 @@ export class GameManager {
   }
 
   setupScene() {
+    const preset = this.getEnvironmentPreset();
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xf3fbff);
-    this.scene.fog = new THREE.FogExp2(0xe8f7ff, 0.000006);
+    this.scene.background = new THREE.Color(preset.scene.background);
+    this.scene.fog = new THREE.FogExp2(preset.scene.fog.color, preset.scene.fog.density);
     this.camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 80000);
 
     this.ship = new THREE.Group();
     this.scene.add(this.ship);
     this.setupShipLocalLights();
+  }
+
+  setupRenderPipeline() {
+    const preset = this.getEnvironmentPreset();
+    this.renderPipeline = new BloomRenderPipeline({
+      renderer: this.renderer,
+      scene: this.scene,
+      camera: this.camera,
+      objectBloom: preset.objectBloom
+    });
+    this.shipVisualManager = new ShipVisualManager({
+      bloomLayer: this.renderPipeline.objectBloomLayerId,
+      onBloomTargetsDirty: () => this.renderPipeline?.markTargetsDirty(),
+      registerBloomMaterialOverride: (object, material) => {
+        this.renderPipeline?.registerMaterialOverrideTarget(object, material);
+      },
+      registerBloomOcclusionTarget: (object) => {
+        this.renderPipeline?.registerOcclusionTarget(object);
+      },
+      unregisterBloomMaterialOverride: (object) => {
+        this.renderPipeline?.unregisterMaterialOverrideTarget(object);
+      }
+    });
   }
 
   setupShipLocalLights() {
@@ -368,7 +449,8 @@ export class GameManager {
   }
 
   setupWorld() {
-    const { ambient, key, rim, hemisphere } = LIGHTING_SETTINGS.world;
+    const preset = this.getEnvironmentPreset();
+    const { ambient, key, rim, hemisphere } = preset.lights;
 
     const globalLight = new THREE.AmbientLight(ambient.color, ambient.intensity);
     this.scene.add(globalLight);
@@ -387,12 +469,12 @@ export class GameManager {
       hemisphere.intensity
     );
     this.scene.add(softUnderLight);
+    this.worldLights = { globalLight, keyLight, rimLight, softUnderLight };
 
-    this.starLayers = [
-      this.createStars(1800, 8500, 32.8, 0.98),
-      this.createStars(900, 24000, 51.2, 0.74),
-      this.createStars(420, 52000, 73.6, 0.5)
-    ];
+    this.starLayers = preset.starField.layers.map((layer) => {
+      return this.createStars(layer.count, layer.radius, layer.size, layer.opacity);
+    });
+    this.applyEnvironmentPreset(preset);
   }
 
   setupTargetMarker() {
@@ -481,7 +563,8 @@ export class GameManager {
   }
 
   async loadWorld() {
-    await this.worldDataManager.init();
+    if (!this.worldDataManager.db) await this.worldDataManager.init();
+    await this.loadSavedEnvironmentSettings();
     await this.worldMapManager.loadAssets(this.resourceManager);
     const snapshot = await this.worldDataManager.loadOrCreateWorld();
     this.worldMapManager.renderWorld(snapshot);
@@ -619,9 +702,10 @@ export class GameManager {
   }
 
   addShipModel(model) {
-    model.name = "ship_01";
+    const shipId = SHIP_VISUAL_IDS.playerShip;
+    const shipVisualDefinition = getShipVisualDefinition(shipId);
+    model.name = shipId;
     model.rotation.y = Math.PI;
-    this.applyShipReflection(model);
     this.ship.add(model);
 
     this.ship.updateWorldMatrix(true, true);
@@ -631,10 +715,21 @@ export class GameManager {
       this.ship.worldToLocal(this.vectors.modelCenter);
       model.position.sub(this.vectors.modelCenter);
     }
+    this.ship.updateWorldMatrix(true, true);
+    this.applyShipReflection(model, shipVisualDefinition);
+    this.playerShipVisualState = this.shipVisualManager?.applyToShip({
+      shipId,
+      root: this.ship,
+      object: model
+    }) || null;
+    this.shipEngineOutputPercent = null;
+    this.updateShipEngineOutput();
+    this.renderPipeline?.markTargetsDirty();
   }
 
-  applyShipReflection(model) {
+  applyShipReflection(model, shipVisualDefinition = getShipVisualDefinition(SHIP_VISUAL_IDS.playerShip)) {
     if (!this.shipReflectionTexture) return;
+    const reflectionIntensity = shipVisualDefinition?.materials?.reflectionIntensity ?? this.shipReflectionIntensity;
 
     model.traverse((child) => {
       if (!child.isMesh || !child.material) return;
@@ -642,7 +737,7 @@ export class GameManager {
       materials.forEach((material) => {
         if (!material || !("envMapIntensity" in material)) return;
         material.envMap = this.shipReflectionTexture;
-        material.envMapIntensity = this.shipReflectionIntensity;
+        material.envMapIntensity = reflectionIntensity;
         if ("roughness" in material) {
           material.roughness = Math.min(1, material.roughness + this.shipRoughnessOffset);
         }
@@ -690,6 +785,42 @@ export class GameManager {
     points.userData.count = count;
     this.scene.add(points);
     return points;
+  }
+
+  applyEnvironmentPreset(preset = this.getEnvironmentPreset()) {
+    if (this.renderer) {
+      this.renderer.toneMapping = this.getRendererToneMapping(preset.renderer.toneMapping);
+      this.renderer.toneMappingExposure = preset.renderer.toneMappingExposure;
+    }
+
+    this.renderPipeline?.setObjectBloomSettings(preset.objectBloom);
+
+    if (this.scene) {
+      this.scene.background = new THREE.Color(preset.scene.background);
+      this.scene.fog = new THREE.FogExp2(preset.scene.fog.color, preset.scene.fog.density);
+    }
+
+    this.targetingOverlay?.setFrameStyle(preset.targeting.frame);
+
+    if (!this.worldLights) return;
+
+    const { ambient, key, rim, hemisphere } = preset.lights;
+    this.worldLights.globalLight.color.setHex(ambient.color);
+    this.worldLights.globalLight.intensity = ambient.intensity;
+    this.worldLights.keyLight.color.setHex(key.color);
+    this.worldLights.keyLight.intensity = key.intensity;
+    this.worldLights.keyLight.position.set(...key.position);
+    this.worldLights.rimLight.color.setHex(rim.color);
+    this.worldLights.rimLight.intensity = rim.intensity;
+    this.worldLights.rimLight.position.set(...rim.position);
+    this.worldLights.softUnderLight.color.setHex(hemisphere.skyColor);
+    this.worldLights.softUnderLight.groundColor.setHex(hemisphere.groundColor);
+    this.worldLights.softUnderLight.intensity = hemisphere.intensity;
+    this.worldMapManager?.setEnvironmentVisuals(preset.worldMap);
+  }
+
+  getRendererToneMapping(toneMapping) {
+    return RENDERER_TONE_MAPPINGS[toneMapping] ?? RENDERER_TONE_MAPPINGS.acesFilmic;
   }
 
   getFollowCameraRadius(distance = this.cameraControl.distance) {
@@ -1029,6 +1160,23 @@ export class GameManager {
       : this.config.decelerationRate;
     this.state.speed = this.moveToward(this.state.speed, this.state.desiredSpeed, rate * dt);
     this.state.speedTrend = this.state.speed - previousSpeed;
+  }
+
+  getShipEngineOutputPercent() {
+    const maxSpeed = Number(this.config.maxSpeed);
+    if (!Number.isFinite(maxSpeed) || maxSpeed <= 0) return 0;
+    return THREE.MathUtils.clamp(Math.max(0, this.state.speed) / maxSpeed, 0, 1) * 100;
+  }
+
+  updateShipEngineOutput() {
+    if (!this.playerShipVisualState || !this.shipVisualManager) return;
+
+    const nextOutput = this.getShipEngineOutputPercent();
+    if (this.shipEngineOutputPercent !== null && Math.abs(nextOutput - this.shipEngineOutputPercent) < 0.01) return;
+
+    this.shipEngineOutputPercent = nextOutput;
+    this.playerShipVisualState.engineOutputSettings.value = nextOutput;
+    this.shipVisualManager.applyEngineOutputSettings(this.playerShipVisualState);
   }
 
   updateManualRotation(dt) {
@@ -1653,6 +1801,19 @@ export class GameManager {
     void this.saveWorldViewSettings();
   }
 
+  setEnvironmentMode(mode) {
+    const nextMode = normalizeEnvironmentMode(mode);
+    if (this.environmentMode === nextMode) {
+      this.ui.setEnvironmentMode(nextMode);
+      return;
+    }
+
+    this.environmentMode = nextMode;
+    this.applyEnvironmentPreset(this.getEnvironmentPreset(nextMode));
+    this.ui.setEnvironmentMode(nextMode);
+    void this.saveEnvironmentSettings();
+  }
+
   getWorldObjectList() {
     const snapshot = this.worldMapManager?.snapshot || this.worldDataManager.snapshot;
     if (!snapshot) return { buildings: [], resources: [] };
@@ -1751,9 +1912,14 @@ export class GameManager {
     }
 
     this.updateTargetMarker(dt);
+    this.updateShipEngineOutput();
     this.updateHud();
     this.updateTargetingOverlay();
-    this.renderer.render(this.scene, this.camera);
+    if (this.renderPipeline) {
+      this.renderPipeline.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
     this.animationFrameId = requestAnimationFrame(() => this.animate());
   }
 
@@ -2411,6 +2577,7 @@ export class GameManager {
 
   onResize() {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderPipeline?.setSize(window.innerWidth, window.innerHeight);
     this.updateCameraProjection();
     this.targetingOverlay.resize();
   }
@@ -2441,6 +2608,9 @@ export class GameManager {
     this.worldMapManager.dispose();
     this.soundManager.dispose();
     this.resourceManager.dispose();
+    this.shipVisualManager?.disposeShipState(this.playerShipVisualState);
+    this.shipVisualManager?.dispose();
+    this.renderPipeline?.dispose();
     if (this.shipReflectionTexture) {
       this.shipReflectionTexture.dispose();
       this.shipReflectionTexture = null;

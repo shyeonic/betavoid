@@ -2,10 +2,39 @@ import * as THREE from "three";
 import { ASSETS } from "./config.js";
 import { BUILDING_DEFINITIONS, RESOURCE_DEFINITIONS, WORLD_CONFIG } from "./worldDefinitions.js";
 
+const DEFAULT_WORLD_MAP_VISUALS = {
+  bounds: {
+    chunk: { color: 0xe7f2f9, opacity: 1 },
+    sector: {
+      opacity: 0.5,
+      colors: {
+        "SEC-001": 0xffbc66,
+        "SEC-002": 0x63d2ff,
+        "SEC-003": 0x82e3bd,
+        "SEC-004": 0xa6ebff,
+        "SEC-005": 0xb896ff,
+        "SEC-006": 0xff6b6b,
+        "SEC-007": 0xffd166,
+        "SEC-008": 0x9ee7ff,
+        "SEC-009": 0x7ee081,
+        "SEC-010": 0xd9d9d9
+      },
+      fallbackColor: 0xffffff
+    }
+  }
+};
+
 export class WorldMapManager {
-  constructor({ scene, renderScale = WORLD_CONFIG.renderScale }) {
+  constructor({
+    scene,
+    renderScale = WORLD_CONFIG.renderScale,
+    environmentVisuals = DEFAULT_WORLD_MAP_VISUALS,
+    onRenderMutation = null
+  }) {
     this.scene = scene;
     this.renderScale = renderScale;
+    this.environmentVisuals = environmentVisuals;
+    this.onRenderMutation = onRenderMutation;
     this.root = new THREE.Group();
     this.root.name = "world-map";
     this.scene.add(this.root);
@@ -71,8 +100,14 @@ export class WorldMapManager {
     if (this.chunkBoundsMode === "sector") this.renderChunkBounds();
   }
 
+  setEnvironmentVisuals(environmentVisuals = DEFAULT_WORLD_MAP_VISUALS) {
+    this.environmentVisuals = environmentVisuals;
+    this.updateBoundsMaterials();
+  }
+
   renderChunkBounds() {
     this.clearGroup(this.chunkBoundsGroup);
+    this.onRenderMutation?.();
     if (!this.snapshot || this.chunkBoundsMode === "off") return;
 
     const chunks = this.chunkBoundsMode === "sector"
@@ -84,6 +119,7 @@ export class WorldMapManager {
     chunks
       .filter((chunk) => this.visibleChunkIds.has(chunk.chunk_id))
       .forEach((chunk) => this.chunkBoundsGroup.add(this.createChunkBounds(chunk)));
+    this.onRenderMutation?.();
   }
 
   updateVisibleChunksFromPosition(dataPosition, { force = false } = {}) {
@@ -142,6 +178,7 @@ export class WorldMapManager {
     this.snapshot.buildings
       .filter((building) => addedChunkIdSet.has(building.chunk_id))
       .forEach((building) => this.enqueueObjectBuild("building", building));
+    if (removedChunkIds.length > 0 || addedChunkIds.length > 0) this.onRenderMutation?.();
   }
 
   resetVisibleWorldRenderState() {
@@ -226,6 +263,8 @@ export class WorldMapManager {
       if (mesh) this.objectsGroup.add(mesh);
       processed += 1;
     }
+
+    if (processed > 0) this.onRenderMutation?.();
   }
 
   createResourceMesh(resourceNode) {
@@ -424,7 +463,7 @@ export class WorldMapManager {
     const material = new THREE.LineBasicMaterial({
       color: this.getSectorColor(sector.sector_id),
       transparent: true,
-      opacity: 0.5,
+      opacity: this.getSectorBoundsOpacity(),
       fog: false
     });
     const lines = new THREE.LineSegments(geometry, material);
@@ -438,9 +477,10 @@ export class WorldMapManager {
   }
 
   createChunkBounds(chunk) {
+    const chunkStyle = this.getChunkBoundsStyle();
     const lines = this.createBoxBounds(chunk.global_bounds, {
-      color: 0xE7F2F9,
-      opacity: 1
+      color: chunkStyle.color,
+      opacity: chunkStyle.opacity
     });
     lines.userData = {
       kind: "chunk",
@@ -471,7 +511,7 @@ export class WorldMapManager {
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     const material = new THREE.LineBasicMaterial({
       color,
-      transparent: false,
+      transparent: opacity < 1,
       opacity,
       fog: false,
       toneMapped: false
@@ -480,19 +520,35 @@ export class WorldMapManager {
   }
 
   getSectorColor(sectorId) {
-    const colors = {
-      "SEC-001": 0xffbc66,
-      "SEC-002": 0x63d2ff,
-      "SEC-003": 0x82e3bd,
-      "SEC-004": 0xa6ebff,
-      "SEC-005": 0xb896ff,
-      "SEC-006": 0xff6b6b,
-      "SEC-007": 0xffd166,
-      "SEC-008": 0x9ee7ff,
-      "SEC-009": 0x7ee081,
-      "SEC-010": 0xd9d9d9
-    };
-    return colors[sectorId] || 0xffffff;
+    const sectorStyle = this.environmentVisuals?.bounds?.sector || DEFAULT_WORLD_MAP_VISUALS.bounds.sector;
+    return sectorStyle.colors?.[sectorId] || sectorStyle.fallbackColor || 0xffffff;
+  }
+
+  getSectorBoundsOpacity() {
+    return this.environmentVisuals?.bounds?.sector?.opacity ?? DEFAULT_WORLD_MAP_VISUALS.bounds.sector.opacity;
+  }
+
+  getChunkBoundsStyle() {
+    return this.environmentVisuals?.bounds?.chunk || DEFAULT_WORLD_MAP_VISUALS.bounds.chunk;
+  }
+
+  updateBoundsMaterials() {
+    this.sectorBoundsGroup.traverse((object) => {
+      if (!object.isLineSegments || !object.material) return;
+      object.material.color.setHex(this.getSectorColor(object.userData?.sector_id));
+      object.material.opacity = this.getSectorBoundsOpacity();
+      object.material.transparent = object.material.opacity < 1;
+      object.material.needsUpdate = true;
+    });
+
+    const chunkStyle = this.getChunkBoundsStyle();
+    this.chunkBoundsGroup.traverse((object) => {
+      if (!object.isLineSegments || !object.material) return;
+      object.material.color.setHex(chunkStyle.color);
+      object.material.opacity = chunkStyle.opacity;
+      object.material.transparent = chunkStyle.opacity < 1;
+      object.material.needsUpdate = true;
+    });
   }
 
   toRenderVector(position) {
@@ -531,6 +587,7 @@ export class WorldMapManager {
     this.clearGroup(this.sectorBoundsGroup);
     this.clearGroup(this.chunkBoundsGroup);
     this.clearGroup(this.objectsGroup);
+    this.onRenderMutation?.();
   }
 
   clearGroup(group) {
