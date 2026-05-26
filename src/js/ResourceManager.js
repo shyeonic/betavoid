@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 import { ASSETS } from "./config.js";
@@ -84,6 +85,16 @@ export class ResourceManager {
     return /(^|\n)\s*(v|vn|vt|f|o|g)\s+/m.test(text);
   }
 
+  createFallbackShipMaterial() {
+    return new THREE.MeshStandardMaterial({
+      color: 0xCFF3FF,
+      metalness: 0.55,
+      roughness: 0.28,
+      emissive: 0x00449E,
+      emissiveIntensity: 0.2
+    });
+  }
+
   normalizeModel(object) {
     const box = new THREE.Box3().setFromObject(object);
     const size = box.getSize(new THREE.Vector3());
@@ -97,13 +108,9 @@ export class ResourceManager {
       if (!child.isMesh) return;
       child.castShadow = false;
       child.receiveShadow = false;
-      child.material = new THREE.MeshStandardMaterial({
-        color: 0xCFF3FF,
-        metalness: 0.55,
-        roughness: 0.28,
-        emissive: 0x00449E,
-        emissiveIntensity: 0.2
-      });
+      if (!child.material || (Array.isArray(child.material) && child.material.length === 0)) {
+        child.material = this.createFallbackShipMaterial();
+      }
     });
 
     return object;
@@ -209,30 +216,61 @@ export class ResourceManager {
     return materials;
   }
 
+  resolveShipSource(source) {
+    if (typeof source === "string") {
+      const url = new URL(source).href;
+      return {
+        url,
+        label: url.split("/").pop() || "ship",
+        type: /\.glb($|\?)/i.test(url) ? "glb" : "obj"
+      };
+    }
+
+    const url = new URL(source.glb || source.obj || source.url).href;
+    return {
+      url,
+      label: source.label || url.split("/").pop() || "ship",
+      type: source.glb || /\.glb($|\?)/i.test(url) ? "glb" : "obj"
+    };
+  }
+
+  async loadGlbObject(source) {
+    const loader = new GLTFLoader();
+    const gltf = await loader.loadAsync(source);
+    return gltf.scene;
+  }
+
+  async loadObjObject(source) {
+    const response = await fetch(source, { cache: "force-cache" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const text = await response.text();
+    if (!this.looksLikeObjFile(text)) throw new Error("Invalid OBJ data.");
+
+    const loader = new OBJLoader();
+    return loader.parse(text);
+  }
+
   async loadShipModel() {
     if (this.disposed) throw new Error("ResourceManager has been disposed.");
     const id = "ship:ship_01";
-    const loader = new OBJLoader();
-    const sources = this.getShipSources();
-    this.begin(id, "ship_01.obj", sources[0]);
+    const sources = this.getShipSources().map((source) => this.resolveShipSource(source));
+    this.begin(id, sources[0]?.label || "ship_01.glb", sources[0]?.url);
 
     for (const source of sources) {
       try {
-        const response = await fetch(source, { cache: "force-cache" });
-        if (!response.ok) continue;
-
-        const text = await response.text();
-        if (!this.looksLikeObjFile(text)) continue;
-
-        const object = loader.parse(text);
+        const object = source.type === "glb"
+          ? await this.loadGlbObject(source.url)
+          : await this.loadObjObject(source.url);
         if (!object.children.length) continue;
         if (this.disposed) throw new Error("ResourceManager has been disposed.");
 
-        this.complete(id, source);
+        this.complete(id, source.url);
         return {
           id,
-          source,
-          remote: source.startsWith("http"),
+          source: source.url,
+          type: source.type,
+          remote: source.url.startsWith("http"),
           object: this.normalizeModel(object)
         };
       } catch {
@@ -240,7 +278,7 @@ export class ResourceManager {
       }
     }
 
-    const error = new Error("ship_01.obj could not be loaded from local or remote sources.");
+    const error = new Error("player ship model could not be loaded from local GLB or remote OBJ sources.");
     this.fail(id, error);
     throw error;
   }

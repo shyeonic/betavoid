@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { CONFIG, CONTROL_SETTINGS, DEFAULT_KEY_BINDINGS, KEY_BINDING_GROUPS } from "./config.js";
 import { ResourceManager } from "./ResourceManager.js";
 import { SoundManager } from "./SoundManager.js";
@@ -8,6 +9,21 @@ import { WorldDataManager } from "./WorldDataManager.js";
 import { WorldMapManager } from "./WorldMapManager.js";
 import { BUILDING_DEFINITIONS, ITEM_DEFINITIONS, RESOURCE_DEFINITIONS, WORLD_CONFIG } from "./worldDefinitions.js";
 import { createI18n } from "./i18n/i18n.js";
+
+const LIGHTING_SETTINGS = {
+  world: {
+    ambient: { color: 0xf2fbff, intensity: 0.9 },
+    key: { color: 0xffffff, intensity: 6, position: [7, 8, 6] },
+    rim: { color: 0x8fdcff, intensity: 0.55, position: [-8, 4, -8] },
+    hemisphere: { skyColor: 0xf7fcff, groundColor: 0x8bb8c8, intensity: 0.45 }
+  },
+  ship: {
+    reflectionIntensity: 0.9,
+    roughnessOffset: 0.02,
+    fillLight: { color: 0xe8f7ff, intensity: 2, distance: 44, position: [0, 2.2, -2] },
+    rimLight: { color: 0x8fdcff, intensity: 2, distance: 48, position: [-3.5, 1.2, 3.5] }
+  }
+};
 
 export class GameManager {
   constructor({ root }) {
@@ -144,6 +160,11 @@ export class GameManager {
     this.playerShipSaveInterval = 1000;
     this.currentLocationBgmId = null;
     this.worldDataResetting = false;
+    this.shipReflectionTexture = null;
+    this.shipReflectionIntensity = LIGHTING_SETTINGS.ship.reflectionIntensity;
+    this.shipRoughnessOffset = LIGHTING_SETTINGS.ship.roughnessOffset;
+    this.shipFillLight = null;
+    this.shipRimLight = null;
   }
 
   async init() {
@@ -313,6 +334,15 @@ export class GameManager {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.root.appendChild(this.renderer.domElement);
+    this.setupShipReflectionTexture();
+  }
+
+  setupShipReflectionTexture() {
+    const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+    const roomEnvironment = new RoomEnvironment();
+    this.shipReflectionTexture = pmremGenerator.fromScene(roomEnvironment, 0.04).texture;
+    pmremGenerator.dispose();
+    if (roomEnvironment.dispose) roomEnvironment.dispose();
   }
 
   setupScene() {
@@ -323,21 +353,39 @@ export class GameManager {
 
     this.ship = new THREE.Group();
     this.scene.add(this.ship);
+    this.setupShipLocalLights();
+  }
+
+  setupShipLocalLights() {
+    const { fillLight, rimLight } = LIGHTING_SETTINGS.ship;
+    this.shipFillLight = new THREE.PointLight(fillLight.color, fillLight.intensity, fillLight.distance);
+    this.shipFillLight.position.set(...fillLight.position);
+
+    this.shipRimLight = new THREE.PointLight(rimLight.color, rimLight.intensity, rimLight.distance);
+    this.shipRimLight.position.set(...rimLight.position);
+
+    this.ship.add(this.shipFillLight, this.shipRimLight);
   }
 
   setupWorld() {
-    const globalLight = new THREE.AmbientLight(0xf2fbff, 0.9);
+    const { ambient, key, rim, hemisphere } = LIGHTING_SETTINGS.world;
+
+    const globalLight = new THREE.AmbientLight(ambient.color, ambient.intensity);
     this.scene.add(globalLight);
 
-    const keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
-    keyLight.position.set(7, 8, 6);
+    const keyLight = new THREE.DirectionalLight(key.color, key.intensity);
+    keyLight.position.set(...key.position);
     this.scene.add(keyLight);
 
-    const rimLight = new THREE.DirectionalLight(0x8fdcff, 0.55);
-    rimLight.position.set(-8, 4, -8);
+    const rimLight = new THREE.DirectionalLight(rim.color, rim.intensity);
+    rimLight.position.set(...rim.position);
     this.scene.add(rimLight);
 
-    const softUnderLight = new THREE.HemisphereLight(0xf7fcff, 0x8bb8c8, 0.45);
+    const softUnderLight = new THREE.HemisphereLight(
+      hemisphere.skyColor,
+      hemisphere.groundColor,
+      hemisphere.intensity
+    );
     this.scene.add(softUnderLight);
 
     this.starLayers = [
@@ -573,6 +621,7 @@ export class GameManager {
   addShipModel(model) {
     model.name = "ship_01";
     model.rotation.y = Math.PI;
+    this.applyShipReflection(model);
     this.ship.add(model);
 
     this.ship.updateWorldMatrix(true, true);
@@ -582,6 +631,24 @@ export class GameManager {
       this.ship.worldToLocal(this.vectors.modelCenter);
       model.position.sub(this.vectors.modelCenter);
     }
+  }
+
+  applyShipReflection(model) {
+    if (!this.shipReflectionTexture) return;
+
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((material) => {
+        if (!material || !("envMapIntensity" in material)) return;
+        material.envMap = this.shipReflectionTexture;
+        material.envMapIntensity = this.shipReflectionIntensity;
+        if ("roughness" in material) {
+          material.roughness = Math.min(1, material.roughness + this.shipRoughnessOffset);
+        }
+        material.needsUpdate = true;
+      });
+    });
   }
 
   createStars(count, radius, size, opacity) {
@@ -2374,6 +2441,10 @@ export class GameManager {
     this.worldMapManager.dispose();
     this.soundManager.dispose();
     this.resourceManager.dispose();
+    if (this.shipReflectionTexture) {
+      this.shipReflectionTexture.dispose();
+      this.shipReflectionTexture = null;
+    }
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

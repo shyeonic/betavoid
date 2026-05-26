@@ -140,6 +140,20 @@
       display: none;
     }
 
+    .star-bloom-controls {
+      display: grid;
+      gap: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(160, 190, 220, 0.18);
+    }
+
+    .section-title {
+      margin: 0;
+      color: #dce6f2;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
     .slider-row {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -244,6 +258,21 @@
           <input type="number" data-engine-max="pointIntensity" min="0" max="8" step="0.01">
         </div>
       </div>
+      <div class="star-bloom-controls" id="starBloomControls">
+        <p class="section-title">Star Bloom</p>
+        <div class="toggle-list">
+          <label><input id="starBloomEnabledInput" type="checkbox" checked> <span>Enabled</span></label>
+        </div>
+        <div class="param-list">
+          <label>Strength <input type="number" data-star-bloom-param="strength" min="0" max="4" step="0.01"></label>
+          <label>Radius <input type="number" data-star-bloom-param="radius" min="0" max="2" step="0.01"></label>
+          <label>Threshold <input type="number" data-star-bloom-param="threshold" min="0" max="1" step="0.01"></label>
+          <label>Size Scale <input type="number" data-star-bloom-param="sizeScale" min="0" max="8" step="0.01"></label>
+          <label>Opacity Scale <input type="number" data-star-bloom-param="opacityScale" min="0" max="2" step="0.01"></label>
+          <label>Color Power <input type="number" data-star-bloom-param="colorIntensity" min="0" max="8" step="0.01"></label>
+          <label>Occlusion <input type="number" data-star-bloom-param="occlusionStrength" min="0" max="1" step="0.01"></label>
+        </div>
+      </div>
     </div>
     <pre id="summary">rss/ships/ship_01.glb</pre>
   </section>
@@ -267,6 +296,20 @@
     const BLOOM_STRENGTH = 0.2;
     const BLOOM_RADIUS = 0.1;
     const BLOOM_THRESHOLD = 0.14;
+    const STAR_BLOOM_LAYER = 2;
+    const STAR_BLOOM_STRENGTH = 1;
+    const STAR_BLOOM_RADIUS = 2;
+    const STAR_BLOOM_THRESHOLD = 0.02;
+    const STAR_BLOOM_SIZE_SCALE = 1.2;
+    const STAR_BLOOM_OPACITY_SCALE = 0.2;
+    const STAR_BLOOM_COLOR_INTENSITY = 1;
+    const STAR_BLOOM_OCCLUSION_STRENGTH = 1;
+    const STAR_BLOOM_RADIUS_SIZE_SCALE = 2;
+    const STAR_FIELD_LAYERS = [
+      { count: 1800, radius: 8500, size: 32.8, opacity: 0.98 },
+      { count: 900, radius: 24000, size: 51.2, opacity: 0.74 },
+      { count: 420, radius: 52000, size: 73.6, opacity: 0.5 }
+    ];
     const VFX_LIGHT_ENGINE_ID = "vfx_light_engine_001";
     const VFX_LIGHT_SUB_HEAD_ID = "vfx_light_sub_001";
     const VFX_LIGHT_SUB_AUX_ID = "vfx_light_sub_002";
@@ -362,6 +405,8 @@
     const engineOutputValue = document.querySelector("#engineOutputValue");
     const engineMinInputs = Array.from(engineOutputControls.querySelectorAll("[data-engine-min]"));
     const engineMaxInputs = Array.from(engineOutputControls.querySelectorAll("[data-engine-max]"));
+    const starBloomEnabledInput = document.querySelector("#starBloomEnabledInput");
+    const starBloomParamInputs = Array.from(document.querySelectorAll("[data-star-bloom-param]"));
 
     const lightControlState = Object.fromEntries(
       Object.entries(VFX_LIGHT_PROFILES).map(([type, profile]) => [
@@ -385,6 +430,16 @@
         glowSpriteOpacity: VFX_LIGHT_PROFILES[VFX_LIGHT_ENGINE_ID].glowSpriteOpacity,
         pointIntensity: VFX_LIGHT_PROFILES[VFX_LIGHT_ENGINE_ID].pointIntensity
       }
+    };
+    const starBloomSettings = {
+      enabled: true,
+      strength: STAR_BLOOM_STRENGTH,
+      radius: STAR_BLOOM_RADIUS,
+      threshold: STAR_BLOOM_THRESHOLD,
+      sizeScale: STAR_BLOOM_SIZE_SCALE,
+      opacityScale: STAR_BLOOM_OPACITY_SCALE,
+      colorIntensity: STAR_BLOOM_COLOR_INTENSITY,
+      occlusionStrength: STAR_BLOOM_OCCLUSION_STRENGTH
     };
 
     const scene = new THREE.Scene();
@@ -410,6 +465,8 @@
 
     const bloomLayer = new THREE.Layers();
     bloomLayer.set(BLOOM_LAYER);
+    const starBloomLayer = new THREE.Layers();
+    starBloomLayer.set(STAR_BLOOM_LAYER);
 
     const bloomComposer = new EffectComposer(renderer);
     bloomComposer.renderToScreen = false;
@@ -425,6 +482,21 @@
     bloomComposer.addPass(bloomRenderPass);
     bloomComposer.addPass(bloomPass);
 
+    const starBloomRenderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+      depthBuffer: true,
+      stencilBuffer: false
+    });
+    const starBloomPass = {
+      strength: STAR_BLOOM_STRENGTH,
+      radius: STAR_BLOOM_RADIUS,
+      threshold: STAR_BLOOM_THRESHOLD
+    };
+
+    const starOcclusionRenderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+      depthBuffer: true,
+      stencilBuffer: false
+    });
+
     const finalComposer = new EffectComposer(renderer);
     finalComposer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     finalComposer.setSize(window.innerWidth, window.innerHeight);
@@ -433,7 +505,10 @@
       new THREE.ShaderMaterial({
         uniforms: {
           baseTexture: { value: null },
-          bloomTexture: { value: bloomComposer.renderTarget2.texture }
+          bloomTexture: { value: bloomComposer.renderTarget2.texture },
+          starBloomTexture: { value: starBloomRenderTarget.texture },
+          starOcclusionTexture: { value: starOcclusionRenderTarget.texture },
+          starBloomOcclusionStrength: { value: starBloomSettings.occlusionStrength }
         },
         vertexShader: `
           varying vec2 vUv;
@@ -446,10 +521,17 @@
         fragmentShader: `
           uniform sampler2D baseTexture;
           uniform sampler2D bloomTexture;
+          uniform sampler2D starBloomTexture;
+          uniform sampler2D starOcclusionTexture;
+          uniform float starBloomOcclusionStrength;
           varying vec2 vUv;
 
           void main() {
-            gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv);
+            vec4 baseColor = texture2D(baseTexture, vUv);
+            vec4 objectBloom = texture2D(bloomTexture, vUv);
+            vec4 starBloom = texture2D(starBloomTexture, vUv);
+            float starOcclusion = texture2D(starOcclusionTexture, vUv).r * starBloomOcclusionStrength;
+            gl_FragColor = baseColor + objectBloom + starBloom * (1.0 - clamp(starOcclusion, 0.0, 1.0));
           }
         `
       }),
@@ -470,6 +552,9 @@
     window.__glbViewerBloomComposer = bloomComposer;
     window.__glbViewerBloomPass = bloomPass;
     window.__glbViewerBloomLayer = bloomLayer;
+    window.__glbViewerStarBloomRenderTarget = starBloomRenderTarget;
+    window.__glbViewerStarBloomPass = starBloomPass;
+    window.__glbViewerStarBloomLayer = starBloomLayer;
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -491,13 +576,99 @@
     const softUnderLight = new THREE.HemisphereLight(0x93b6d5, 0x08131c, 0.18);
     scene.add(softUnderLight);
 
-    [
-      createStars(1800, 8500, 32.8, 0.98),
-      createStars(900, 24000, 51.2, 0.74),
-      createStars(420, 52000, 73.6, 0.5)
-    ].forEach((stars) => scene.add(stars));
+    const starBloomObjects = [];
+    const starPointMaterials = [];
+    const starPointScaleSize = new THREE.Vector2();
 
-    function createStars(count, radius, size, opacity) {
+    STAR_FIELD_LAYERS
+      .map((starLayer) => createStars(starLayer))
+      .forEach((stars) => scene.add(stars));
+
+    function createRoundStarMaterial(options) {
+      const colorMultiplier = options.color || new THREE.Color(1, 1, 1);
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          pointSize: { value: options.size },
+          pointScale: { value: getStarPointScale() },
+          opacity: { value: options.opacity },
+          colorMultiplier: { value: colorMultiplier.clone() },
+          softness: { value: options.softness ?? 0.42 },
+          falloffPower: { value: options.falloffPower ?? 0.85 },
+          alphaCutoff: { value: options.alphaCutoff ?? 0.001 }
+        },
+        vertexShader: `
+          uniform float pointSize;
+          uniform float pointScale;
+          varying vec3 vColor;
+
+          void main() {
+            vColor = color;
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            gl_PointSize = pointSize * (pointScale / max(0.0001, -mvPosition.z));
+            gl_Position = projectionMatrix * mvPosition;
+          }
+        `,
+        fragmentShader: `
+          uniform float opacity;
+          uniform vec3 colorMultiplier;
+          uniform float softness;
+          uniform float falloffPower;
+          uniform float alphaCutoff;
+          varying vec3 vColor;
+
+          void main() {
+            vec2 pointUv = gl_PointCoord.xy - vec2(0.5);
+            float pointDistance = length(pointUv) * 2.0;
+            if (pointDistance > 1.0) discard;
+
+            float edgeStart = clamp(1.0 - softness, 0.02, 0.98);
+            float pointAlpha = pow(1.0 - smoothstep(edgeStart, 1.0, pointDistance), falloffPower);
+            if (pointAlpha <= alphaCutoff) discard;
+            gl_FragColor = vec4(vColor * colorMultiplier, opacity * pointAlpha);
+          }
+        `,
+        transparent: options.transparent,
+        blending: options.blending || THREE.NormalBlending,
+        depthTest: options.depthTest !== false,
+        depthWrite: options.depthWrite === true,
+        fog: options.fog === true,
+        toneMapped: options.toneMapped !== false,
+        vertexColors: true
+      });
+      starPointMaterials.push(material);
+      return material;
+    }
+
+    function getStarBloomSoftness() {
+      return THREE.MathUtils.clamp(0.58 + starBloomSettings.radius * 0.28, 0.2, 0.96);
+    }
+
+    function getStarBloomFalloffPower() {
+      return THREE.MathUtils.clamp(2.1 - starBloomSettings.radius * 0.45, 0.75, 2.4);
+    }
+
+    function getStarBloomPointSize(baseSize) {
+      const radiusScale = 1 + starBloomSettings.radius * STAR_BLOOM_RADIUS_SIZE_SCALE;
+      return baseSize * starBloomSettings.sizeScale * radiusScale;
+    }
+
+    function getStarBloomAlphaCutoff() {
+      return THREE.MathUtils.clamp(starBloomSettings.threshold * 0.12, 0.001, 0.18);
+    }
+
+    function getStarPointScale() {
+      renderer.getDrawingBufferSize(starPointScaleSize);
+      return starPointScaleSize.y * 0.5;
+    }
+
+    function updateStarPointScales() {
+      const pointScale = getStarPointScale();
+      starPointMaterials.forEach((material) => {
+        material.uniforms.pointScale.value = pointScale;
+      });
+    }
+
+    function createStars({ count, radius, size, opacity }) {
       const geometry = new THREE.BufferGeometry();
       const positions = new Float32Array(count * 3);
       const colors = new Float32Array(count * 3);
@@ -521,17 +692,51 @@
       geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
       geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
-      const material = new THREE.PointsMaterial({
+      const material = createRoundStarMaterial({
         size,
-        vertexColors: true,
         transparent: true,
         opacity,
-        sizeAttenuation: true,
+        softness: 0.34,
+        alphaCutoff: 0.001,
         depthWrite: false,
         fog: false
       });
 
-      return new THREE.Points(geometry, material);
+      const stars = new THREE.Points(geometry, material);
+      stars.name = "StarField";
+      stars.userData.skipStarOcclusionMask = true;
+
+      const bloomMaterial = createRoundStarMaterial({
+        size: getStarBloomPointSize(size),
+        color: new THREE.Color(
+          starBloomSettings.colorIntensity,
+          starBloomSettings.colorIntensity,
+          starBloomSettings.colorIntensity
+        ),
+        transparent: true,
+        opacity: opacity * starBloomSettings.opacityScale,
+        softness: getStarBloomSoftness(),
+        falloffPower: getStarBloomFalloffPower(),
+        alphaCutoff: getStarBloomAlphaCutoff(),
+        blending: THREE.AdditiveBlending,
+        depthTest: true,
+        depthWrite: false,
+        fog: false,
+        toneMapped: false
+      });
+      const bloomStars = new THREE.Points(geometry, bloomMaterial);
+      bloomStars.name = "StarFieldBloom";
+      bloomStars.layers.set(STAR_BLOOM_LAYER);
+      bloomStars.userData.skipStarOcclusionMask = true;
+      bloomStars.userData.baseSize = size;
+      bloomStars.userData.baseOpacity = opacity;
+      starBloomObjects.push(bloomStars);
+
+      const starGroup = new THREE.Group();
+      starGroup.name = "StarFieldLayer";
+      starGroup.userData.skipStarOcclusionMask = true;
+      starGroup.add(stars, bloomStars);
+      return starGroup;
     }
 
     function normalizeObject(object) {
@@ -595,14 +800,18 @@
     const darkPointsMaterial = new THREE.PointsMaterial({ color: "black", size: 1, sizeAttenuation: true });
     const darkLineMaterial = new THREE.LineBasicMaterial({ color: "black" });
     const darkSpriteMaterial = new THREE.SpriteMaterial({ color: "black" });
+    const starOcclusionMaskMaterial = new THREE.MeshBasicMaterial({ color: "white", side: THREE.DoubleSide });
+    const starOcclusionLineMaskMaterial = new THREE.LineBasicMaterial({ color: "white" });
     const darkenedDuringBloom = [];
+    const maskedDuringStarOcclusion = [];
+    let activeBloomLayer = bloomLayer;
 
     function isRenderableObject(object) {
       return object.isMesh || object.isPoints || object.isLine || object.isSprite;
     }
 
     function darkenNonBloomed(object) {
-      if (!isRenderableObject(object) || bloomLayer.test(object.layers)) return;
+      if (!isRenderableObject(object) || activeBloomLayer.test(object.layers)) return;
       darkenedDuringBloom.push({ object, material: object.material });
       object.material = object.isPoints
         ? darkPointsMaterial
@@ -618,6 +827,83 @@
         object.material = material;
       });
       darkenedDuringBloom.length = 0;
+    }
+
+    function prepareStarOcclusionMask(object) {
+      if (!isRenderableObject(object) || !object.visible) return;
+
+      maskedDuringStarOcclusion.push({
+        object,
+        material: object.material,
+        visible: object.visible
+      });
+
+      if (object.userData.skipStarOcclusionMask || object.isPoints || object.isSprite) {
+        object.visible = false;
+        return;
+      }
+
+      object.material = object.isLine
+        ? starOcclusionLineMaskMaterial
+        : starOcclusionMaskMaterial;
+    }
+
+    function restoreStarOcclusionMask() {
+      maskedDuringStarOcclusion.forEach(({ object, material, visible }) => {
+        object.material = material;
+        object.visible = visible;
+      });
+      maskedDuringStarOcclusion.length = 0;
+    }
+
+    function renderStarOcclusionMask() {
+      const originalBackground = scene.background;
+      const originalFog = scene.fog;
+      const originalRenderTarget = renderer.getRenderTarget();
+
+      scene.traverse(prepareStarOcclusionMask);
+      scene.background = new THREE.Color(0x000000);
+      scene.fog = null;
+      renderer.setRenderTarget(starOcclusionRenderTarget);
+      renderer.clear();
+      renderer.render(scene, camera);
+      renderer.setRenderTarget(originalRenderTarget);
+      scene.background = originalBackground;
+      scene.fog = originalFog;
+      restoreStarOcclusionMask();
+    }
+
+    function renderBloom(composer, layer, cameraLayerId = null) {
+      const originalCameraLayerMask = camera.layers.mask;
+
+      activeBloomLayer = layer;
+      if (cameraLayerId !== null) camera.layers.set(cameraLayerId);
+      scene.traverse(darkenNonBloomed);
+      composer.render();
+      restoreBloomMaterials();
+      camera.layers.mask = originalCameraLayerMask;
+    }
+
+    function renderStarBloom() {
+      const originalCameraLayerMask = camera.layers.mask;
+      const originalRenderTarget = renderer.getRenderTarget();
+      const originalBackground = scene.background;
+      const originalFog = scene.fog;
+      const originalClearColor = renderer.getClearColor(new THREE.Color());
+      const originalClearAlpha = renderer.getClearAlpha();
+
+      camera.layers.set(STAR_BLOOM_LAYER);
+      scene.background = null;
+      scene.fog = null;
+      renderer.setClearColor(0x000000, 0);
+      renderer.setRenderTarget(starBloomRenderTarget);
+      renderer.clear();
+      renderer.render(scene, camera);
+      renderer.setRenderTarget(originalRenderTarget);
+      renderer.setClearColor(originalClearColor, originalClearAlpha);
+      scene.background = originalBackground;
+      scene.fog = originalFog;
+      camera.layers.mask = originalCameraLayerMask;
     }
 
     function getSelectedMaterialIndices(materials) {
@@ -961,6 +1247,40 @@
       });
     }
 
+    function applyStarBloomSettings() {
+      starBloomPass.strength = starBloomSettings.enabled ? starBloomSettings.strength : 0;
+      starBloomPass.radius = starBloomSettings.radius;
+      starBloomPass.threshold = starBloomSettings.threshold;
+      bloomCompositePass.material.uniforms.starBloomOcclusionStrength.value = starBloomSettings.enabled
+        ? starBloomSettings.occlusionStrength
+        : 0;
+
+      starBloomObjects.forEach((stars) => {
+        stars.visible = starBloomSettings.enabled;
+        stars.material.uniforms.pointSize.value = getStarBloomPointSize(stars.userData.baseSize);
+        stars.material.uniforms.opacity.value = THREE.MathUtils.clamp(
+          stars.userData.baseOpacity * starBloomSettings.opacityScale,
+          0,
+          1
+        );
+        stars.material.uniforms.softness.value = getStarBloomSoftness();
+        stars.material.uniforms.falloffPower.value = getStarBloomFalloffPower();
+        stars.material.uniforms.alphaCutoff.value = getStarBloomAlphaCutoff();
+        stars.material.uniforms.colorMultiplier.value.setRGB(
+          starBloomSettings.colorIntensity * starBloomSettings.strength,
+          starBloomSettings.colorIntensity * starBloomSettings.strength,
+          starBloomSettings.colorIntensity * starBloomSettings.strength
+        );
+      });
+    }
+
+    function syncStarBloomControls() {
+      starBloomEnabledInput.checked = starBloomSettings.enabled;
+      starBloomParamInputs.forEach((input) => {
+        input.value = starBloomSettings[input.dataset.starBloomParam];
+      });
+    }
+
     function syncLightControlPanel() {
       const state = lightControlState[lightTypeSelect.value];
       const profile = VFX_LIGHT_PROFILES[lightTypeSelect.value];
@@ -1030,6 +1350,21 @@
         applyEngineOutputSettings();
       });
     });
+    starBloomEnabledInput.addEventListener("change", () => {
+      starBloomSettings.enabled = starBloomEnabledInput.checked;
+      applyStarBloomSettings();
+    });
+    starBloomParamInputs.forEach((input) => {
+      input.addEventListener("input", () => {
+        const value = Number(input.value);
+        if (!Number.isFinite(value)) return;
+
+        starBloomSettings[input.dataset.starBloomParam] = value;
+        applyStarBloomSettings();
+      });
+    });
+    syncStarBloomControls();
+    applyStarBloomSettings();
 
     function applySubtleBlueEmission(object) {
       const affectedLights = [];
@@ -1168,6 +1503,7 @@
         `Texture slots: ${modelSummary.textureSlotCount}`,
         `Bloom targets: ${blueEmissionTargets.length}`,
         `Selective bloom: strength ${BLOOM_STRENGTH}, radius ${BLOOM_RADIUS}, threshold ${BLOOM_THRESHOLD}`,
+        `Star bloom: strength ${starBloomSettings.strength}, radius ${starBloomSettings.radius}, threshold ${starBloomSettings.threshold}, occlusion ${starBloomSettings.occlusionStrength}`,
         ...blueEmissionTargets.map((light) => {
           return `- ${light.name}: ${light.type}, surface ${light.surfaceWidth.toFixed(3)}x${light.surfaceHeight.toFixed(3)}, range ${light.lightRange.toFixed(3)}, billboard ${light.glowSpriteWidth.toFixed(3)}x${light.glowSpriteHeight.toFixed(3)}, point ${light.pointIntensity.toFixed(3)}/${light.pointRange.toFixed(3)}`;
         }),
@@ -1183,9 +1519,9 @@
     function animate() {
       controls.update();
       updateBlueLightRuntimeAnchors();
-      scene.traverse(darkenNonBloomed);
-      bloomComposer.render();
-      restoreBloomMaterials();
+      renderStarOcclusionMask();
+      renderBloom(bloomComposer, bloomLayer);
+      renderStarBloom();
       finalComposer.render();
       requestAnimationFrame(animate);
     }
@@ -1194,7 +1530,10 @@
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      updateStarPointScales();
       bloomComposer.setSize(window.innerWidth, window.innerHeight);
+      starBloomRenderTarget.setSize(window.innerWidth, window.innerHeight);
+      starOcclusionRenderTarget.setSize(window.innerWidth, window.innerHeight);
       finalComposer.setSize(window.innerWidth, window.innerHeight);
     });
 

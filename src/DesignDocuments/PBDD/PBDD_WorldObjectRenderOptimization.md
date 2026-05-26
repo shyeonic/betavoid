@@ -48,7 +48,20 @@
 
 이 덕분에 월드 데이터가 로딩되어 큐가 만들어진 뒤, Start 버튼을 누르기 전 준비 화면에서도 오브젝트 생성 큐가 소화된다. 결과적으로 실제 플레이 진입 시점의 순간 부하를 줄인다.
 
-### 3.4 visible chunk diff 갱신
+### 3.4 기본 화면 요소 우선 안정화
+
+현재 구현은 Three.js 렌더 순서를 별도 pass로 강제하는 방식이 아니라, 무거운 월드 오브젝트 생성 작업을 뒤로 미루는 방식으로 기본 화면 요소의 안정성을 확보한다.
+
+기본 화면 요소는 다음 흐름으로 먼저 준비된다.
+
+- `GameManager.setupScene()`의 scene background와 fog
+- `GameManager.setupWorld()`의 조명과 star layers
+- `GameManager.addShipModel()`로 배치되는 플레이어 함선
+- `WorldMapManager.renderVisibleWorld()`에서 즉시 반영되는 sector/chunk bounds
+
+반면 자원/건물 mesh는 `objectBuildQueue`에 등록되어 프레임 예산에 따라 순차 생성된다. 따라서 배경, 격자, 함선은 자원/건물 mesh 생성 비용에 덜 묶이며 먼저 안정적으로 표시될 수 있다.
+
+### 3.5 visible chunk diff 갱신
 
 visible chunk가 바뀔 때 전체 `objectsGroup`을 비우고 다시 만드는 방식은 사용하지 않는다.
 
@@ -92,6 +105,12 @@ chunk별 group을 새로 만들지 않고 `objectsGroup.children`에 자원/건�
 sector/chunk bounds는 화면 맥락을 제공하는 가벼운 line object이므로 visible chunk 변경 시 바로 반영한다.
 
 자원/건물 mesh는 모델 clone, geometry/material clone, material 적용이 포함되어 상대적으로 무겁기 때문에 queue로 지연 생성한다.
+
+### 4.5 렌더 순서 보장이 아니라 작업 부하 분산
+
+이번 최적화는 배경, 격자, 함선을 WebGL 최상위 레이어로 강제 렌더링하는 결정이 아니다.
+
+의사결정의 핵심은 기본 화면을 구성하는 요소는 즉시 준비하고, 상대적으로 무거운 자원/건물 mesh 생성만 queue로 분산하는 것이다. 즉, 화면상 깊이 관계나 material 정렬을 바꾸기보다 초기 프레임과 chunk 전환 시점의 작업량을 줄여 안정성을 확보한다.
 
 ## 5. 검증된 동작
 

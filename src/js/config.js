@@ -98,7 +98,9 @@ export const ASSETS = {
     cameraToggle: new URL("../rss/sounds/sfx_data_01.ogg", import.meta.url).href
   },
   ships: {
-    local: new URL("../rss/ships/ship_01.obj", import.meta.url).href,
+    local: {
+      glb: new URL("../rss/ships/ship_01.glb", import.meta.url).href
+    },
     remoteFallback: "https://raw.githubusercontent.com/shyeonic/storage/8a7253eb0ff11db007c2c1d7056d840d56e73e7f/ship_01.obj"
   },
   worldModels: {
