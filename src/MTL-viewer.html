@@ -1,0 +1,1209 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GLB Ship Viewer</title>
+  <style>
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #030811;
+      color: #dce6f2;
+      font-family: Arial, sans-serif;
+    }
+
+    #viewer {
+      position: fixed;
+      inset: 0;
+    }
+
+    .panel {
+      position: fixed;
+      left: 16px;
+      top: 16px;
+      width: min(420px, calc(100vw - 32px));
+      max-height: calc(100vh - 32px);
+      overflow: auto;
+      box-sizing: border-box;
+      padding: 14px;
+      border: 1px solid rgba(160, 190, 220, 0.32);
+      background: rgba(11, 15, 20, 0.82);
+      backdrop-filter: blur(12px);
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .panel h1 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .status {
+      margin-bottom: 10px;
+      color: #9eb7ce;
+    }
+
+    .controls {
+      display: grid;
+      gap: 10px;
+      margin: 0 0 12px;
+      padding: 10px;
+      border: 1px solid rgba(160, 190, 220, 0.22);
+      border-radius: 6px;
+      background: rgba(5, 11, 18, 0.48);
+    }
+
+    .controls[hidden] {
+      display: none;
+    }
+
+    .control-row {
+      display: grid;
+      gap: 5px;
+    }
+
+    .control-row label,
+    .toggle-list span {
+      color: #aebfd1;
+      font-size: 11px;
+    }
+
+    .control-row select,
+    .control-row input[type="color"],
+    .param-list input {
+      width: 100%;
+      min-height: 30px;
+      box-sizing: border-box;
+      border: 1px solid rgba(160, 190, 220, 0.34);
+      border-radius: 4px;
+      background: #08111c;
+      color: #dce6f2;
+      font: inherit;
+    }
+
+    .control-row input[type="color"] {
+      padding: 2px;
+    }
+
+    .toggle-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px 10px;
+    }
+
+    .toggle-list label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      color: #dce6f2;
+    }
+
+    .toggle-list input {
+      margin: 0;
+      accent-color: #dce6f2;
+    }
+
+    .param-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 10px;
+    }
+
+    .param-list label {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      color: #aebfd1;
+      font-size: 11px;
+    }
+
+    .param-list input {
+      color: #dce6f2;
+    }
+
+    .engine-output {
+      display: grid;
+      gap: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(160, 190, 220, 0.18);
+    }
+
+    .engine-output[hidden] {
+      display: none;
+    }
+
+    .slider-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      color: #aebfd1;
+      font-size: 11px;
+    }
+
+    .slider-row input {
+      grid-column: 1 / -1;
+      width: 100%;
+      accent-color: #dce6f2;
+    }
+
+    .range-grid {
+      display: grid;
+      grid-template-columns: 1fr repeat(2, minmax(70px, 0.7fr));
+      gap: 6px;
+      align-items: center;
+      color: #aebfd1;
+      font-size: 11px;
+    }
+
+    .range-grid input {
+      min-width: 0;
+      min-height: 28px;
+      box-sizing: border-box;
+      border: 1px solid rgba(160, 190, 220, 0.34);
+      border-radius: 4px;
+      background: #08111c;
+      color: #dce6f2;
+      font: inherit;
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      color: #c8d8e8;
+      font-family: Consolas, monospace;
+      font-size: 11px;
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <main id="viewer"></main>
+  <section class="panel" aria-label="GLB loading status">
+    <h1>GLB Ship Viewer</h1>
+    <div class="status" id="status">Loading embedded GLB materials...</div>
+    <div class="controls" id="lightControls" hidden>
+      <div class="control-row">
+        <label for="lightTypeSelect">Light Type</label>
+        <select id="lightTypeSelect">
+          <option value="vfx_light_engine_001">vfx_light_engine_001</option>
+          <option value="vfx_light_sub_001">vfx_light_sub_001</option>
+          <option value="vfx_light_sub_002">vfx_light_sub_002</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label for="lightColorInput">Color</label>
+        <input id="lightColorInput" type="color" value="#ffffff">
+      </div>
+      <div class="toggle-list">
+        <label><input type="checkbox" data-light-control="emissiveBloom"> <span>Surface Bloom</span></label>
+        <label><input type="checkbox" data-light-control="billboard"> <span>Billboard</span></label>
+        <label><input type="checkbox" data-light-control="pointLight"> <span>PointLight</span></label>
+      </div>
+      <div class="param-list">
+        <label>Emissive <input type="number" data-light-param="emissiveIntensity" min="0" max="16" step="0.01"></label>
+        <label>Range Scale <input type="number" data-light-param="lightRangeScale" min="0" max="12" step="0.01"></label>
+        <label>Min Range <input type="number" data-light-param="minLightRange" min="0" max="8" step="0.01"></label>
+        <label>Max Range <input type="number" data-light-param="maxLightRange" min="0" max="8" step="0.01"></label>
+        <label>Billboard Size <input type="number" data-light-param="glowSpriteSpreadScale" min="0" max="8" step="0.01"></label>
+        <label>Billboard Alpha <input type="number" data-light-param="glowSpriteOpacity" min="0" max="1" step="0.01"></label>
+        <label>Point Power <input type="number" data-light-param="pointIntensity" min="0" max="8" step="0.01"></label>
+        <label>Point Range <input type="number" data-light-param="pointRangeScale" min="0" max="8" step="0.01"></label>
+      </div>
+      <div class="engine-output" id="engineOutputControls" hidden>
+        <label class="slider-row">
+          <span>Engine Output</span>
+          <output id="engineOutputValue">100%</output>
+          <input id="engineOutputSlider" type="range" min="0" max="100" step="1" value="100">
+        </label>
+        <div class="range-grid">
+          <span></span><span>Min</span><span>Max</span>
+          <span>Emissive</span>
+          <input type="number" data-engine-min="emissiveIntensity" min="0" max="16" step="0.01">
+          <input type="number" data-engine-max="emissiveIntensity" min="0" max="16" step="0.01">
+          <span>Billboard Alpha</span>
+          <input type="number" data-engine-min="glowSpriteOpacity" min="0" max="1" step="0.01">
+          <input type="number" data-engine-max="glowSpriteOpacity" min="0" max="1" step="0.01">
+          <span>Point Power</span>
+          <input type="number" data-engine-min="pointIntensity" min="0" max="8" step="0.01">
+          <input type="number" data-engine-max="pointIntensity" min="0" max="8" step="0.01">
+        </div>
+      </div>
+    </div>
+    <pre id="summary">rss/ships/ship_01.glb</pre>
+  </section>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+    import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+    import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+    import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+    import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+    import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+    import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+    const GLB_URL = "./rss/ships/ship_01.glb";
+    const REFLECTION_INTENSITY = 0.32;
+    const BLUE_EMISSIVE_MATERIAL = "EmissiveMTL_light";
+    const BLUE_EMISSIVE_COLOR = 0xffffff;
+    const BLOOM_LAYER = 1;
+    const BLOOM_STRENGTH = 0.2;
+    const BLOOM_RADIUS = 0.1;
+    const BLOOM_THRESHOLD = 0.14;
+    const VFX_LIGHT_ENGINE_ID = "vfx_light_engine_001";
+    const VFX_LIGHT_SUB_HEAD_ID = "vfx_light_sub_001";
+    const VFX_LIGHT_SUB_AUX_ID = "vfx_light_sub_002";
+    const VFX_LIGHT_DEFINITIONS = [
+      {
+        id: VFX_LIGHT_ENGINE_ID,
+        label: "vfx_light_engine_001",
+        objectMatches: ["EmissivePlate_ship_01.001", "EmissivePlate_ship_01001", "큐브001_1"],
+        settings: {
+          color: "#9b9bff",
+          emissiveIntensity: 12,
+          lightRangeScale: 2,
+          minLightRange: 0.18,
+          maxLightRange: 0.95,
+          glowSpriteSpreadScale: 1.5,
+          glowSpriteOpacity: 0.58,
+          pointIntensity: 0.72,
+          pointRangeScale: 0.86
+        }
+      },
+      {
+        id: VFX_LIGHT_SUB_HEAD_ID,
+        label: "vfx_light_sub_001",
+        objectMatches: ["EmissivePlate_ship_01.002", "EmissivePlate_ship_01002", "큐브002_1"],
+        settings: {
+          color: "#ff0000",
+          emissiveIntensity: 12,
+          lightRangeScale: 2,
+          minLightRange: 0.52,
+          maxLightRange: 1.45,
+          glowSpriteSpreadScale: 1.2,
+          glowSpriteOpacity: 0.38,
+          pointLightEnabled: false,
+          pointIntensity: 0.52,
+          pointRangeScale: 0.82
+        }
+      },
+      {
+        id: VFX_LIGHT_SUB_AUX_ID,
+        label: "vfx_light_sub_002",
+        objectMatches: [
+          "EmissivePlate_ship_01.003",
+          "EmissivePlate_ship_01003",
+          "EmissivePlate_ship_01.004",
+          "EmissivePlate_ship_01004",
+          "EmissivePlate_ship_01.005",
+          "EmissivePlate_ship_01005",
+          "EmissivePlate_ship_01.006",
+          "EmissivePlate_ship_01006"
+        ],
+        settings: {
+          color: "#9b9bff",
+          emissiveIntensity: 3,
+          lightRangeScale: 2,
+          minLightRange: 0.52,
+          maxLightRange: 1.45,
+          glowSpriteSpreadScale: 0.8,
+          glowSpriteOpacity: 0.28,
+          pointLightEnabled: false,
+          pointIntensity: 0.2,
+          pointRangeScale: 0.2
+        }
+      }
+    ];
+    const VFX_LIGHT_PROFILE_MATCHES = VFX_LIGHT_DEFINITIONS.map((definition) => ({
+      id: definition.id,
+      names: definition.objectMatches
+    }));
+    const VFX_LIGHT_PROFILES = Object.fromEntries(
+      VFX_LIGHT_DEFINITIONS.map((definition) => [
+        definition.id,
+        {
+          id: definition.id,
+          type: definition.id,
+          label: definition.label,
+          objectMatches: definition.objectMatches,
+          ...definition.settings
+        }
+      ])
+    );
+    const DEFAULT_VFX_LIGHT_PROFILE = VFX_LIGHT_PROFILES[VFX_LIGHT_SUB_HEAD_ID];
+
+    const status = document.querySelector("#status");
+    const summary = document.querySelector("#summary");
+    const container = document.querySelector("#viewer");
+    const lightControls = document.querySelector("#lightControls");
+    const lightTypeSelect = document.querySelector("#lightTypeSelect");
+    const lightColorInput = document.querySelector("#lightColorInput");
+    const lightControlInputs = Array.from(lightControls.querySelectorAll("[data-light-control]"));
+    const lightParamInputs = Array.from(lightControls.querySelectorAll("[data-light-param]"));
+    const engineOutputControls = document.querySelector("#engineOutputControls");
+    const engineOutputSlider = document.querySelector("#engineOutputSlider");
+    const engineOutputValue = document.querySelector("#engineOutputValue");
+    const engineMinInputs = Array.from(engineOutputControls.querySelectorAll("[data-engine-min]"));
+    const engineMaxInputs = Array.from(engineOutputControls.querySelectorAll("[data-engine-max]"));
+
+    const lightControlState = Object.fromEntries(
+      Object.entries(VFX_LIGHT_PROFILES).map(([type, profile]) => [
+        type,
+        {
+          emissiveBloom: profile.emissiveBloomEnabled !== false,
+          billboard: profile.glowSpriteEnabled !== false,
+          pointLight: profile.pointLightEnabled !== false
+        }
+      ])
+    );
+    const engineOutputSettings = {
+      value: 100,
+      min: {
+        emissiveIntensity: 0.2,
+        glowSpriteOpacity: 0.04,
+        pointIntensity: 0.05
+      },
+      max: {
+        emissiveIntensity: VFX_LIGHT_PROFILES[VFX_LIGHT_ENGINE_ID].emissiveIntensity,
+        glowSpriteOpacity: VFX_LIGHT_PROFILES[VFX_LIGHT_ENGINE_ID].glowSpriteOpacity,
+        pointIntensity: VFX_LIGHT_PROFILES[VFX_LIGHT_ENGINE_ID].pointIntensity
+      }
+    };
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x030811);
+    scene.fog = new THREE.FogExp2(0x05101b, 0.000004);
+
+    const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 80000);
+    camera.position.set(0, 4, 12);
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance",
+      preserveDrawingBuffer: true
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.82;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.append(renderer.domElement);
+
+    const bloomLayer = new THREE.Layers();
+    bloomLayer.set(BLOOM_LAYER);
+
+    const bloomComposer = new EffectComposer(renderer);
+    bloomComposer.renderToScreen = false;
+    bloomComposer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    bloomComposer.setSize(window.innerWidth, window.innerHeight);
+    const bloomRenderPass = new RenderPass(scene, camera);
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      BLOOM_STRENGTH,
+      BLOOM_RADIUS,
+      BLOOM_THRESHOLD
+    );
+    bloomComposer.addPass(bloomRenderPass);
+    bloomComposer.addPass(bloomPass);
+
+    const finalComposer = new EffectComposer(renderer);
+    finalComposer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    finalComposer.setSize(window.innerWidth, window.innerHeight);
+    const finalRenderPass = new RenderPass(scene, camera);
+    const bloomCompositePass = new ShaderPass(
+      new THREE.ShaderMaterial({
+        uniforms: {
+          baseTexture: { value: null },
+          bloomTexture: { value: bloomComposer.renderTarget2.texture }
+        },
+        vertexShader: `
+          varying vec2 vUv;
+
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform sampler2D baseTexture;
+          uniform sampler2D bloomTexture;
+          varying vec2 vUv;
+
+          void main() {
+            gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv);
+          }
+        `
+      }),
+      "baseTexture"
+    );
+    const outputPass = new OutputPass();
+    finalComposer.addPass(finalRenderPass);
+    finalComposer.addPass(bloomCompositePass);
+    finalComposer.addPass(outputPass);
+
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+
+    window.__glbViewerScene = scene;
+    window.__glbViewerCamera = camera;
+    window.__glbViewerRenderer = renderer;
+    window.__glbViewerComposer = finalComposer;
+    window.__glbViewerBloomComposer = bloomComposer;
+    window.__glbViewerBloomPass = bloomPass;
+    window.__glbViewerBloomLayer = bloomLayer;
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 3;
+    controls.maxDistance = 80;
+
+    const globalLight = new THREE.AmbientLight(0x9fb9d8, 0.28);
+    scene.add(globalLight);
+
+    const keyLight = new THREE.DirectionalLight(0xd9f1ff, 0.36);
+    keyLight.position.set(7, 8, 6);
+    scene.add(keyLight);
+
+    const rimLight = new THREE.DirectionalLight(0x5cc8ff, 0.32);
+    rimLight.position.set(-8, 4, -8);
+    scene.add(rimLight);
+
+    const softUnderLight = new THREE.HemisphereLight(0x93b6d5, 0x08131c, 0.18);
+    scene.add(softUnderLight);
+
+    [
+      createStars(1800, 8500, 32.8, 0.98),
+      createStars(900, 24000, 51.2, 0.74),
+      createStars(420, 52000, 73.6, 0.5)
+    ].forEach((stars) => scene.add(stars));
+
+    function createStars(count, radius, size, opacity) {
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(count * 3);
+      const colors = new Float32Array(count * 3);
+      const color = new THREE.Color();
+
+      for (let i = 0; i < count; i += 1) {
+        const index = i * 3;
+        positions[index] = (Math.random() * 2 - 1) * radius;
+        positions[index + 1] = (Math.random() * 2 - 1) * radius;
+        positions[index + 2] = (Math.random() * 2 - 1) * radius;
+
+        const hue = 0.58 + Math.random() * 0.08;
+        const saturation = 0.78 + Math.random() * 0.2;
+        const lightness = 0.08 + Math.random() * 0.58;
+        color.setHSL(hue, saturation, lightness);
+        colors[index] = color.r;
+        colors[index + 1] = color.g;
+        colors[index + 2] = color.b;
+      }
+
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+      const material = new THREE.PointsMaterial({
+        size,
+        vertexColors: true,
+        transparent: true,
+        opacity,
+        sizeAttenuation: true,
+        depthWrite: false,
+        fog: false
+      });
+
+      return new THREE.Points(geometry, material);
+    }
+
+    function normalizeObject(object) {
+      const box = new THREE.Box3().setFromObject(object);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const longest = Math.max(size.x, size.y, size.z) || 1;
+      const scale = 7 / longest;
+      object.scale.setScalar(scale);
+      object.position.copy(center).multiplyScalar(-scale);
+      object.rotation.y = Math.PI;
+      return object;
+    }
+
+    function isBlueEmissiveMaterial(material) {
+      return normalizeSceneName(material?.name || "").includes(normalizeSceneName(BLUE_EMISSIVE_MATERIAL));
+    }
+
+    function getBlueLightProfile(mesh, materials) {
+      const names = [
+        mesh.name,
+        mesh.parent?.name,
+        ...materials.map((material) => material?.name)
+      ].filter(Boolean);
+      const normalizedNames = names.map((name) => normalizeSceneName(name));
+
+      const match = VFX_LIGHT_PROFILE_MATCHES.find((profileMatch) => {
+        const normalizedTargets = profileMatch.names.map((name) => normalizeSceneName(name));
+        return normalizedTargets.some((target) => {
+          return normalizedNames.some((name) => name.includes(target) || target.includes(name));
+        });
+      });
+
+      return match ? VFX_LIGHT_PROFILES[match.id] : DEFAULT_VFX_LIGHT_PROFILE;
+    }
+
+    function normalizeSceneName(name) {
+      return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    }
+
+    function getProfileColor(profile) {
+      return new THREE.Color(profile.color || BLUE_EMISSIVE_COLOR);
+    }
+
+    function addBlueSurfacePointLight(origin, distance, profile, surfaceSize) {
+      const sizeFactor = THREE.MathUtils.clamp(surfaceSize / 0.24, 0.55, 1.45);
+      const light = new THREE.PointLight(
+        getProfileColor(profile),
+        profile.pointIntensity * sizeFactor,
+        distance * profile.pointRangeScale,
+        2
+      );
+      light.name = `PhysicalPointLight_${profile.type}`;
+      light.position.copy(origin);
+      light.visible = profile.pointLightEnabled !== false;
+      scene.add(light);
+      return light;
+    }
+
+    const darkMaterial = new THREE.MeshBasicMaterial({ color: "black" });
+    const darkPointsMaterial = new THREE.PointsMaterial({ color: "black", size: 1, sizeAttenuation: true });
+    const darkLineMaterial = new THREE.LineBasicMaterial({ color: "black" });
+    const darkSpriteMaterial = new THREE.SpriteMaterial({ color: "black" });
+    const darkenedDuringBloom = [];
+
+    function isRenderableObject(object) {
+      return object.isMesh || object.isPoints || object.isLine || object.isSprite;
+    }
+
+    function darkenNonBloomed(object) {
+      if (!isRenderableObject(object) || bloomLayer.test(object.layers)) return;
+      darkenedDuringBloom.push({ object, material: object.material });
+      object.material = object.isPoints
+        ? darkPointsMaterial
+        : object.isLine
+          ? darkLineMaterial
+          : object.isSprite
+            ? darkSpriteMaterial
+            : darkMaterial;
+    }
+
+    function restoreBloomMaterials() {
+      darkenedDuringBloom.forEach(({ object, material }) => {
+        object.material = material;
+      });
+      darkenedDuringBloom.length = 0;
+    }
+
+    function getSelectedMaterialIndices(materials) {
+      return materials
+        .map((material, index) => (isBlueEmissiveMaterial(material) ? index : -1))
+        .filter((index) => index >= 0);
+    }
+
+    function getGeometryRanges(geometry, materialIndices, materialCount) {
+      const vertexCount = geometry.index ? geometry.index.count : geometry.attributes.position.count;
+      if (geometry.groups.length > 0) {
+        return geometry.groups
+          .filter((group) => materialIndices.includes(group.materialIndex))
+          .map((group) => ({ start: group.start, count: group.count }));
+      }
+
+      if (materialCount <= 1 || materialIndices.includes(0)) {
+        return [{ start: 0, count: vertexCount }];
+      }
+
+      return [];
+    }
+
+    function getTriangleVertexIndex(geometry, drawIndex) {
+      return geometry.index ? geometry.index.getX(drawIndex) : drawIndex;
+    }
+
+    function getBlueLightSurface(mesh, materialIndices, modelCenter) {
+      const geometry = mesh.geometry;
+      const position = geometry.attributes.position;
+      if (!position) return null;
+
+      const ranges = getGeometryRanges(
+        geometry,
+        materialIndices,
+        Array.isArray(mesh.material) ? mesh.material.length : 1
+      );
+      if (ranges.length === 0) return null;
+
+      const normalMatrix = new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld);
+      const center = new THREE.Vector3();
+      const direction = new THREE.Vector3();
+      const a = new THREE.Vector3();
+      const b = new THREE.Vector3();
+      const c = new THREE.Vector3();
+      const ab = new THREE.Vector3();
+      const ac = new THREE.Vector3();
+      const bc = new THREE.Vector3();
+      const triangleCenter = new THREE.Vector3();
+      const triangleNormal = new THREE.Vector3();
+      const longestEdge = new THREE.Vector3(1, 0, 0);
+      const surfacePoints = [];
+      let totalArea = 0;
+      let longestEdgeLengthSq = 0;
+
+      ranges.forEach((range) => {
+        const triangleEnd = range.start + range.count - ((range.start + range.count) % 3);
+        for (let i = range.start; i < triangleEnd; i += 3) {
+          a.fromBufferAttribute(position, getTriangleVertexIndex(geometry, i)).applyMatrix4(mesh.matrixWorld);
+          b.fromBufferAttribute(position, getTriangleVertexIndex(geometry, i + 1)).applyMatrix4(mesh.matrixWorld);
+          c.fromBufferAttribute(position, getTriangleVertexIndex(geometry, i + 2)).applyMatrix4(mesh.matrixWorld);
+
+          ab.subVectors(b, a);
+          ac.subVectors(c, a);
+          bc.subVectors(c, b);
+          [
+            { edge: ab, lengthSq: ab.lengthSq() },
+            { edge: ac, lengthSq: ac.lengthSq() },
+            { edge: bc, lengthSq: bc.lengthSq() }
+          ].forEach(({ edge, lengthSq }) => {
+            if (lengthSq <= longestEdgeLengthSq) return;
+            longestEdge.copy(edge);
+            longestEdgeLengthSq = lengthSq;
+          });
+
+          triangleNormal.crossVectors(ab, ac);
+          const areaWeight = triangleNormal.length() * 0.5;
+          if (areaWeight <= 0) continue;
+
+          surfacePoints.push(a.clone(), b.clone(), c.clone());
+          triangleNormal.normalize().applyMatrix3(normalMatrix).normalize();
+          triangleCenter.copy(a).add(b).add(c).multiplyScalar(1 / 3);
+          center.addScaledVector(triangleCenter, areaWeight);
+          direction.addScaledVector(triangleNormal, areaWeight);
+          totalArea += areaWeight;
+        }
+      });
+
+      if (totalArea <= 0) return null;
+
+      center.multiplyScalar(1 / totalArea);
+      if (direction.lengthSq() < 0.000001) {
+        direction.subVectors(center, modelCenter);
+      }
+      direction.normalize();
+
+      const outward = center.clone().sub(modelCenter);
+      if (outward.lengthSq() > 0.000001 && direction.dot(outward) < 0) {
+        direction.multiplyScalar(-1);
+      }
+
+      const tangent = longestEdge.clone().addScaledVector(direction, -longestEdge.dot(direction));
+      if (tangent.lengthSq() < 0.000001) {
+        const tangentReference = Math.abs(direction.dot(new THREE.Vector3(0, 1, 0))) < 0.92
+          ? new THREE.Vector3(0, 1, 0)
+          : new THREE.Vector3(1, 0, 0);
+        tangent.crossVectors(tangentReference, direction);
+      }
+      tangent.normalize();
+      const bitangent = new THREE.Vector3().crossVectors(direction, tangent).normalize();
+      let minU = Infinity;
+      let maxU = -Infinity;
+      let minV = Infinity;
+      let maxV = -Infinity;
+      const pointOffset = new THREE.Vector3();
+
+      surfacePoints.forEach((point) => {
+        pointOffset.subVectors(point, center);
+        const u = pointOffset.dot(tangent);
+        const v = pointOffset.dot(bitangent);
+        minU = Math.min(minU, u);
+        maxU = Math.max(maxU, u);
+        minV = Math.min(minV, v);
+        maxV = Math.max(maxV, v);
+      });
+
+      const surfaceSize = Math.sqrt(totalArea);
+      const width = Math.max(maxU - minU, surfaceSize * 0.35);
+      const height = Math.max(maxV - minV, surfaceSize * 0.35);
+
+      return { center, direction, area: totalArea, width, height };
+    }
+
+    function getBlueLightSize(surface, profile) {
+      const surfaceSize = Math.sqrt(surface.area);
+      const lightRange = THREE.MathUtils.clamp(
+        surfaceSize * profile.lightRangeScale,
+        profile.minLightRange,
+        profile.maxLightRange
+      );
+
+      return { surfaceSize, lightRange };
+    }
+
+    function createGlowSpriteTexture() {
+      const size = 160;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const context = canvas.getContext("2d");
+      const radius = size * 0.5;
+      const gradient = context.createRadialGradient(radius, radius, 0, radius, radius, radius);
+      gradient.addColorStop(0, "rgba(255, 255, 255, 0.2)");
+      gradient.addColorStop(0.18, "rgba(255, 255, 255, 0.22)");
+      gradient.addColorStop(0.42, "rgba(235, 246, 255, 0.18)");
+      gradient.addColorStop(0.74, "rgba(210, 230, 245, 0.08)");
+      gradient.addColorStop(1, "rgba(210, 230, 245, 0)");
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, size, size);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.generateMipmaps = false;
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      return texture;
+    }
+
+    const blueGlowSpriteTexture = createGlowSpriteTexture();
+
+    function getGlowSpriteDimensions(surface, profile) {
+      const surfaceSize = Math.sqrt(surface.area);
+      const minDimension = surfaceSize * 0.28;
+      return {
+        width: Math.max(surface.width, minDimension) * profile.glowSpriteSpreadScale,
+        height: Math.max(surface.height, minDimension) * profile.glowSpriteSpreadScale
+      };
+    }
+
+    function addBlueGlowSprite(surface, profile) {
+      if (profile.glowSpriteEnabled === false) return null;
+
+      const spriteDimensions = getGlowSpriteDimensions(surface, profile);
+      const surfaceOffset = 0.012;
+      const material = new THREE.SpriteMaterial({
+        map: blueGlowSpriteTexture,
+        color: getProfileColor(profile),
+        transparent: true,
+        opacity: profile.glowSpriteOpacity,
+        blending: THREE.AdditiveBlending,
+        depthTest: true,
+        depthWrite: false,
+        fog: false,
+        toneMapped: false
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.name = `BillboardGlow_${profile.type}`;
+      sprite.position.copy(surface.center).addScaledVector(surface.direction, surfaceOffset);
+      sprite.scale.set(spriteDimensions.width, spriteDimensions.height, 1);
+      sprite.renderOrder = 20;
+      sprite.layers.enable(BLOOM_LAYER);
+      scene.add(sprite);
+      return sprite;
+    }
+
+    const blueLightRuntimeAnchors = [];
+
+    function addBlueLightRuntimeAnchor(type, mesh, surface, surfaceSize, lightRange, glowSprite, pointLight, materials) {
+      const worldToLocalDirectionMatrix = new THREE.Matrix4().copy(mesh.matrixWorld).invert();
+      const anchor = {
+        type,
+        profile: VFX_LIGHT_PROFILES[type],
+        mesh,
+        materials,
+        surface,
+        surfaceSize,
+        glowSprite,
+        pointLight,
+        lightRange,
+        spriteOffset: 0.012,
+        lightOffset: 0.035,
+        pointOffset: THREE.MathUtils.clamp(surfaceSize * 0.14, 0.025, 0.06),
+        localCenter: mesh.worldToLocal(surface.center.clone()),
+        localDirection: surface.direction.clone().transformDirection(worldToLocalDirectionMatrix).normalize(),
+        worldCenter: new THREE.Vector3(),
+        worldDirection: new THREE.Vector3(),
+        lightOrigin: new THREE.Vector3()
+      };
+
+      blueLightRuntimeAnchors.push(anchor);
+      updateBlueLightRuntimeAnchor(anchor);
+      return anchor;
+    }
+
+    function updateBlueLightRuntimeAnchor(anchor) {
+      anchor.mesh.updateWorldMatrix(true, false);
+      anchor.worldCenter.copy(anchor.localCenter).applyMatrix4(anchor.mesh.matrixWorld);
+      anchor.worldDirection.copy(anchor.localDirection).transformDirection(anchor.mesh.matrixWorld).normalize();
+
+      if (anchor.glowSprite) {
+        anchor.glowSprite.position.copy(anchor.worldCenter).addScaledVector(anchor.worldDirection, anchor.spriteOffset);
+      }
+
+      if (anchor.pointLight) {
+        anchor.pointLight.position.copy(anchor.worldCenter).addScaledVector(anchor.worldDirection, anchor.pointOffset);
+      }
+    }
+
+    function updateBlueLightRuntimeAnchors() {
+      blueLightRuntimeAnchors.forEach(updateBlueLightRuntimeAnchor);
+    }
+
+    function setBloomLayerEnabled(object, enabled) {
+      if (enabled) {
+        object.layers.enable(BLOOM_LAYER);
+      } else {
+        object.layers.disable(BLOOM_LAYER);
+      }
+    }
+
+    function applyLightControlState(type) {
+      const state = lightControlState[type];
+      if (!state) return;
+
+      blueLightRuntimeAnchors
+        .filter((anchor) => anchor.type === type)
+        .forEach((anchor) => {
+          setBloomLayerEnabled(anchor.mesh, state.emissiveBloom);
+          if (anchor.glowSprite) anchor.glowSprite.visible = state.billboard;
+          if (anchor.pointLight) anchor.pointLight.visible = state.pointLight;
+        });
+    }
+
+    function applyAllLightControlStates() {
+      Object.keys(lightControlState).forEach(applyLightControlState);
+    }
+
+    function applyLightProfileSettings(type) {
+      const profile = VFX_LIGHT_PROFILES[type];
+      if (!profile) return;
+
+      const color = getProfileColor(profile);
+      blueLightRuntimeAnchors
+        .filter((anchor) => anchor.type === type)
+        .forEach((anchor) => {
+          const { lightRange } = getBlueLightSize(anchor.surface, profile);
+          const spriteDimensions = getGlowSpriteDimensions(anchor.surface, profile);
+          const pointSizeFactor = THREE.MathUtils.clamp(anchor.surfaceSize / 0.24, 0.55, 1.45);
+
+          anchor.lightRange = lightRange;
+          anchor.pointOffset = THREE.MathUtils.clamp(anchor.surfaceSize * 0.14, 0.025, 0.06);
+
+          anchor.materials.forEach((material) => {
+            if ("emissive" in material) material.emissive.copy(color);
+            if ("emissiveIntensity" in material) material.emissiveIntensity = profile.emissiveIntensity;
+            material.needsUpdate = true;
+          });
+
+          if (anchor.glowSprite) {
+            anchor.glowSprite.scale.set(spriteDimensions.width, spriteDimensions.height, 1);
+            anchor.glowSprite.material.color.copy(color);
+            anchor.glowSprite.material.opacity = profile.glowSpriteOpacity;
+            anchor.glowSprite.material.needsUpdate = true;
+          }
+
+          if (anchor.pointLight) {
+            anchor.pointLight.color.copy(color);
+            anchor.pointLight.intensity = profile.pointIntensity * pointSizeFactor;
+            anchor.pointLight.distance = lightRange * profile.pointRangeScale;
+          }
+        });
+    }
+
+    function applyAllLightProfileSettings() {
+      Object.keys(VFX_LIGHT_PROFILES).forEach(applyLightProfileSettings);
+    }
+
+    function interpolateEngineOutputValue(key) {
+      const t = THREE.MathUtils.clamp(engineOutputSettings.value / 100, 0, 1);
+      return THREE.MathUtils.lerp(engineOutputSettings.min[key], engineOutputSettings.max[key], t);
+    }
+
+    function applyEngineOutputSettings() {
+      const profile = VFX_LIGHT_PROFILES[VFX_LIGHT_ENGINE_ID];
+      ["emissiveIntensity", "glowSpriteOpacity", "pointIntensity"].forEach((key) => {
+        profile[key] = interpolateEngineOutputValue(key);
+      });
+      applyLightProfileSettings(VFX_LIGHT_ENGINE_ID);
+      if (lightTypeSelect.value === VFX_LIGHT_ENGINE_ID) syncLightControlPanel();
+    }
+
+    function syncEngineOutputControls() {
+      engineOutputControls.hidden = lightTypeSelect.value !== VFX_LIGHT_ENGINE_ID;
+      engineOutputSlider.value = engineOutputSettings.value;
+      engineOutputValue.value = `${Math.round(engineOutputSettings.value)}%`;
+      engineMinInputs.forEach((input) => {
+        input.value = engineOutputSettings.min[input.dataset.engineMin];
+      });
+      engineMaxInputs.forEach((input) => {
+        input.value = engineOutputSettings.max[input.dataset.engineMax];
+      });
+    }
+
+    function syncLightControlPanel() {
+      const state = lightControlState[lightTypeSelect.value];
+      const profile = VFX_LIGHT_PROFILES[lightTypeSelect.value];
+      if (!state || !profile) return;
+
+      lightControlInputs.forEach((input) => {
+        input.checked = Boolean(state[input.dataset.lightControl]);
+      });
+
+      lightColorInput.value = profile.color || "#ffffff";
+      lightParamInputs.forEach((input) => {
+        input.value = profile[input.dataset.lightParam];
+      });
+      syncEngineOutputControls();
+    }
+
+    lightTypeSelect.addEventListener("change", syncLightControlPanel);
+    lightColorInput.addEventListener("input", () => {
+      const profile = VFX_LIGHT_PROFILES[lightTypeSelect.value];
+      if (!profile) return;
+
+      profile.color = lightColorInput.value;
+      applyLightProfileSettings(profile.type);
+    });
+    lightControlInputs.forEach((input) => {
+      input.addEventListener("change", () => {
+        const type = lightTypeSelect.value;
+        const state = lightControlState[type];
+        if (!state) return;
+
+        state[input.dataset.lightControl] = input.checked;
+        applyLightControlState(type);
+      });
+    });
+    lightParamInputs.forEach((input) => {
+      input.addEventListener("input", () => {
+        const profile = VFX_LIGHT_PROFILES[lightTypeSelect.value];
+        if (!profile) return;
+
+        const value = Number(input.value);
+        if (!Number.isFinite(value)) return;
+
+        profile[input.dataset.lightParam] = value;
+        applyLightProfileSettings(profile.type);
+      });
+    });
+    engineOutputSlider.addEventListener("input", () => {
+      engineOutputSettings.value = Number(engineOutputSlider.value);
+      engineOutputValue.value = `${Math.round(engineOutputSettings.value)}%`;
+      applyEngineOutputSettings();
+    });
+    engineMinInputs.forEach((input) => {
+      input.addEventListener("input", () => {
+        const value = Number(input.value);
+        if (!Number.isFinite(value)) return;
+
+        engineOutputSettings.min[input.dataset.engineMin] = value;
+        applyEngineOutputSettings();
+      });
+    });
+    engineMaxInputs.forEach((input) => {
+      input.addEventListener("input", () => {
+        const value = Number(input.value);
+        if (!Number.isFinite(value)) return;
+
+        engineOutputSettings.max[input.dataset.engineMax] = value;
+        applyEngineOutputSettings();
+      });
+    });
+
+    function applySubtleBlueEmission(object) {
+      const affectedLights = [];
+      const modelCenter = new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3());
+
+      object.updateWorldMatrix(true, true);
+      object.traverse((child) => {
+        if (!child.isMesh || !child.material) return;
+
+        const originalMaterials = Array.isArray(child.material) ? child.material : [child.material];
+        const selectedMaterialIndices = getSelectedMaterialIndices(originalMaterials);
+        if (selectedMaterialIndices.length === 0) return;
+
+        const profile = getBlueLightProfile(child, originalMaterials);
+        let meshWasAffected = false;
+        const affectedMaterials = [];
+        const nextMaterials = originalMaterials.map((material, index) => {
+          if (!material || !selectedMaterialIndices.includes(index)) return material;
+
+          const tunedMaterial = material.clone();
+          if ("emissive" in tunedMaterial) tunedMaterial.emissive.copy(getProfileColor(profile));
+          if ("emissiveIntensity" in tunedMaterial) tunedMaterial.emissiveIntensity = profile.emissiveIntensity;
+          if ("toneMapped" in tunedMaterial) tunedMaterial.toneMapped = false;
+          tunedMaterial.needsUpdate = true;
+
+          meshWasAffected = true;
+          affectedMaterials.push(tunedMaterial);
+          return tunedMaterial;
+        });
+
+        if (!meshWasAffected) return;
+
+        child.material = Array.isArray(child.material) ? nextMaterials : nextMaterials[0];
+        child.layers.enable(BLOOM_LAYER);
+
+        const surface = getBlueLightSurface(child, selectedMaterialIndices, modelCenter);
+        if (!surface) return;
+
+        const { surfaceSize, lightRange } = getBlueLightSize(surface, profile);
+        const lightOrigin = surface.center.clone().addScaledVector(surface.direction, 0.035);
+
+        const pointLight = addBlueSurfacePointLight(lightOrigin, lightRange, profile, surfaceSize);
+        const glowSprite = addBlueGlowSprite(surface, profile);
+        addBlueLightRuntimeAnchor(
+          profile.type,
+          child,
+          surface,
+          surfaceSize,
+          lightRange,
+          glowSprite,
+          pointLight,
+          affectedMaterials
+        );
+        affectedLights.push({
+          name: child.name || child.uuid,
+          type: profile.type,
+          surfaceArea: surface.area,
+          surfaceSize,
+          surfaceWidth: surface.width,
+          surfaceHeight: surface.height,
+          lightRange,
+          glowSpriteWidth: glowSprite?.scale.x ?? 0,
+          glowSpriteHeight: glowSprite?.scale.y ?? 0,
+          pointRange: pointLight?.distance ?? 0,
+          pointIntensity: pointLight?.intensity ?? 0
+        });
+      });
+
+      window.__glbViewerBlueLights = affectedLights;
+      window.__glbViewerBlueLightRuntimeAnchors = blueLightRuntimeAnchors;
+      return affectedLights;
+    }
+
+    function summarizeModel(object) {
+      const materials = new Map();
+      let meshCount = 0;
+      let textureSlotCount = 0;
+
+      object.traverse((child) => {
+        if (!child.isMesh) return;
+        meshCount += 1;
+        child.castShadow = true;
+        child.receiveShadow = true;
+
+        const materialList = Array.isArray(child.material) ? child.material : [child.material];
+        materialList.forEach((material) => {
+          if (!material) return;
+          if ("envMapIntensity" in material) {
+            material.envMapIntensity = REFLECTION_INTENSITY;
+            material.needsUpdate = true;
+          }
+          materials.set(material.uuid, material);
+          ["map", "normalMap", "roughnessMap", "metalnessMap", "emissiveMap", "aoMap"].forEach((slot) => {
+            if (material[slot]) textureSlotCount += 1;
+          });
+        });
+      });
+
+      return {
+        meshCount,
+        materialCount: materials.size,
+        textureSlotCount,
+        materialNames: Array.from(materials.values())
+          .map((material) => material.name || material.type)
+          .slice(0, 16)
+      };
+    }
+
+    async function loadViewerModel() {
+      const loader = new GLTFLoader();
+      const gltf = await loader.loadAsync(GLB_URL);
+      const object = normalizeObject(gltf.scene);
+      scene.add(object);
+      const blueEmissionTargets = applySubtleBlueEmission(object);
+      applyAllLightProfileSettings();
+      applyAllLightControlStates();
+      lightControls.hidden = false;
+      syncLightControlPanel();
+
+      const box = new THREE.Box3().setFromObject(object);
+      const sphere = box.getBoundingSphere(new THREE.Sphere());
+      controls.target.copy(sphere.center);
+      camera.position.copy(sphere.center).add(new THREE.Vector3(0, sphere.radius * 0.35, sphere.radius * 2.3));
+      camera.near = Math.max(0.01, sphere.radius / 100);
+      camera.far = Math.max(80000, sphere.radius * 100);
+      camera.updateProjectionMatrix();
+      controls.update();
+
+      const modelSummary = summarizeModel(object);
+      status.textContent = `Loaded GLB: ${modelSummary.meshCount} meshes, ${modelSummary.materialCount} materials, ${modelSummary.textureSlotCount} texture slots. Bloom targets: ${blueEmissionTargets.length}.`;
+      summary.textContent = [
+        GLB_URL,
+        "",
+        `Meshes: ${modelSummary.meshCount}`,
+        `Materials: ${modelSummary.materialCount}`,
+        `Texture slots: ${modelSummary.textureSlotCount}`,
+        `Bloom targets: ${blueEmissionTargets.length}`,
+        `Selective bloom: strength ${BLOOM_STRENGTH}, radius ${BLOOM_RADIUS}, threshold ${BLOOM_THRESHOLD}`,
+        ...blueEmissionTargets.map((light) => {
+          return `- ${light.name}: ${light.type}, surface ${light.surfaceWidth.toFixed(3)}x${light.surfaceHeight.toFixed(3)}, range ${light.lightRange.toFixed(3)}, billboard ${light.glowSpriteWidth.toFixed(3)}x${light.glowSpriteHeight.toFixed(3)}, point ${light.pointIntensity.toFixed(3)}/${light.pointRange.toFixed(3)}`;
+        }),
+        "",
+        "Materials:",
+        ...modelSummary.materialNames.map((name) => `- ${name}`)
+      ].join("\n");
+
+      window.__glbViewerModel = object;
+      window.__glbViewerSummary = modelSummary;
+    }
+
+    function animate() {
+      controls.update();
+      updateBlueLightRuntimeAnchors();
+      scene.traverse(darkenNonBloomed);
+      bloomComposer.render();
+      restoreBloomMaterials();
+      finalComposer.render();
+      requestAnimationFrame(animate);
+    }
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      bloomComposer.setSize(window.innerWidth, window.innerHeight);
+      finalComposer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    loadViewerModel().catch((error) => {
+      status.textContent = `Load failed: ${error.message}`;
+      console.error(error);
+    });
+
+    animate();
+  </script>
+</body>
+</html>
