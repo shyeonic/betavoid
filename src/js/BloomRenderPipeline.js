@@ -6,6 +6,7 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 
 const DEFAULT_OBJECT_BLOOM = {
+  enabled: true,
   layer: 1,
   strength: 0.2,
   radius: 0.1,
@@ -15,11 +16,12 @@ const DEFAULT_OBJECT_BLOOM = {
 };
 
 export class BloomRenderPipeline {
-  constructor({ renderer, scene, camera, objectBloom = DEFAULT_OBJECT_BLOOM }) {
+  constructor({ renderer, scene, camera, objectBloom = DEFAULT_OBJECT_BLOOM, renderResolutionScale = 1 }) {
     this.renderer = renderer;
     this.scene = scene;
     this.camera = camera;
     this.objectBloom = { ...DEFAULT_OBJECT_BLOOM, ...objectBloom };
+    this.renderResolutionScale = this.normalizeRenderResolutionScale(renderResolutionScale);
     this.width = window.innerWidth;
     this.height = window.innerHeight;
     this.objectBloomLayer = new THREE.Layers();
@@ -34,6 +36,7 @@ export class BloomRenderPipeline {
     });
     this.materialOverrideTargets = [];
     this.materialsOverriddenDuringBloom = [];
+    this.hiddenUnauthorizedBloomObjects = [];
 
     this.bloomComposer = new EffectComposer(renderer);
     this.bloomComposer.renderToScreen = false;
@@ -49,7 +52,7 @@ export class BloomRenderPipeline {
     this.bloomComposer.addPass(this.bloomPass);
 
     this.finalComposer = new EffectComposer(renderer);
-    this.finalComposer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.finalComposer.setPixelRatio(this.getFinalPixelRatio());
     this.finalComposer.setSize(window.innerWidth, window.innerHeight);
     this.finalComposer.addPass(new RenderPass(scene, camera));
     this.bloomCompositePass = new ShaderPass(
@@ -107,8 +110,21 @@ export class BloomRenderPipeline {
     this.finalComposer.setSize(width, height);
   }
 
+  setRenderResolutionScale(scale) {
+    this.renderResolutionScale = this.normalizeRenderResolutionScale(scale);
+    this.finalComposer.setPixelRatio(this.getFinalPixelRatio());
+    this.finalComposer.setSize(this.width, this.height);
+  }
+
+  normalizeRenderResolutionScale(scale) {
+    const value = Number(scale);
+    return Number.isFinite(value) && value > 0
+      ? THREE.MathUtils.clamp(value, 0.25, 1)
+      : 1;
+  }
+
   getFinalPixelRatio() {
-    return Math.min(window.devicePixelRatio, 2);
+    return Math.min(window.devicePixelRatio, 2) * this.renderResolutionScale;
   }
 
   getBloomPixelRatio() {
@@ -167,6 +183,17 @@ export class BloomRenderPipeline {
 
   applyBloomMaterialOverrides() {
     this.materialsOverriddenDuringBloom.length = 0;
+    const allowedBloomObjects = new Set(this.materialOverrideTargets.map(({ object }) => object));
+    this.scene.traverse((object) => {
+      if (!this.isRenderableObject(object)) return;
+      if (!this.objectBloomLayer.test(object.layers)) return;
+      if (allowedBloomObjects.has(object)) return;
+      if (!object.visible) return;
+
+      this.hiddenUnauthorizedBloomObjects.push(object);
+      object.visible = false;
+    });
+
     this.materialOverrideTargets.forEach(({ object, material, temporaryLayer }) => {
       if (!object.visible) return;
       this.materialsOverriddenDuringBloom.push({
@@ -185,9 +212,22 @@ export class BloomRenderPipeline {
       object.layers.mask = layerMask;
     });
     this.materialsOverriddenDuringBloom.length = 0;
+    this.hiddenUnauthorizedBloomObjects.forEach((object) => {
+      object.visible = true;
+    });
+    this.hiddenUnauthorizedBloomObjects.length = 0;
+  }
+
+  isRenderableObject(object) {
+    return object.isMesh || object.isPoints || object.isLine || object.isSprite;
   }
 
   render() {
+    if (this.objectBloom.enabled === false) {
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+
     const originalCameraLayerMask = this.camera.layers.mask;
     const originalBackground = this.scene.background;
     const originalFog = this.scene.fog;

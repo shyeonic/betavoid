@@ -1,11 +1,64 @@
 export const en = {
   ui: {
     settings: {
+      title: "Settings",
+      close: "Close",
+      categoriesLabel: "Settings categories",
+      categories: {
+        gameplay: "Gameplay",
+        controls: "Controls",
+        graphics: "Graphics"
+      },
       language: "Language",
       languageHint: "Applies after reload",
       languages: {
         en: "English",
         ko: "Korean"
+      },
+      common: {
+        none: "None",
+        off: "Off",
+        on: "On"
+      },
+      world: {
+        seed: "Seed",
+        generated: "Generated",
+        sectors: "Sectors",
+        chunks: "Chunks",
+        resources: "Resources",
+        buildings: "Buildings",
+        currentSector: "Current Sector",
+        currentChunk: "Current Chunk",
+        regenerate: "Regenerate",
+        reloadDb: "Reload DB",
+        clearAllData: "Clear All Data",
+        confirmRegenerate: "Regenerate world data?",
+        confirmClear: "Clear all stored data? (world, player, navigation)"
+      },
+      gameplay: {
+        manualNavRestore: "Manual Nav Restore",
+        fixedStop: "Fixed + Stop",
+        infinite: "Infinite",
+        holdTimeMin: "Hold Time (min)"
+      },
+      controls: {
+        reset: "Reset"
+      },
+      graphics: {
+        environment: "Environment",
+        light: "Light",
+        dark: "Dark",
+        chunkBounds: "Grid Visualization",
+        all: "All",
+        sector: "Sector",
+        materialTextures: "Material Textures",
+        renderResolution: "Render Resolution",
+        antialias: "Anti-Aliasing",
+        bloomQuality: "Bloom Quality",
+        low: "Low",
+        medium: "Medium",
+        high: "High",
+        lightingEffects: "Lighting Effects"
       }
     },
     scanner: {

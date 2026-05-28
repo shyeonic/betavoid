@@ -168,7 +168,7 @@ export class TargetingOverlay {
 
     ctx.save();
     ctx.globalAlpha = intro.alpha;
-    const image = this.getIconImage(target.iconUrl);
+    const image = this.getIconImage(target.iconUrl, this.getTargetIconColor(), this.isDarkEnvironmentMode());
     if (image?.complete && image.naturalWidth > 0) {
       ctx.drawImage(image, x, y, size, size);
     }
@@ -253,14 +253,57 @@ export class TargetingOverlay {
     return clamp((now - this.iconTransition.startedAt) / TARGET_ICON_TRANSITION_DURATION, 0, 1);
   }
 
-  getIconImage(url) {
+  getTargetIconColor() {
+    const color = getComputedStyle(document.documentElement)
+      .getPropertyValue("--ui_target_color")
+      .trim();
+    return color || this.frameStyle.innerColor;
+  }
+
+  isDarkEnvironmentMode() {
+    return document.documentElement.dataset.environmentMode === "dark";
+  }
+
+  getIconImage(url, color = this.getTargetIconColor(), darkMode = this.isDarkEnvironmentMode()) {
     if (!url) return null;
-    if (this.iconImages.has(url)) return this.iconImages.get(url);
+    const key = `${url}|${color}|${darkMode ? "dark" : "light"}`;
+    if (this.iconImages.has(key)) return this.iconImages.get(key);
     const image = new Image();
     image.decoding = "async";
-    image.src = url;
-    this.iconImages.set(url, image);
+    this.iconImages.set(key, image);
+    this.loadIconImageSource(image, url, color, darkMode);
     return image;
+  }
+
+  async loadIconImageSource(image, url, color, darkMode) {
+    if (!/\.svg(?:[?#]|$)/i.test(url)) {
+      image.src = url;
+      return;
+    }
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Failed to load target icon: ${response.status}`);
+      const svg = await response.text();
+      const tintedSvg = this.tintTargetIconSvg(svg, color, darkMode);
+      image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(tintedSvg)}`;
+    } catch {
+      image.src = url;
+    }
+  }
+
+  tintTargetIconSvg(svg, color, darkMode) {
+    let tintedSvg = svg.replace(/#6975a0/gi, color);
+    if (!darkMode) return tintedSvg;
+
+    tintedSvg = tintedSvg.replace(
+      /\b(fill|stroke|color|stop-color)=("|')(?:#fff(?:fff)?|white)\2/gi,
+      "$1=$2#000000$2"
+    );
+    return tintedSvg.replace(
+      /\b(fill|stroke|color|stop-color)\s*:\s*(?:#fff(?:fff)?|white)(?=[;\s"'])/gi,
+      "$1:#000000"
+    );
   }
 
   getSelectionFrameMetrics() {

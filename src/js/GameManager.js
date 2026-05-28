@@ -10,10 +10,16 @@ import { UIManager } from "./UIManager.js";
 import { WorldDataManager } from "./WorldDataManager.js";
 import { WorldMapManager } from "./WorldMapManager.js";
 import {
+  BLOOM_QUALITY_MODES,
   ENVIRONMENT_SETTINGS_KEY,
   ENVIRONMENT_MODES,
+  DEFAULT_PERFORMANCE_SETTINGS,
   SPACE_ENVIRONMENT_PRESETS,
-  normalizeEnvironmentMode
+  getBloomResolutionScale,
+  normalizeEnvironmentMode,
+  normalizeBloomQualityMode,
+  normalizeRenderResolutionScale,
+  normalizePerformanceSettings
 } from "./definitions/environmentDefinitions.js";
 import { SHIP_VISUAL_IDS, getShipVisualDefinition } from "./definitions/shipVisualDefinitions.js";
 import { BUILDING_DEFINITIONS, ITEM_DEFINITIONS, RESOURCE_DEFINITIONS, WORLD_CONFIG } from "./worldDefinitions.js";
@@ -42,6 +48,7 @@ export class GameManager {
     this.keyBindingStorageKey = "void-zero-key-bindings";
     this.keyBindings = this.loadKeyBindings();
     this.environmentMode = ENVIRONMENT_MODES.light;
+    this.performanceSettings = { ...DEFAULT_PERFORMANCE_SETTINGS };
     this.i18n = createI18n();
     this.worldViewSettings = { chunkBoundsMode: "all" };
     this.navDeadReckonSettings = { mode: "fixed", capMinutes: 5 };
@@ -184,6 +191,21 @@ export class GameManager {
     this.shipVisualManager = null;
     this.playerShipVisualState = null;
     this.shipEngineOutputPercent = null;
+    this.materialMapSlots = [
+      "map",
+      "normalMap",
+      "roughnessMap",
+      "metalnessMap",
+      "aoMap",
+      "emissiveMap",
+      "bumpMap",
+      "displacementMap",
+      "alphaMap",
+      "lightMap",
+      "specularMap",
+      "envMap"
+    ];
+    this.disabledMaterialMapRecords = new Map();
   }
 
   async init() {
@@ -209,6 +231,7 @@ export class GameManager {
       onReloadWorldData: () => this.reloadWorldData(),
       onChunkBoundsModeChange: (mode) => this.setChunkBoundsMode(mode),
       onEnvironmentModeChange: (mode) => this.setEnvironmentMode(mode),
+      onPerformanceSettingChange: (key, enabled) => this.setPerformanceSetting(key, enabled),
       onNavRestoreModeChange: (mode) => {
         this.navDeadReckonSettings.mode = mode === "infinite" ? "infinite" : "fixed";
         this.ui.setNavRestoreMode(this.navDeadReckonSettings.mode);
@@ -226,6 +249,7 @@ export class GameManager {
     });
     this.ui.setChunkBoundsMode(this.worldViewSettings.chunkBoundsMode);
     this.ui.setEnvironmentMode(this.environmentMode);
+    this.ui.setPerformanceSettings(this.performanceSettings);
 
     this.ui.setInteractionGate();
     this.updateCameraProjection();
@@ -259,17 +283,41 @@ export class GameManager {
     return SPACE_ENVIRONMENT_PRESETS[normalizedMode] || SPACE_ENVIRONMENT_PRESETS[ENVIRONMENT_MODES.light];
   }
 
+  getObjectBloomSettings(preset = this.getEnvironmentPreset()) {
+    const bloomQuality = normalizeBloomQualityMode(this.performanceSettings.bloomQuality);
+    const bloomEnabled = bloomQuality !== BLOOM_QUALITY_MODES.none;
+    return {
+      ...preset.objectBloom,
+      enabled: bloomEnabled,
+      resolutionScale: bloomEnabled
+        ? getBloomResolutionScale(bloomQuality)
+        : preset.objectBloom.resolutionScale
+    };
+  }
+
   async loadSavedEnvironmentSettings() {
     const saved = await this.worldDataManager.getStoreValue("settings", ENVIRONMENT_SETTINGS_KEY);
     const savedMode = saved?.mode;
     const nextMode = savedMode ? normalizeEnvironmentMode(savedMode) : this.environmentMode;
+    const nextPerformanceSettings = normalizePerformanceSettings(
+      saved?.performanceSettings,
+      saved?.renderQualityMode
+    );
     this.environmentMode = nextMode;
+    this.performanceSettings = nextPerformanceSettings;
     this.applyEnvironmentPreset(this.getEnvironmentPreset(nextMode));
     this.ui.setEnvironmentMode(nextMode);
+    this.ui.setPerformanceSettings(nextPerformanceSettings);
 
-    if (!saved && nextMode !== ENVIRONMENT_MODES.light) {
+    if (!saved && (nextMode !== ENVIRONMENT_MODES.light || !this.hasDefaultPerformanceSettings())) {
       await this.saveEnvironmentSettings();
     }
+  }
+
+  hasDefaultPerformanceSettings(settings = this.performanceSettings) {
+    return Object.keys(DEFAULT_PERFORMANCE_SETTINGS).every((key) => {
+      return settings[key] === DEFAULT_PERFORMANCE_SETTINGS[key];
+    });
   }
 
   async saveEnvironmentSettings() {
@@ -277,7 +325,8 @@ export class GameManager {
     try {
       await this.worldDataManager.putStoreValue("settings", {
         key: ENVIRONMENT_SETTINGS_KEY,
-        mode: this.environmentMode
+        mode: this.environmentMode,
+        performanceSettings: { ...this.performanceSettings }
       });
     } catch {
       this.ui.showErrorToast("settings storage unavailable");
@@ -381,11 +430,11 @@ export class GameManager {
 
   setupRenderer() {
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: this.performanceSettings.antialias,
       powerPreference: "high-performance",
       preserveDrawingBuffer: true
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(this.getRendererPixelRatio());
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = this.getRendererToneMapping(this.getEnvironmentPreset().renderer.toneMapping);
@@ -420,7 +469,8 @@ export class GameManager {
       renderer: this.renderer,
       scene: this.scene,
       camera: this.camera,
-      objectBloom: preset.objectBloom
+      objectBloom: this.getObjectBloomSettings(preset),
+      renderResolutionScale: this.getRenderResolutionScale()
     });
     this.shipVisualManager = new ShipVisualManager({
       bloomLayer: this.renderPipeline.objectBloomLayerId,
@@ -446,6 +496,22 @@ export class GameManager {
     this.shipRimLight.position.set(...rimLight.position);
 
     this.ship.add(this.shipFillLight, this.shipRimLight);
+  }
+
+  getRenderResolutionScale(settings = this.performanceSettings) {
+    return normalizeRenderResolutionScale(settings.renderResolutionScale);
+  }
+
+  getRendererPixelRatio() {
+    return Math.min(window.devicePixelRatio, 2) * this.getRenderResolutionScale();
+  }
+
+  applyRenderResolutionSettings() {
+    if (!this.renderer) return;
+    this.renderer.setPixelRatio(this.getRendererPixelRatio());
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderPipeline?.setRenderResolutionScale(this.getRenderResolutionScale());
+    this.renderPipeline?.setSize(window.innerWidth, window.innerHeight);
   }
 
   setupWorld() {
@@ -724,6 +790,8 @@ export class GameManager {
     }) || null;
     this.shipEngineOutputPercent = null;
     this.updateShipEngineOutput();
+    this.applyMaterialMapPerformanceSettings();
+    this.applyLightingPerformanceSettings();
     this.renderPipeline?.markTargetsDirty();
   }
 
@@ -744,6 +812,58 @@ export class GameManager {
         material.needsUpdate = true;
       });
     });
+  }
+
+  collectSceneMaterials(root = this.scene) {
+    const materials = new Set();
+    root?.traverse((object) => {
+      if (!object.isMesh || !object.material) return;
+      const objectMaterials = Array.isArray(object.material) ? object.material : [object.material];
+      objectMaterials.forEach((material) => {
+        if (material?.isMaterial) materials.add(material);
+      });
+    });
+    return materials;
+  }
+
+  disableMaterialMaps(material, disposedTextures) {
+    let record = this.disabledMaterialMapRecords.get(material);
+    let changed = false;
+
+    this.materialMapSlots.forEach((slot) => {
+      if (!(slot in material) || !material[slot]) return;
+      if (!record) {
+        record = { material, slots: {} };
+        this.disabledMaterialMapRecords.set(material, record);
+      }
+      if (!(slot in record.slots)) record.slots[slot] = material[slot];
+      disposedTextures.add(material[slot]);
+      material[slot] = null;
+      changed = true;
+    });
+
+    if (changed) material.needsUpdate = true;
+  }
+
+  restoreMaterialMaps() {
+    this.disabledMaterialMapRecords.forEach(({ material, slots }) => {
+      Object.entries(slots).forEach(([slot, texture]) => {
+        if (slot in material) material[slot] = texture;
+      });
+      material.needsUpdate = true;
+    });
+    this.disabledMaterialMapRecords.clear();
+  }
+
+  applyMaterialMapPerformanceSettings() {
+    if (this.performanceSettings.materialMaps) {
+      this.restoreMaterialMaps();
+      return;
+    }
+
+    const disposedTextures = new Set();
+    this.collectSceneMaterials().forEach((material) => this.disableMaterialMaps(material, disposedTextures));
+    disposedTextures.forEach((texture) => texture?.dispose?.());
   }
 
   createStars(count, radius, size, opacity) {
@@ -781,6 +901,8 @@ export class GameManager {
     });
 
     const points = new THREE.Points(geometry, material);
+    // Star vertices wrap around the ship, so static geometry bounds can cull a valid layer.
+    points.frustumCulled = false;
     points.userData.radius = radius;
     points.userData.count = count;
     this.scene.add(points);
@@ -793,7 +915,7 @@ export class GameManager {
       this.renderer.toneMappingExposure = preset.renderer.toneMappingExposure;
     }
 
-    this.renderPipeline?.setObjectBloomSettings(preset.objectBloom);
+    this.renderPipeline?.setObjectBloomSettings(this.getObjectBloomSettings(preset));
 
     if (this.scene) {
       this.scene.background = new THREE.Color(preset.scene.background);
@@ -802,21 +924,47 @@ export class GameManager {
 
     this.targetingOverlay?.setFrameStyle(preset.targeting.frame);
 
-    if (!this.worldLights) return;
-
-    const { ambient, key, rim, hemisphere } = preset.lights;
-    this.worldLights.globalLight.color.setHex(ambient.color);
-    this.worldLights.globalLight.intensity = ambient.intensity;
-    this.worldLights.keyLight.color.setHex(key.color);
-    this.worldLights.keyLight.intensity = key.intensity;
-    this.worldLights.keyLight.position.set(...key.position);
-    this.worldLights.rimLight.color.setHex(rim.color);
-    this.worldLights.rimLight.intensity = rim.intensity;
-    this.worldLights.rimLight.position.set(...rim.position);
-    this.worldLights.softUnderLight.color.setHex(hemisphere.skyColor);
-    this.worldLights.softUnderLight.groundColor.setHex(hemisphere.groundColor);
-    this.worldLights.softUnderLight.intensity = hemisphere.intensity;
+    if (this.worldLights) {
+      const { ambient, key, rim, hemisphere } = preset.lights;
+      this.worldLights.globalLight.color.setHex(ambient.color);
+      this.worldLights.globalLight.intensity = ambient.intensity;
+      this.worldLights.keyLight.color.setHex(key.color);
+      this.worldLights.keyLight.intensity = key.intensity;
+      this.worldLights.keyLight.position.set(...key.position);
+      this.worldLights.rimLight.color.setHex(rim.color);
+      this.worldLights.rimLight.intensity = rim.intensity;
+      this.worldLights.rimLight.position.set(...rim.position);
+      this.worldLights.softUnderLight.color.setHex(hemisphere.skyColor);
+      this.worldLights.softUnderLight.groundColor.setHex(hemisphere.groundColor);
+      this.worldLights.softUnderLight.intensity = hemisphere.intensity;
+    }
     this.worldMapManager?.setEnvironmentVisuals(preset.worldMap);
+    this.applyLightingPerformanceSettings();
+  }
+
+  applyLightingPerformanceSettings() {
+    const enabled = this.performanceSettings.lightingEffects;
+    if (this.worldLights) {
+      this.worldLights.globalLight.visible = true;
+      this.worldLights.keyLight.visible = enabled;
+      this.worldLights.rimLight.visible = enabled;
+      this.worldLights.softUnderLight.visible = enabled;
+    }
+
+    if (this.shipFillLight) this.shipFillLight.visible = enabled;
+    if (this.shipRimLight) this.shipRimLight.visible = enabled;
+    this.applyShipVfxLightingPerformanceSettings(enabled);
+  }
+
+  applyShipVfxLightingPerformanceSettings(enabled = this.performanceSettings.lightingEffects) {
+    const shipState = this.playerShipVisualState;
+    if (!shipState) return;
+
+    shipState.lightRuntimeAnchors.forEach((anchor) => {
+      const controlState = shipState.lightControlState[anchor.type] || {};
+      if (anchor.glowSprite) anchor.glowSprite.visible = enabled && controlState.billboard !== false;
+      if (anchor.pointLight) anchor.pointLight.visible = enabled && controlState.pointLight !== false;
+    });
   }
 
   getRendererToneMapping(toneMapping) {
@@ -1814,6 +1962,42 @@ export class GameManager {
     void this.saveEnvironmentSettings();
   }
 
+  setPerformanceSetting(key, value) {
+    if (!(key in DEFAULT_PERFORMANCE_SETTINGS)) {
+      return;
+    }
+
+    let nextValue = value === true;
+    if (key === "bloomQuality") {
+      nextValue = normalizeBloomQualityMode(value);
+    } else if (key === "renderResolutionScale") {
+      nextValue = normalizeRenderResolutionScale(value);
+    }
+    const nextSettings = normalizePerformanceSettings({
+      ...this.performanceSettings,
+      [key]: nextValue
+    });
+    if (this.performanceSettings[key] === nextSettings[key]) {
+      this.ui.setPerformanceSettings(nextSettings);
+      return;
+    }
+
+    this.performanceSettings = nextSettings;
+    if (key === "bloomQuality") {
+      this.renderPipeline?.setObjectBloomSettings(this.getObjectBloomSettings());
+    } else if (key === "renderResolutionScale") {
+      this.applyRenderResolutionSettings();
+    } else if (key === "materialMaps") {
+      this.applyMaterialMapPerformanceSettings();
+    } else if (key === "lightingEffects") {
+      this.applyLightingPerformanceSettings();
+    } else if (key === "antialias") {
+      this.ui.showToast("anti-alias applies after reload");
+    }
+    this.ui.setPerformanceSettings(nextSettings);
+    void this.saveEnvironmentSettings();
+  }
+
   getWorldObjectList() {
     const snapshot = this.worldMapManager?.snapshot || this.worldDataManager.snapshot;
     if (!snapshot) return { buildings: [], resources: [] };
@@ -2576,8 +2760,7 @@ export class GameManager {
   }
 
   onResize() {
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderPipeline?.setSize(window.innerWidth, window.innerHeight);
+    this.applyRenderResolutionSettings();
     this.updateCameraProjection();
     this.targetingOverlay.resize();
   }

@@ -1,11 +1,64 @@
 export const ko = {
   ui: {
     settings: {
+      title: "설정",
+      close: "닫기",
+      categoriesLabel: "설정 카테고리",
+      categories: {
+        gameplay: "게임",
+        controls: "조작",
+        graphics: "그래픽"
+      },
       language: "언어",
       languageHint: "변경하면 화면을 다시 불러옵니다",
       languages: {
         en: "영어",
         ko: "한국어"
+      },
+      common: {
+        none: "없음",
+        off: "끔",
+        on: "켬"
+      },
+      world: {
+        seed: "시드",
+        generated: "생성일",
+        sectors: "섹터",
+        chunks: "청크",
+        resources: "자원",
+        buildings: "건물",
+        currentSector: "현재 섹터",
+        currentChunk: "현재 청크",
+        regenerate: "재생성",
+        reloadDb: "DB 다시 읽기",
+        clearAllData: "모든 데이터 삭제",
+        confirmRegenerate: "월드 데이터를 다시 생성할까요?",
+        confirmClear: "저장된 모든 데이터를 삭제할까요? (월드, 플레이어, 항법)"
+      },
+      gameplay: {
+        manualNavRestore: "수동 항법 복구",
+        fixedStop: "고정 + 정지",
+        infinite: "무제한",
+        holdTimeMin: "유지 시간 (분)"
+      },
+      controls: {
+        reset: "초기화"
+      },
+      graphics: {
+        environment: "환경",
+        light: "라이트",
+        dark: "다크",
+        chunkBounds: "격자 시각화",
+        all: "전체",
+        sector: "섹터",
+        materialTextures: "머티리얼 텍스처",
+        renderResolution: "렌더 해상도",
+        antialias: "안티앨리어싱",
+        bloomQuality: "블룸 품질",
+        low: "낮음",
+        medium: "중간",
+        high: "높음",
+        lightingEffects: "광원 효과"
       }
     },
     scanner: {

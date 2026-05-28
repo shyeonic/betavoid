@@ -377,7 +377,6 @@ export class ShipVisualManager {
     sprite.name = `BillboardGlow_${profile.type}`;
     sprite.scale.set(spriteDimensions.width, spriteDimensions.height, 1);
     sprite.renderOrder = 20;
-    sprite.layers.enable(this.bloomLayer);
     shipState.root.add(sprite);
     return sprite;
   }

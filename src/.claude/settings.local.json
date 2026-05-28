@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-Content \"c:\\\\inf_workspace_local\\\\Void Zero\\\\src\\\\js\\\\definitions\\\\shipDefinitions.js\")"
+    ]
+  }
+}

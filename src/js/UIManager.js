@@ -23,6 +23,8 @@ export class UIManager {
     this.objectListReturnFocus = null;
     this.cameraIconSwapTimer = 0;
     this.cameraIconSwapToken = 0;
+    this.bottomNavIconSourceCache = new Map();
+    this.bottomNavIconDataCache = new Map();
     this.selectedWorldObjectSummary = null;
     this.selectedObjectListTargetId = null;
     this.renderedObjectList = [];
@@ -46,12 +48,15 @@ export class UIManager {
       startButton: this.getElement("#startButton"),
       settingsButton: this.getElement("#settingsButton"),
       settingsPopup: this.getElement("#settingsPopup"),
-      settingsCloseButton: this.getElement("#settingsCloseButton"),
+      settingsDetailLayer: this.getElement("#settingsDetailLayer"),
+      settingsTitle: this.getElement("#settingsTitle"),
       settingsResetButton: this.getElement("#settingsResetButton"),
       settingsKeysTab: this.getElement("#settingsKeysTab"),
       settingsDataTab: this.getElement("#settingsDataTab"),
+      settingsPerformanceTab: this.getElement("#settingsPerformanceTab"),
       settingsKeysPanel: this.getElement("#settingsKeysPanel"),
       settingsDataPanel: this.getElement("#settingsDataPanel"),
+      settingsPerformancePanel: this.getElement("#settingsPerformancePanel"),
       settingsLanguageLabel: this.getElement("#settingsLanguageLabel"),
       settingsLanguageHint: this.getElement("#settingsLanguageHint"),
       settingsLanguageSelect: this.getElement("#settingsLanguageSelect"),
@@ -69,6 +74,19 @@ export class UIManager {
       dataClearButton: this.getElement("#dataClearButton"),
       environmentLightButton: this.getElement("#environmentLightButton"),
       environmentDarkButton: this.getElement("#environmentDarkButton"),
+      performanceMaterialMapsOffButton: this.getElement("#performanceMaterialMapsOffButton"),
+      performanceMaterialMapsOnButton: this.getElement("#performanceMaterialMapsOnButton"),
+      performanceRenderScale50Button: this.getElement("#performanceRenderScale50Button"),
+      performanceRenderScale75Button: this.getElement("#performanceRenderScale75Button"),
+      performanceRenderScale100Button: this.getElement("#performanceRenderScale100Button"),
+      performanceAntialiasOffButton: this.getElement("#performanceAntialiasOffButton"),
+      performanceAntialiasOnButton: this.getElement("#performanceAntialiasOnButton"),
+      performanceBloomNoneButton: this.getElement("#performanceBloomNoneButton"),
+      performanceBloomLowButton: this.getElement("#performanceBloomLowButton"),
+      performanceBloomMediumButton: this.getElement("#performanceBloomMediumButton"),
+      performanceBloomHighButton: this.getElement("#performanceBloomHighButton"),
+      performanceLightingOffButton: this.getElement("#performanceLightingOffButton"),
+      performanceLightingOnButton: this.getElement("#performanceLightingOnButton"),
       chunkBoundsAllButton: this.getElement("#chunkBoundsAllButton"),
       chunkBoundsSectorButton: this.getElement("#chunkBoundsSectorButton"),
       chunkBoundsOffButton: this.getElement("#chunkBoundsOffButton"),
@@ -117,8 +135,15 @@ export class UIManager {
       errorToast: this.getElement("#errorToast")
     };
     this.navActive = false;
-    this.settingsTab = "keys";
+    this.settingsTab = "data";
     this.environmentMode = "light";
+    this.performanceSettings = {
+      materialMaps: true,
+      renderResolutionScale: 1,
+      bloomQuality: "medium",
+      lightingEffects: true,
+      antialias: false
+    };
     this.chunkBoundsMode = "all";
     this.navRestoreMode = "fixed";
     this.speedPointerId = null;
@@ -126,6 +151,7 @@ export class UIManager {
     document.documentElement.lang = this.i18n.locale || document.documentElement.lang;
     this.elements.speedGauge.setAttribute("aria-valuemin", String(this.config.minSpeed));
     this.elements.speedGauge.setAttribute("aria-valuemax", String(this.config.maxSpeed));
+    this.renderStaticText();
     this.renderLanguageSettings();
     this.setStartButtonText("Start");
     this.renderKeyBindings();
@@ -139,6 +165,29 @@ export class UIManager {
 
   t(key, fallback, params = {}) {
     return this.i18n.t(key, params, fallback);
+  }
+
+  renderStaticText(root = document) {
+    root.querySelectorAll("[data-i18n]").forEach((element) => {
+      const key = element.dataset.i18n;
+      if (!key) return;
+      const fallback = element.dataset.i18nFallback || element.textContent.trim() || key;
+      element.textContent = this.t(key, fallback);
+    });
+
+    root.querySelectorAll("[data-i18n-aria-label]").forEach((element) => {
+      const key = element.dataset.i18nAriaLabel;
+      if (!key) return;
+      const fallback = element.getAttribute("aria-label") || key;
+      element.setAttribute("aria-label", this.t(key, fallback));
+    });
+
+    root.querySelectorAll("[data-i18n-title]").forEach((element) => {
+      const key = element.dataset.i18nTitle;
+      if (!key) return;
+      const fallback = element.getAttribute("title") || key;
+      element.setAttribute("title", this.t(key, fallback));
+    });
   }
 
   renderLanguageSettings() {
@@ -169,6 +218,7 @@ export class UIManager {
     onClearAllData,
     onReloadWorldData,
     onEnvironmentModeChange,
+    onPerformanceSettingChange,
     onChunkBoundsModeChange,
     onNavRestoreModeChange,
     onNavRestoreCapChange,
@@ -203,10 +253,9 @@ export class UIManager {
       event.stopPropagation();
       if (event.target === this.elements.settingsPopup) this.closeSettings();
     });
-    this.elements.settingsCloseButton.addEventListener("click", (event) => {
-      event.preventDefault();
+    this.elements.settingsDetailLayer.addEventListener("click", (event) => {
       event.stopPropagation();
-      this.closeSettings();
+      if (event.target === this.elements.settingsDetailLayer) this.closeSettingsDetail();
     });
     this.elements.settingsKeysTab.addEventListener("click", (event) => {
       event.preventDefault();
@@ -217,6 +266,11 @@ export class UIManager {
       event.preventDefault();
       event.stopPropagation();
       this.setSettingsTab("data");
+    });
+    this.elements.settingsPerformanceTab.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.setSettingsTab("performance");
     });
     this.elements.settingsResetButton.addEventListener("click", (event) => {
       event.preventDefault();
@@ -238,12 +292,14 @@ export class UIManager {
     this.elements.worldRegenerateButton.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (confirm("Regenerate world data?")) onRegenerateWorld();
+      if (confirm(this.t("ui.settings.world.confirmRegenerate", "Regenerate world data?"))) onRegenerateWorld();
     });
     this.elements.dataClearButton.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (confirm("Clear all stored data? (world, player, navigation)")) onClearAllData();
+      if (confirm(this.t("ui.settings.world.confirmClear", "Clear all stored data? (world, player, navigation)"))) {
+        onClearAllData();
+      }
     });
     this.elements.worldReloadButton.addEventListener("click", (event) => {
       event.preventDefault();
@@ -259,6 +315,52 @@ export class UIManager {
         event.stopPropagation();
         if (typeof onEnvironmentModeChange === "function") {
           onEnvironmentModeChange(button.dataset.environmentMode);
+        }
+      });
+    });
+    [
+      this.elements.performanceMaterialMapsOffButton,
+      this.elements.performanceMaterialMapsOnButton,
+      this.elements.performanceAntialiasOffButton,
+      this.elements.performanceAntialiasOnButton,
+      this.elements.performanceLightingOffButton,
+      this.elements.performanceLightingOnButton
+    ].forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof onPerformanceSettingChange === "function") {
+          onPerformanceSettingChange(
+            button.dataset.performanceToggle,
+            button.dataset.performanceToggleValue === "true"
+          );
+        }
+      });
+    });
+    [
+      this.elements.performanceRenderScale50Button,
+      this.elements.performanceRenderScale75Button,
+      this.elements.performanceRenderScale100Button
+    ].forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof onPerformanceSettingChange === "function") {
+          onPerformanceSettingChange("renderResolutionScale", Number(button.dataset.renderResolutionScale));
+        }
+      });
+    });
+    [
+      this.elements.performanceBloomNoneButton,
+      this.elements.performanceBloomLowButton,
+      this.elements.performanceBloomMediumButton,
+      this.elements.performanceBloomHighButton
+    ].forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof onPerformanceSettingChange === "function") {
+          onPerformanceSettingChange("bloomQuality", button.dataset.bloomQuality);
         }
       });
     });
@@ -1168,16 +1270,18 @@ export class UIManager {
     this.settingsReturnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
       ? document.activeElement
       : this.elements.settingsButton;
+    this.renderStaticText(this.elements.settingsPopup);
     this.renderLanguageSettings();
     this.elements.settingsPopup.removeAttribute("inert");
     this.elements.settingsPopup.classList.add("open");
     this.elements.settingsPopup.setAttribute("aria-hidden", "false");
     this.cancelBindingCapture();
-    this.setSettingsTab(this.settingsTab);
+    this.closeSettingsDetail({ focusCategory: false });
+    this.syncSettingsTabState();
     try {
-      this.elements.settingsCloseButton.focus({ preventScroll: true });
+      this.getSettingsTabButton(this.settingsTab).focus({ preventScroll: true });
     } catch {
-      this.elements.settingsCloseButton.focus();
+      this.getSettingsTabButton(this.settingsTab).focus();
     }
   }
 
@@ -1199,20 +1303,62 @@ export class UIManager {
     this.elements.settingsPopup.setAttribute("aria-hidden", "true");
     this.elements.settingsPopup.setAttribute("inert", "");
     this.settingsReturnFocus = null;
+    this.closeSettingsDetail({ focusCategory: false });
+    this.cancelBindingCapture();
+  }
+
+  closeSettingsDetail({ focusCategory = true } = {}) {
+    this.elements.settingsDetailLayer.hidden = true;
+    this.elements.settingsDetailLayer.classList.remove("open");
+    if (focusCategory && this.elements.settingsPopup.classList.contains("open")) {
+      try {
+        this.getSettingsTabButton(this.settingsTab).focus({ preventScroll: true });
+      } catch {
+        this.getSettingsTabButton(this.settingsTab).focus();
+      }
+    }
     this.cancelBindingCapture();
   }
 
   setSettingsTab(tab) {
-    this.settingsTab = tab === "data" ? "data" : "keys";
+    this.settingsTab = ["keys", "data", "performance"].includes(tab) ? tab : "data";
+    this.syncSettingsTabState();
+    this.elements.settingsDetailLayer.hidden = false;
+    this.elements.settingsDetailLayer.classList.add("open");
+  }
+
+  syncSettingsTabState() {
     const dataActive = this.settingsTab === "data";
-    this.elements.settingsKeysTab.classList.toggle("active", !dataActive);
+    const performanceActive = this.settingsTab === "performance";
+    const keysActive = this.settingsTab === "keys";
+    this.elements.settingsKeysTab.classList.toggle("active", keysActive);
     this.elements.settingsDataTab.classList.toggle("active", dataActive);
-    this.elements.settingsKeysTab.setAttribute("aria-selected", dataActive ? "false" : "true");
+    this.elements.settingsPerformanceTab.classList.toggle("active", performanceActive);
+    this.elements.settingsKeysTab.setAttribute("aria-selected", keysActive ? "true" : "false");
     this.elements.settingsDataTab.setAttribute("aria-selected", dataActive ? "true" : "false");
-    this.elements.settingsKeysPanel.classList.toggle("active", !dataActive);
+    this.elements.settingsPerformanceTab.setAttribute("aria-selected", performanceActive ? "true" : "false");
+    this.elements.settingsKeysPanel.classList.toggle("active", keysActive);
     this.elements.settingsDataPanel.classList.toggle("active", dataActive);
-    this.elements.settingsResetButton.hidden = dataActive;
-    if (dataActive) this.cancelBindingCapture();
+    this.elements.settingsPerformancePanel.classList.toggle("active", performanceActive);
+    this.elements.settingsResetButton.hidden = !keysActive;
+    this.elements.settingsTitle.textContent = this.getSettingsTabTitle(this.settingsTab);
+    if (!keysActive) this.cancelBindingCapture();
+  }
+
+  getSettingsTabTitle(tab) {
+    const titles = {
+      data: ["ui.settings.categories.gameplay", "Gameplay"],
+      keys: ["ui.settings.categories.controls", "Controls"],
+      performance: ["ui.settings.categories.graphics", "Graphics"]
+    };
+    const [key, fallback] = titles[tab] || titles.data;
+    return this.t(key, fallback);
+  }
+
+  getSettingsTabButton(tab) {
+    if (tab === "keys") return this.elements.settingsKeysTab;
+    if (tab === "performance") return this.elements.settingsPerformanceTab;
+    return this.elements.settingsDataTab;
   }
 
   setKeyBindings(bindings) {
@@ -1480,15 +1626,122 @@ export class UIManager {
       button.classList.toggle("active", active);
       button.setAttribute("aria-pressed", active ? "true" : "false");
     });
+    this.elements.chunkBoundsOffButton
+      .closest(".rail-choice-control")
+      ?.classList.toggle("is-off", this.chunkBoundsMode === "off");
   }
 
   setEnvironmentMode(mode) {
     this.environmentMode = mode === "dark" ? "dark" : "light";
+    document.documentElement.dataset.environmentMode = this.environmentMode;
+    this.updateBottomNavIconColors();
     [this.elements.environmentLightButton, this.elements.environmentDarkButton].forEach((button) => {
       const active = button.dataset.environmentMode === this.environmentMode;
       button.classList.toggle("active", active);
       button.setAttribute("aria-pressed", active ? "true" : "false");
     });
+  }
+
+  updateBottomNavIconColors(icons = document.querySelectorAll(".bottom-nav .bottom-nav-icon")) {
+    const color = getComputedStyle(document.documentElement).getPropertyValue("--ui_color").trim() || "#6975A0";
+    Array.from(icons).forEach((icon) => {
+      if (icon instanceof HTMLElement) {
+        void this.applyBottomNavIconColor(icon, color);
+      }
+    });
+  }
+
+  async applyBottomNavIconColor(icon, color) {
+    const sourceUrl = this.getSvgIconSourceUrl(icon);
+    if (!sourceUrl) return;
+    icon.dataset.svgTintSource = sourceUrl;
+    icon.dataset.svgTintColor = color;
+
+    const cacheKey = `${sourceUrl}|${color}`;
+    let imageValue = this.bottomNavIconDataCache.get(cacheKey);
+    if (!imageValue) {
+      let svg = this.bottomNavIconSourceCache.get(sourceUrl);
+      if (!svg) {
+        const response = await fetch(sourceUrl);
+        if (!response.ok) return;
+        svg = await response.text();
+        this.bottomNavIconSourceCache.set(sourceUrl, svg);
+      }
+
+      const tintedSvg = svg.replace(/#6975a0/gi, color);
+      imageValue = `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(tintedSvg)}")`;
+      this.bottomNavIconDataCache.set(cacheKey, imageValue);
+    }
+
+    if (icon.dataset.svgTintSource === sourceUrl && icon.dataset.svgTintColor === color) {
+      icon.style.setProperty("--bottom-nav-icon-image", imageValue);
+    }
+  }
+
+  getSvgIconSourceUrl(icon) {
+    const source = getComputedStyle(icon).getPropertyValue("--svg-icon-source").trim();
+    const match = source.match(/^url\((["']?)(.*?)\1\)$/);
+    if (!match?.[2] || match[2] === "none") return "";
+    return new URL(match[2], document.baseURI).href;
+  }
+
+  setPerformanceSettings(settings = {}) {
+    this.performanceSettings = {
+      materialMaps: settings.materialMaps !== false,
+      renderResolutionScale: [0.5, 0.75, 1].includes(Number(settings.renderResolutionScale))
+        ? Number(settings.renderResolutionScale)
+        : 1,
+      bloomQuality: ["none", "low", "medium", "high"].includes(settings.bloomQuality)
+        ? settings.bloomQuality
+        : "medium",
+      lightingEffects: settings.lightingEffects !== false,
+      antialias: settings.antialias === true
+    };
+    this.setBooleanRailChoice([
+      this.elements.performanceMaterialMapsOffButton,
+      this.elements.performanceMaterialMapsOnButton
+    ], this.performanceSettings.materialMaps);
+    this.setBooleanRailChoice([
+      this.elements.performanceAntialiasOffButton,
+      this.elements.performanceAntialiasOnButton
+    ], this.performanceSettings.antialias);
+    this.setBooleanRailChoice([
+      this.elements.performanceLightingOffButton,
+      this.elements.performanceLightingOnButton
+    ], this.performanceSettings.lightingEffects);
+    [
+      this.elements.performanceRenderScale50Button,
+      this.elements.performanceRenderScale75Button,
+      this.elements.performanceRenderScale100Button
+    ].forEach((button) => {
+      const active = Number(button.dataset.renderResolutionScale) === this.performanceSettings.renderResolutionScale;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    [
+      this.elements.performanceBloomNoneButton,
+      this.elements.performanceBloomLowButton,
+      this.elements.performanceBloomMediumButton,
+      this.elements.performanceBloomHighButton
+    ].forEach((button) => {
+      const active = button.dataset.bloomQuality === this.performanceSettings.bloomQuality;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    this.elements.performanceBloomNoneButton
+      .closest(".rail-choice-control")
+      ?.classList.toggle("is-off", this.performanceSettings.bloomQuality === "none");
+  }
+
+  setBooleanRailChoice(buttons, enabled) {
+    buttons.forEach((button) => {
+      const active = (button.dataset.performanceToggleValue === "true") === enabled;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    buttons[0]
+      ?.closest(".rail-choice-control")
+      ?.classList.toggle("is-off", !enabled);
   }
 
   setNavRestoreMode(mode) {
@@ -1516,6 +1769,7 @@ export class UIManager {
     const applyIcon = () => {
       icon.classList.toggle("svg-icon-main-toggle", active);
       icon.classList.toggle("svg-icon-main", !active);
+      this.updateBottomNavIconColors([icon]);
     };
 
     window.clearTimeout(this.cameraIconSwapTimer);

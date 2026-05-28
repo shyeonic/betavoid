@@ -5,6 +5,29 @@ export const ENVIRONMENT_MODES = {
   dark: "dark"
 };
 
+export const BLOOM_QUALITY_MODES = {
+  none: "none",
+  low: "low",
+  medium: "medium",
+  high: "high"
+};
+
+export const BLOOM_RESOLUTION_SCALES = {
+  [BLOOM_QUALITY_MODES.low]: 0.5,
+  [BLOOM_QUALITY_MODES.medium]: 0.75,
+  [BLOOM_QUALITY_MODES.high]: 1
+};
+
+export const RENDER_RESOLUTION_SCALES = [0.5, 0.75, 1];
+
+export const DEFAULT_PERFORMANCE_SETTINGS = {
+  materialMaps: true,
+  renderResolutionScale: 1,
+  bloomQuality: BLOOM_QUALITY_MODES.medium,
+  lightingEffects: true,
+  antialias: false
+};
+
 export const SPACE_ENVIRONMENT_PRESETS = {
   light: {
     id: ENVIRONMENT_MODES.light,
@@ -13,6 +36,7 @@ export const SPACE_ENVIRONMENT_PRESETS = {
       toneMappingExposure: 1.0
     },
     objectBloom: {
+      enabled: true,
       layer: 1,
       strength: 0.2,
       radius: 0.05,
@@ -74,6 +98,7 @@ export const SPACE_ENVIRONMENT_PRESETS = {
       toneMappingExposure: 0.82
     },
     objectBloom: {
+      enabled: true,
       layer: 1,
       strength: 0.2,
       radius: 0.05,
@@ -132,4 +157,36 @@ export const SPACE_ENVIRONMENT_PRESETS = {
 
 export function normalizeEnvironmentMode(mode) {
   return mode === ENVIRONMENT_MODES.dark ? ENVIRONMENT_MODES.dark : ENVIRONMENT_MODES.light;
+}
+
+export function normalizeBloomQualityMode(mode) {
+  return Object.values(BLOOM_QUALITY_MODES).includes(mode)
+    ? mode
+    : DEFAULT_PERFORMANCE_SETTINGS.bloomQuality;
+}
+
+export function getBloomResolutionScale(mode) {
+  return BLOOM_RESOLUTION_SCALES[normalizeBloomQualityMode(mode)] ?? 0;
+}
+
+export function normalizeRenderResolutionScale(scale) {
+  const value = Number(scale);
+  return RENDER_RESOLUTION_SCALES.includes(value)
+    ? value
+    : DEFAULT_PERFORMANCE_SETTINGS.renderResolutionScale;
+}
+
+export function normalizePerformanceSettings(settings = {}, legacyRenderQualityMode = null) {
+  const source = settings && typeof settings === "object" ? settings : {};
+  const legacyBloomDisabled = legacyRenderQualityMode === "performance" || source.bloom === false;
+  const bloomQuality = legacyBloomDisabled
+    ? BLOOM_QUALITY_MODES.none
+    : normalizeBloomQualityMode(source.bloomQuality);
+  return {
+    materialMaps: source.materialMaps !== false,
+    renderResolutionScale: normalizeRenderResolutionScale(source.renderResolutionScale),
+    bloomQuality,
+    lightingEffects: source.lightingEffects !== false,
+    antialias: source.antialias === true
+  };
 }

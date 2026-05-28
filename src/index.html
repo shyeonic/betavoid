@@ -18,6 +18,18 @@
       --warn: #ffbc66;
       --danger: #e36f6f;
       --svg-default-color: #6975A0;
+      --ui_color: #6975A0;
+      --ui_target_color: #6975A0;
+    }
+
+    :root[data-environment-mode="light"] {
+      --ui_color: #6975A0;
+      --ui_target_color: #7373ff;
+    }
+
+    :root[data-environment-mode="dark"] {
+      --ui_color: #ffffff;
+      --ui_target_color: #00ff66;
     }
 
     * {
@@ -453,6 +465,7 @@
     }
 
     .start-gate-scene {
+      background: #ebebeb;
       cursor: pointer;
     }
 
@@ -848,6 +861,7 @@
       align-items: center;
       justify-content: space-between;
       pointer-events: none;
+      color: var(--ui_color);
     }
 
     .bottom-nav-slot {
@@ -877,7 +891,7 @@
       padding: 0;
       border: none;
       border-radius: 0;
-      color: var(--svg-default-color);
+      color: var(--ui_color);
       background: transparent;
       backdrop-filter: none;
       box-shadow: none;
@@ -892,7 +906,14 @@
       display: block;
       width: 3.2vh;
       height: 3.2vh;
-      background: #6975A0;
+      color: var(--ui_color);
+      background-color: transparent;
+      background-image: var(--bottom-nav-icon-image, var(--svg-icon-source));
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: contain;
+      -webkit-mask: none;
+      mask: none;
       pointer-events: none;
       transition: transform 160ms ease;
     }
@@ -1414,9 +1435,10 @@
       inset: 0;
       z-index: 13;
       display: none;
-      place-items: center;
-      min-height: 100dvh;
-      padding: clamp(1.6vh, 4vw, 4vh);
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 4vh;
       background: rgba(237, 249, 255, 0.72);
       backdrop-filter: blur(1.6vh);
       cursor: default;
@@ -1424,12 +1446,51 @@
     }
 
     .start-settings-backdrop.open {
-      display: grid;
+      display: flex;
+    }
+
+    .settings-category-panel {
+      position: relative;
+      z-index: 1;
+      width: 24vh;
+      max-height: 92vh;
+      overflow: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      border: 0.12vh solid var(--line);
+      border-radius: 1.2vh;
+      background: rgba(237, 247, 255, 0.92);
+      box-shadow: 0 2.4vh 7vh rgba(66, 139, 190, 0.2);
+      padding: 1.2vh;
+      display: flex;
+      flex-direction: column;
+      gap: 1.2vh;
+    }
+
+    .settings-category-panel::-webkit-scrollbar {
+      display: none;
+    }
+
+    .settings-detail-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 4vh;
+      pointer-events: auto;
+    }
+
+    .settings-detail-layer.open {
+      display: flex;
     }
 
     .start-settings-panel {
-      width: min(70vh, 100%);
-      max-height: calc(100dvh - clamp(3.2vh, 8vw, 8vh));
+      position: relative;
+      width: 78vh;
+      max-width: calc(100% - 4vh);
+      max-height: 92vh;
       overflow: auto;
       scrollbar-width: none;
       -ms-overflow-style: none;
@@ -1438,8 +1499,10 @@
       background: var(--panel-strong);
       box-shadow: 0 2.4vh 7vh rgba(66, 139, 190, 0.22);
       padding: 2.2vh;
-      display: grid;
+      display: flex;
+      flex-direction: column;
       gap: 2vh;
+      pointer-events: auto;
     }
 
     .start-settings-panel::-webkit-scrollbar {
@@ -1461,7 +1524,8 @@
     }
 
     #settingsResetButton {
-      width: 80%;
+      width: 44vh;
+      max-width: 100%;
       height: 7vh;
       font-size: 3vh;
       background: var(--danger);
@@ -1470,25 +1534,15 @@
 
     .start-settings-title {
       margin: 0;
-      font-size: 5.4vh;
+      font-size: 4.8vh;
       line-height: 1;
       text-transform: uppercase;
     }
 
-    .settings-icon-button {
-      width: 4.8vh;
-      height: 4.8vh;
-      display: grid;
-      place-items: center;
-      padding: 0;
-      border: none;
-      background: transparent;
-    }
-
     .settings-menu {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0.8vh;
+      align-content: start;
+      gap: 0.9vh;
     }
 
     .settings-language-row {
@@ -1496,9 +1550,7 @@
       grid-template-columns: minmax(0, 1fr) minmax(12vh, 18vh);
       align-items: center;
       gap: 1.2vh;
-      padding: 1.2vh 0;
-      border-top: 0.12vh solid rgba(43, 98, 140, 0.1);
-      border-bottom: 0.12vh solid rgba(43, 98, 140, 0.1);
+      min-height: 6.8vh;
     }
 
     .settings-language-copy {
@@ -1525,8 +1577,16 @@
     }
 
     .settings-tab-button {
-      height: 4.6vh;
-      font-size: 1.45vh;
+      min-height: 6.4vh;
+      display: grid;
+      grid-template-columns: 3.6vh minmax(0, 1fr);
+      align-items: center;
+      gap: 1vh;
+      padding: 0.9vh 1vh;
+      border-color: rgba(43, 98, 140, 0.15);
+      background: rgba(255, 255, 255, 0.44);
+      font-size: 1.35vh;
+      text-align: left;
     }
 
     .settings-tab-button.active {
@@ -1535,45 +1595,80 @@
       color: var(--text);
     }
 
+    .settings-tab-index {
+      width: 3.2vh;
+      height: 3.2vh;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(43, 98, 140, 0.1);
+      color: var(--muted);
+      font-size: 1.1vh;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .settings-tab-button.active .settings-tab-index {
+      background: rgba(99, 210, 255, 0.34);
+      color: var(--text);
+    }
+
+    .settings-tab-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .settings-shell {
+      display: block;
+    }
+
+    .settings-content {
+      min-width: 0;
+    }
+
     .settings-panel-section {
       display: none;
-      min-height: 32vh;
+      min-height: 36vh;
     }
 
     .settings-panel-section.active {
-      display: grid;
+      display: flex;
+      flex-direction: column;
       gap: 2vh;
     }
 
     .key-binding-list {
-      display: grid;
+      display: flex;
+      flex-direction: column;
       gap: 6vh;
     }
 
     .world-summary {
       display: grid;
-      gap: 0.9vh;
-      padding: 1.2vh 0;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.8vh;
     }
 
     .world-summary-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 1.2vh;
-      min-height: 3.2vh;
-      align-items: center;
-      border-bottom: 0.12vh solid rgba(43, 98, 140, 0.11);
+      min-height: 7vh;
+      display: grid;
+      align-content: center;
+      gap: 0.5vh;
+      padding: 1vh;
+      border: 0.12vh solid rgba(43, 98, 140, 0.12);
+      border-radius: 0.8vh;
+      background: rgba(99, 210, 255, 0.055);
       color: var(--muted);
-      font-size: 1.45vh;
+      font-size: 1.2vh;
       text-transform: uppercase;
     }
 
     .world-summary-row strong {
       min-width: 0;
       color: var(--text);
-      font-size: 1.5vh;
+      font-size: 1.42vh;
       font-weight: 700;
-      text-align: right;
+      text-align: left;
       text-transform: none;
       font-variant-numeric: tabular-nums;
       overflow: hidden;
@@ -1604,6 +1699,7 @@
     .world-setting {
       display: grid;
       gap: 0.8vh;
+      padding: 1vh 0;
     }
 
     .world-setting-label {
@@ -1634,6 +1730,98 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .segmented-control.col-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .performance-setting-list {
+      display: grid;
+      gap: 1.2vh;
+    }
+
+    .rail-choice-control {
+      --rail-option-width: 7vh;
+      --rail-line-inset: 3.5vh;
+      position: relative;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      min-height: 6.4vh;
+      padding: 0.7vh 0 0;
+    }
+
+    .rail-choice-control::before {
+      content: "";
+      position: absolute;
+      left: var(--rail-line-inset);
+      right: var(--rail-line-inset);
+      top: 1.6vh;
+      height: 0.18vh;
+      background: rgba(43, 98, 140, 0.18);
+    }
+
+    .rail-choice-control.is-off::before {
+      background: rgba(92, 99, 106, 0.22);
+    }
+
+    .rail-choice-option {
+      position: relative;
+      flex: 0 0 var(--rail-option-width);
+      min-height: 5.4vh;
+      display: grid;
+      justify-items: center;
+      align-content: start;
+      gap: 0.65vh;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 1.12vh;
+    }
+
+    .rail-choice-option:hover {
+      background: transparent;
+      color: var(--text);
+    }
+
+    .rail-choice-dot {
+      width: 1.9vh;
+      height: 1.9vh;
+      border: 0.18vh solid rgba(43, 98, 140, 0.35);
+      border-radius: 50%;
+      background: var(--panel-strong);
+      box-shadow: 0 0 0 0.46vh var(--panel-strong);
+    }
+
+    .rail-choice-option.active .rail-choice-dot {
+      border-color: rgba(99, 210, 255, 0.84);
+      background: #63d2ff;
+      box-shadow: 0 0 0 0.46vh var(--panel-strong), 0 0 1.4vh rgba(99, 210, 255, 0.5);
+    }
+
+    .rail-choice-option.is-off .rail-choice-dot {
+      border-color: rgba(92, 99, 106, 0.42);
+    }
+
+    .rail-choice-option.is-off.active .rail-choice-dot {
+      border-color: rgba(112, 119, 126, 0.72);
+      background: #8e969f;
+      box-shadow: 0 0 0 0.46vh var(--panel-strong);
+    }
+
+    .rail-choice-option.active {
+      color: var(--text);
+    }
+
+    .rail-choice-control.is-off .rail-choice-option {
+      filter: grayscale(1);
+    }
+
+    .rail-choice-label {
+      text-transform: uppercase;
+      font-variant-numeric: tabular-nums;
+    }
+
     .settings-number-input {
       width: 100%;
       min-height: 4.4vh;
@@ -1641,7 +1829,7 @@
       font-size: 1.4vh;
       font-family: inherit;
       background: rgba(99, 210, 255, 0.06);
-      border: 1px solid rgba(99, 210, 255, 0.2);
+      border: 0.12vh solid rgba(99, 210, 255, 0.2);
       border-radius: 0.6vh;
       color: var(--text);
       outline: none;
@@ -1674,7 +1862,7 @@
 
     .key-binding-divider {
       width: 100%;
-      height: 1px;
+      height: 0.12vh;
       background: rgba(43, 98, 140, 0.14);
     }
 
@@ -1827,89 +2015,234 @@
 
   <div class="start-scene" id="startScene">
     <div class="start-settings-backdrop" id="settingsPopup" aria-hidden="true" inert>
-      <div class="start-settings-panel" role="dialog" aria-labelledby="settingsTitle" aria-modal="true">
-        <div class="start-settings-header">
-          <h2 class="start-settings-title" id="settingsTitle">Settings</h2>
-          <button class="settings-icon-button" id="settingsCloseButton" type="button" aria-label="닫기" title="Close">
-            <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
+      <div class="settings-category-panel" role="dialog" aria-label="Settings categories"
+        data-i18n-aria-label="ui.settings.categoriesLabel">
+        <div class="settings-menu" role="tablist" aria-label="Settings categories"
+          data-i18n-aria-label="ui.settings.categoriesLabel">
+          <button class="settings-tab-button active" id="settingsDataTab" type="button" data-settings-tab="data"
+            role="tab" aria-selected="true" aria-controls="settingsDataPanel">
+            <span class="settings-tab-index" aria-hidden="true">01</span>
+            <span class="settings-tab-label" data-i18n="ui.settings.categories.gameplay">Gameplay</span>
+          </button>
+          <button class="settings-tab-button" id="settingsKeysTab" type="button" data-settings-tab="keys" role="tab"
+            aria-selected="false" aria-controls="settingsKeysPanel">
+            <span class="settings-tab-index" aria-hidden="true">02</span>
+            <span class="settings-tab-label" data-i18n="ui.settings.categories.controls">Controls</span>
+          </button>
+          <button class="settings-tab-button" id="settingsPerformanceTab" type="button" data-settings-tab="performance"
+            role="tab" aria-selected="false" aria-controls="settingsPerformancePanel">
+            <span class="settings-tab-index" aria-hidden="true">03</span>
+            <span class="settings-tab-label" data-i18n="ui.settings.categories.graphics">Graphics</span>
           </button>
         </div>
-        <div class="settings-language-row">
-          <div class="settings-language-copy">
-            <div class="settings-language-label" id="settingsLanguageLabel">Language</div>
-            <div class="settings-language-hint" id="settingsLanguageHint">Applies after reload</div>
+      </div>
+      <div class="settings-detail-layer" id="settingsDetailLayer" hidden>
+        <div class="start-settings-panel settings-detail-panel" role="dialog" aria-labelledby="settingsTitle"
+          aria-modal="false">
+          <div class="start-settings-header">
+            <h2 class="start-settings-title" id="settingsTitle">Gameplay</h2>
           </div>
-          <select class="settings-language-select" id="settingsLanguageSelect" aria-labelledby="settingsLanguageLabel">
-            <option value="en">English</option>
-            <option value="ko">한국어</option>
-          </select>
-        </div>
-        <div class="settings-menu" role="tablist" aria-label="Settings">
-          <button class="settings-tab-button active" id="settingsKeysTab" type="button" data-settings-tab="keys"
-            role="tab" aria-selected="true" aria-controls="settingsKeysPanel">Key Binding</button>
-          <button class="settings-tab-button" id="settingsDataTab" type="button" data-settings-tab="data" role="tab"
-            aria-selected="false" aria-controls="settingsDataPanel">Data</button>
-        </div>
-        <div class="settings-content">
-          <section class="settings-panel-section active" id="settingsKeysPanel" role="tabpanel"
-            aria-labelledby="settingsKeysTab">
-            <div class="key-binding-list" id="keyBindingList"></div>
-          </section>
-          <section class="settings-panel-section" id="settingsDataPanel" role="tabpanel"
-            aria-labelledby="settingsDataTab">
-            <div class="world-summary" id="worldSummary">
-              <div class="world-summary-row"><span>Seed</span><strong id="worldSeedValue">none</strong></div>
-              <div class="world-summary-row"><span>Generated</span><strong id="worldGeneratedValue">none</strong>
+          <div class="settings-content">
+            <section class="settings-panel-section active" id="settingsDataPanel" role="tabpanel"
+              aria-labelledby="settingsDataTab">
+              <div class="settings-language-row">
+                <div class="settings-language-copy">
+                  <div class="settings-language-label" id="settingsLanguageLabel">Language</div>
+                  <div class="settings-language-hint" id="settingsLanguageHint">Applies after reload</div>
+                </div>
+                <select class="settings-language-select" id="settingsLanguageSelect"
+                  aria-labelledby="settingsLanguageLabel">
+                  <option value="en">English</option>
+                  <option value="ko">Korean</option>
+                </select>
               </div>
-              <div class="world-summary-row"><span>Sectors</span><strong id="worldSectorCountValue">0</strong></div>
-              <div class="world-summary-row"><span>Chunks</span><strong id="worldChunkCountValue">0</strong></div>
-              <div class="world-summary-row"><span>Resources</span><strong id="worldResourceCountValue">0</strong>
+              <div class="world-summary" id="worldSummary">
+                <div class="world-summary-row"><span data-i18n="ui.settings.world.seed">Seed</span><strong
+                    id="worldSeedValue">none</strong></div>
+                <div class="world-summary-row"><span data-i18n="ui.settings.world.generated">Generated</span><strong
+                    id="worldGeneratedValue">none</strong>
+                </div>
+                <div class="world-summary-row"><span data-i18n="ui.settings.world.sectors">Sectors</span><strong
+                    id="worldSectorCountValue">0</strong></div>
+                <div class="world-summary-row"><span data-i18n="ui.settings.world.chunks">Chunks</span><strong
+                    id="worldChunkCountValue">0</strong></div>
+                <div class="world-summary-row"><span data-i18n="ui.settings.world.resources">Resources</span><strong
+                    id="worldResourceCountValue">0</strong>
+                </div>
+                <div class="world-summary-row"><span data-i18n="ui.settings.world.buildings">Buildings</span><strong
+                    id="worldBuildingCountValue">0</strong>
+                </div>
+                <div class="world-summary-row"><span data-i18n="ui.settings.world.currentSector">Current
+                    Sector</span><strong id="worldCurrentSectorValue">UNKNOWN</strong></div>
+                <div class="world-summary-row"><span data-i18n="ui.settings.world.currentChunk">Current
+                    Chunk</span><strong id="worldCurrentChunkValue">UNKNOWN</strong></div>
               </div>
-              <div class="world-summary-row"><span>Buildings</span><strong id="worldBuildingCountValue">0</strong>
+              <div class="world-actions">
+                <button class="primary" id="worldRegenerateButton" type="button"
+                  data-i18n="ui.settings.world.regenerate">Regenerate</button>
+                <button id="worldReloadButton" type="button" data-i18n="ui.settings.world.reloadDb">Reload DB</button>
+                <button class="danger" id="dataClearButton" type="button"
+                  data-i18n="ui.settings.world.clearAllData">Clear All Data</button>
               </div>
-              <div class="world-summary-row"><span>Current Sector</span><strong
-                  id="worldCurrentSectorValue">UNKNOWN</strong></div>
-              <div class="world-summary-row"><span>Current Chunk</span><strong
-                  id="worldCurrentChunkValue">UNKNOWN</strong></div>
-            </div>
-            <div class="world-actions">
-              <button class="primary" id="worldRegenerateButton" type="button">Regenerate</button>
-              <button id="worldReloadButton" type="button">Reload DB</button>
-              <button class="danger" id="dataClearButton" type="button">Clear All Data</button>
-            </div>
-            <div class="world-setting">
-              <div class="world-setting-label">Environment</div>
-              <div class="segmented-control col-2" role="group" aria-label="Environment display mode">
-                <button class="active" id="environmentLightButton" type="button"
-                  data-environment-mode="light">Light</button>
-                <button id="environmentDarkButton" type="button" data-environment-mode="dark">Dark</button>
+              <div class="world-setting">
+                <div class="world-setting-label" data-i18n="ui.settings.gameplay.manualNavRestore">Manual Nav Restore
+                </div>
+                <div class="segmented-control col-2" role="group" aria-label="Manual navigation restore mode"
+                  data-i18n-aria-label="ui.settings.gameplay.manualNavRestore">
+                  <button class="active" id="navRestoreFixedButton" type="button" data-nav-restore-mode="fixed"
+                    data-i18n="ui.settings.gameplay.fixedStop">Fixed + Stop</button>
+                  <button id="navRestoreInfiniteButton" type="button" data-nav-restore-mode="infinite"
+                    data-i18n="ui.settings.gameplay.infinite">Infinite</button>
+                </div>
               </div>
-            </div>
-            <div class="world-setting">
-              <div class="world-setting-label">Chunk Bounds</div>
-              <div class="segmented-control" role="group" aria-label="Chunk bounds display">
-                <button class="active" id="chunkBoundsAllButton" type="button" data-chunk-bounds-mode="all">All</button>
-                <button id="chunkBoundsSectorButton" type="button" data-chunk-bounds-mode="sector">Sector</button>
-                <button id="chunkBoundsOffButton" type="button" data-chunk-bounds-mode="off">Off</button>
+              <div class="world-setting" id="navRestoreCapRow">
+                <div class="world-setting-label" data-i18n="ui.settings.gameplay.holdTimeMin">Hold Time (min)</div>
+                <input type="number" id="navRestoreCapInput" class="settings-number-input" min="0" max="1440" step="1"
+                  value="5">
               </div>
-            </div>
-            <div class="world-setting">
-              <div class="world-setting-label">Manual Nav Restore</div>
-              <div class="segmented-control col-2" role="group" aria-label="Manual navigation restore mode">
-                <button class="active" id="navRestoreFixedButton" type="button" data-nav-restore-mode="fixed">Fixed +
-                  Stop</button>
-                <button id="navRestoreInfiniteButton" type="button" data-nav-restore-mode="infinite">Infinite</button>
+            </section>
+            <section class="settings-panel-section" id="settingsKeysPanel" role="tabpanel"
+              aria-labelledby="settingsKeysTab">
+              <div class="key-binding-list" id="keyBindingList"></div>
+            </section>
+            <section class="settings-panel-section" id="settingsPerformancePanel" role="tabpanel"
+              aria-labelledby="settingsPerformanceTab">
+              <div class="performance-setting-list">
+                <div class="world-setting">
+                  <div class="world-setting-label" data-i18n="ui.settings.graphics.environment">Environment</div>
+                  <div class="segmented-control col-2" role="group" aria-label="Environment display mode"
+                    data-i18n-aria-label="ui.settings.graphics.environment">
+                    <button class="active" id="environmentLightButton" type="button" data-environment-mode="light"
+                      data-i18n="ui.settings.graphics.light">Light</button>
+                    <button id="environmentDarkButton" type="button" data-environment-mode="dark"
+                      data-i18n="ui.settings.graphics.dark">Dark</button>
+                  </div>
+                </div>
+                <div class="world-setting">
+                  <div class="world-setting-label" data-i18n="ui.settings.graphics.chunkBounds">Grid Visualization</div>
+                  <div class="rail-choice-control" role="group" aria-label="Grid visualization"
+                    data-i18n-aria-label="ui.settings.graphics.chunkBounds">
+                    <button class="rail-choice-option is-off" id="chunkBoundsOffButton" type="button"
+                      data-chunk-bounds-mode="off">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.common.off">Off</span>
+                    </button>
+                    <button class="rail-choice-option" id="chunkBoundsSectorButton" type="button"
+                      data-chunk-bounds-mode="sector">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.graphics.sector">Sector</span>
+                    </button>
+                    <button class="rail-choice-option active" id="chunkBoundsAllButton" type="button"
+                      data-chunk-bounds-mode="all">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.graphics.all">All</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="world-setting">
+                  <div class="world-setting-label" data-i18n="ui.settings.graphics.materialTextures">Material Textures
+                  </div>
+                  <div class="rail-choice-control col-2" role="group" aria-label="Material textures"
+                    data-i18n-aria-label="ui.settings.graphics.materialTextures">
+                    <button class="rail-choice-option is-off" id="performanceMaterialMapsOffButton" type="button"
+                      data-performance-toggle="materialMaps" data-performance-toggle-value="false">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.common.off">Off</span>
+                    </button>
+                    <button class="rail-choice-option active" id="performanceMaterialMapsOnButton" type="button"
+                      data-performance-toggle="materialMaps" data-performance-toggle-value="true">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.common.on">On</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="world-setting">
+                  <div class="world-setting-label" data-i18n="ui.settings.graphics.renderResolution">Render Resolution
+                  </div>
+                  <div class="rail-choice-control" role="group" aria-label="Render resolution"
+                    data-i18n-aria-label="ui.settings.graphics.renderResolution">
+                    <button class="rail-choice-option" id="performanceRenderScale50Button" type="button"
+                      data-render-resolution-scale="0.5">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label">50</span>
+                    </button>
+                    <button class="rail-choice-option" id="performanceRenderScale75Button" type="button"
+                      data-render-resolution-scale="0.75">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label">75</span>
+                    </button>
+                    <button class="rail-choice-option active" id="performanceRenderScale100Button" type="button"
+                      data-render-resolution-scale="1">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label">100</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="world-setting">
+                  <div class="world-setting-label" data-i18n="ui.settings.graphics.antialias">Anti-Aliasing</div>
+                  <div class="rail-choice-control col-2 is-off" role="group" aria-label="Anti-Aliasing"
+                    data-i18n-aria-label="ui.settings.graphics.antialias">
+                    <button class="rail-choice-option is-off active" id="performanceAntialiasOffButton" type="button"
+                      data-performance-toggle="antialias" data-performance-toggle-value="false">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.common.off">Off</span>
+                    </button>
+                    <button class="rail-choice-option" id="performanceAntialiasOnButton" type="button"
+                      data-performance-toggle="antialias" data-performance-toggle-value="true">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.common.on">On</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="world-setting">
+                  <div class="world-setting-label" data-i18n="ui.settings.graphics.bloomQuality">Bloom Quality</div>
+                  <div class="rail-choice-control col-4" role="group" aria-label="Bloom quality"
+                    data-i18n-aria-label="ui.settings.graphics.bloomQuality">
+                    <button class="rail-choice-option is-off" id="performanceBloomNoneButton" type="button"
+                      data-bloom-quality="none">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.common.none">None</span>
+                    </button>
+                    <button class="rail-choice-option" id="performanceBloomLowButton" type="button"
+                      data-bloom-quality="low">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.graphics.low">Low</span>
+                    </button>
+                    <button class="rail-choice-option active" id="performanceBloomMediumButton" type="button"
+                      data-bloom-quality="medium">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.graphics.medium">Medium</span>
+                    </button>
+                    <button class="rail-choice-option" id="performanceBloomHighButton" type="button"
+                      data-bloom-quality="high">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.graphics.high">High</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="world-setting">
+                  <div class="world-setting-label" data-i18n="ui.settings.graphics.lightingEffects">Lighting Effects
+                  </div>
+                  <div class="rail-choice-control col-2" role="group" aria-label="Lighting effects"
+                    data-i18n-aria-label="ui.settings.graphics.lightingEffects">
+                    <button class="rail-choice-option is-off" id="performanceLightingOffButton" type="button"
+                      data-performance-toggle="lightingEffects" data-performance-toggle-value="false">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.common.off">Off</span>
+                    </button>
+                    <button class="rail-choice-option active" id="performanceLightingOnButton" type="button"
+                      data-performance-toggle="lightingEffects" data-performance-toggle-value="true">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.common.on">On</span>
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div class="world-setting" id="navRestoreCapRow">
-              <div class="world-setting-label">Hold Time (min)</div>
-              <input type="number" id="navRestoreCapInput" class="settings-number-input" min="0" max="1440" step="1"
-                value="5">
-            </div>
-          </section>
-        </div>
-        <div class="start-settings-footer">
-          <button id="settingsResetButton" type="button">Reset</button>
+            </section>
+          </div>
+          <div class="start-settings-footer">
+            <button id="settingsResetButton" type="button" data-i18n="ui.settings.controls.reset">Reset</button>
+          </div>
         </div>
       </div>
     </div>
