@@ -8,7 +8,14 @@ export const SHIP_VFX_LIGHT_IDS = {
   aux003: "vfx_light_aux_003",
   aux004: "vfx_light_aux_004",
   aux005: "vfx_light_aux_005",
-  aux006: "vfx_light_aux_006"
+  aux006: "vfx_light_aux_006",
+  "02_engine001": "vfx_light_02_engine_001",
+  "02_aux002": "vfx_light_02_aux_002",
+  "02_aux003": "vfx_light_02_aux_003",
+  "02_aux004": "vfx_light_02_aux_004",
+  "02_aux005": "vfx_light_02_aux_005",
+  "02_aux006": "vfx_light_02_aux_006",
+  "02_aux007": "vfx_light_02_aux_007"
 };
 
 const AUX_LIGHT_SETTINGS = {
@@ -24,9 +31,22 @@ const AUX_LIGHT_SETTINGS = {
   pointRangeScale: 0.2
 };
 
+const AUX_LIGHT_SETTINGS_02 = {
+  color: "#9b9bff",
+  emissiveIntensity: 3,
+  lightRangeScale: 2,
+  minLightRange: 0.52,
+  maxLightRange: 1.45,
+  glowSpriteSpreadScale: 0.8,
+  glowSpriteOpacity: 0.28,
+  pointLightEnabled: false,
+  pointIntensity: 0.2,
+  pointRangeScale: 0.2
+};
+
 export const SHIP_VISUAL_DEFINITIONS = {
-  [SHIP_VISUAL_IDS.playerShip]: {
-    id: SHIP_VISUAL_IDS.playerShip,
+  ship_01: {
+    id: "ship_01",
     label: "ship_01",
     materials: {
       reflectionIntensity: 0.32,
@@ -112,6 +132,92 @@ export const SHIP_VISUAL_DEFINITIONS = {
           label: "EmissivePlate_ship_01.006",
           objectMatches: ["EmissivePlate_ship_01.006"],
           settings: { ...AUX_LIGHT_SETTINGS }
+        }
+      ]
+    }
+  },
+  ship_02: {
+    id: "ship_02",
+    label: "ship_02",
+    materials: {
+      reflectionIntensity: 0.32,
+      emissiveSurface: {
+        materialName: "EmissiveMTL_light",
+        fallbackColor: 0xffffff
+      },
+      highlights: {
+        highlight_01: {
+          id: "highlight_01",
+          label: "Highlight_01",
+          materialName: "Highlight_01",
+          defaultColor: "#286d4d"
+        }
+      }
+    },
+    vfx: {
+      defaultLightType: null,
+      engineOutput: {
+        controlledLightType: SHIP_VFX_LIGHT_IDS["02_engine001"],
+        value: 100,
+        min: {
+          emissiveIntensity: 0.2,
+          glowSpriteOpacity: 0.04,
+          pointIntensity: 0.05
+        }
+      },
+      lightParts: [
+        {
+          id: SHIP_VFX_LIGHT_IDS["02_engine001"],
+          label: "EmissivePlate_ship_02.001",
+          objectMatches: ["EmissivePlate_ship_02.001"],
+          settings: {
+            color: "#9b9bff",
+            emissiveIntensity: 12,
+            lightRangeScale: 2,
+            minLightRange: 0.18,
+            maxLightRange: 0.95,
+            glowSpriteSpreadScale: 1.5,
+            glowSpriteOpacity: 0.58,
+            pointLightEnabled: true,
+            pointIntensity: 0.72,
+            pointRangeScale: 0.86
+          }
+        },
+        {
+          id: SHIP_VFX_LIGHT_IDS["02_aux002"],
+          label: "EmissivePlate_ship_02.002",
+          objectMatches: ["EmissivePlate_ship_02.002"],
+          settings: { ...AUX_LIGHT_SETTINGS_02 }
+        },
+        {
+          id: SHIP_VFX_LIGHT_IDS["02_aux003"],
+          label: "EmissivePlate_ship_02.003",
+          objectMatches: ["EmissivePlate_ship_02.003"],
+          settings: { ...AUX_LIGHT_SETTINGS_02 }
+        },
+        {
+          id: SHIP_VFX_LIGHT_IDS["02_aux004"],
+          label: "EmissivePlate_ship_02.004",
+          objectMatches: ["EmissivePlate_ship_02.004"],
+          settings: { ...AUX_LIGHT_SETTINGS_02 }
+        },
+        {
+          id: SHIP_VFX_LIGHT_IDS["02_aux005"],
+          label: "EmissivePlate_ship_02.005",
+          objectMatches: ["EmissivePlate_ship_02.005"],
+          settings: { ...AUX_LIGHT_SETTINGS_02 }
+        },
+        {
+          id: SHIP_VFX_LIGHT_IDS["02_aux006"],
+          label: "EmissivePlate_ship_02.006",
+          objectMatches: ["EmissivePlate_ship_02.006"],
+          settings: { ...AUX_LIGHT_SETTINGS_02 }
+        },
+        {
+          id: SHIP_VFX_LIGHT_IDS["02_aux007"],
+          label: "EmissivePlate_ship_02.007",
+          objectMatches: ["EmissivePlate_ship_02.007"],
+          settings: { ...AUX_LIGHT_SETTINGS_02 }
         }
       ]
     }

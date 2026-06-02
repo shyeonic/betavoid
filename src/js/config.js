@@ -1,17 +1,5 @@
 export const CONFIG = {
-  minSpeed: -20,
-  maxSpeed: 100,
   reverseGaugePercent: 10,
-  throttleAdjustRate: 36,
-  accelerationRate: 24,
-  decelerationRate: 32,
-  pitchRate: 1.45,
-  yawRate: 1.55,
-  rollRate: 1.8,
-  strafeRate: 45,
-  verticalRate: 45,
-  autopilotTurnRate: 1.45,
-  arrivalRadius: 10,
   cameraDistance: 10,
   cameraFollowHeight: 2,
   cameraScreenYOffset: 0.3,
@@ -32,7 +20,9 @@ export const CONFIG = {
   cameraStrafeOffset: 0.58,
   cameraVerticalOffset: 0.48,
   cameraRollSideOffset: 0.36,
-  cameraRollDropOffset: 0.18
+  cameraRollDropOffset: 0.18,
+  targetCamDistanceMult: 4.0,
+  gapDetectionThresholdMs: 3000
 };
 
 export const CONTROL_SETTINGS = {
@@ -98,10 +88,13 @@ export const ASSETS = {
     cameraToggle: new URL("../rss/sounds/sfx_data_01.ogg", import.meta.url).href
   },
   ships: {
-    local: {
-      glb: new URL("../rss/ships/ship_01.glb", import.meta.url).href
+    ship_01: {
+      local: { glb: new URL("../rss/ships/ship_01.glb", import.meta.url).href },
+      remoteFallback: "https://raw.githubusercontent.com/shyeonic/storage/8a7253eb0ff11db007c2c1d7056d840d56e73e7f/ship_01.obj"
     },
-    remoteFallback: "https://raw.githubusercontent.com/shyeonic/storage/8a7253eb0ff11db007c2c1d7056d840d56e73e7f/ship_01.obj"
+    ship_02: {
+      local: { glb: new URL("../rss/ships/ship_02.glb", import.meta.url).href }
+    }
   },
   worldModels: {
     gas_01: {

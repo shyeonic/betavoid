@@ -1,6 +1,7 @@
 export class UIManager {
-  constructor({ config, i18n, keyBindings, keyBindingGroups, defaultKeyBindings }) {
+  constructor({ config, shipStats, i18n, keyBindings, keyBindingGroups, defaultKeyBindings }) {
     this.config = config;
+    this.shipStats = shipStats;
     this.i18n = i18n || {
       t: (key, params = {}, fallback = key) => fallback,
       resolveDefinitionText: (definition, field = "name", fallback = "") => definition?.[field] || fallback
@@ -21,24 +22,30 @@ export class UIManager {
     this.settingsReturnFocus = null;
     this.targetPopupReturnFocus = null;
     this.objectListReturnFocus = null;
+    this.playerPopupReturnFocus = null;
     this.cameraIconSwapTimer = 0;
     this.cameraIconSwapToken = 0;
     this.bottomNavIconSourceCache = new Map();
     this.bottomNavIconDataCache = new Map();
+    this.objectRowIconFetchCache = new Map();
+    this.objectRowIconTintedCache = new Map();
     this.selectedWorldObjectSummary = null;
     this.selectedObjectListTargetId = null;
     this.renderedObjectList = [];
-    this.objectListPayload = { buildings: [], resources: [] };
+    this.objectListPayload = { buildings: [], resources: [], betaVoids: [] };
     this.objectListCategory = "resources";
     this.objectListSort = {
       buildings: "sector",
-      resources: "sector"
+      resources: "sector",
+      betaVoids: "sector"
     };
     this.onKeyBindingsChange = null;
     this.onRequestObjectList = null;
     this.onSelectWorldObject = null;
     this.onNavigateToWorldObject = null;
     this.onClearWorldSelection = null;
+    this.onEnterTargetCam = null;
+    this.onProcessBetaVoid = null;
     this.boundBindingKeyDown = (event) => this.onBindingKeyDown(event);
     this.boundSelectionSummaryGlobalPointerDown = (event) => this.onSelectionSummaryGlobalPointerDown(event);
     this.elements = {
@@ -90,10 +97,10 @@ export class UIManager {
       chunkBoundsAllButton: this.getElement("#chunkBoundsAllButton"),
       chunkBoundsSectorButton: this.getElement("#chunkBoundsSectorButton"),
       chunkBoundsOffButton: this.getElement("#chunkBoundsOffButton"),
-      navRestoreFixedButton: this.getElement("#navRestoreFixedButton"),
-      navRestoreInfiniteButton: this.getElement("#navRestoreInfiniteButton"),
-      navRestoreCapRow: this.getElement("#navRestoreCapRow"),
-      navRestoreCapInput: this.getElement("#navRestoreCapInput"),
+      bottomNavPlayerButton: this.getElement("#bottomNavPlayerButton"),
+      playerPopup: this.getElement("#playerPopup"),
+      playerPopupCloseButton: this.getElement("#playerPopupCloseButton"),
+      playerShipGrid: this.getElement("#playerShipGrid"),
       loadingText: this.getElement("#loadingText"),
       loadingBar: this.getElement("#loadingBar"),
       loadingDetail: this.getElement("#loadingDetail"),
@@ -111,6 +118,7 @@ export class UIManager {
       targetingCanvas: this.getElement("#targetingCanvas"),
       selectionSummary: this.getElement("#selectionSummary"),
       selectionName: this.getElement("#selectionName"),
+      selectionFocusButton: this.getElement("#selectionFocusButton"),
       selectionClearButton: this.getElement("#selectionClearButton"),
       readout: this.getElement(".readout"),
       targetPopupBackdrop: this.getElement("#targetPopupBackdrop"),
@@ -145,12 +153,12 @@ export class UIManager {
       antialias: false
     };
     this.chunkBoundsMode = "all";
-    this.navRestoreMode = "fixed";
+    this.selectedShipId = "ship_01";
     this.speedPointerId = null;
     this.onSetSpeed = null;
     document.documentElement.lang = this.i18n.locale || document.documentElement.lang;
-    this.elements.speedGauge.setAttribute("aria-valuemin", String(this.config.minSpeed));
-    this.elements.speedGauge.setAttribute("aria-valuemax", String(this.config.maxSpeed));
+    this.elements.speedGauge.setAttribute("aria-valuemin", String(this.shipStats.minSpeed));
+    this.elements.speedGauge.setAttribute("aria-valuemax", String(this.shipStats.maxSpeed));
     this.renderStaticText();
     this.renderLanguageSettings();
     this.setStartButtonText("Start");
@@ -220,12 +228,13 @@ export class UIManager {
     onEnvironmentModeChange,
     onPerformanceSettingChange,
     onChunkBoundsModeChange,
-    onNavRestoreModeChange,
-    onNavRestoreCapChange,
+    onShipSelect,
     onRequestObjectList,
     onSelectWorldObject,
     onNavigateToWorldObject,
     onClearWorldSelection,
+    onEnterTargetCam,
+    onProcessBetaVoid,
     onToggleCameraMode
   }) {
     this.onSetSpeed = onSetSpeed;
@@ -234,6 +243,8 @@ export class UIManager {
     this.onSelectWorldObject = typeof onSelectWorldObject === "function" ? onSelectWorldObject : null;
     this.onNavigateToWorldObject = typeof onNavigateToWorldObject === "function" ? onNavigateToWorldObject : null;
     this.onClearWorldSelection = typeof onClearWorldSelection === "function" ? onClearWorldSelection : null;
+    this.onEnterTargetCam = typeof onEnterTargetCam === "function" ? onEnterTargetCam : null;
+    this.onProcessBetaVoid = typeof onProcessBetaVoid === "function" ? onProcessBetaVoid : null;
 
     this.elements.startGateScene.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
@@ -375,19 +386,34 @@ export class UIManager {
         onChunkBoundsModeChange(button.dataset.chunkBoundsMode);
       });
     });
-    [
-      this.elements.navRestoreFixedButton,
-      this.elements.navRestoreInfiniteButton
-    ].forEach((button) => {
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onNavRestoreModeChange(button.dataset.navRestoreMode);
-      });
+    this.elements.bottomNavPlayerButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeBottomNavMenu();
+      this.openPlayerPopup();
     });
-    this.elements.navRestoreCapInput.addEventListener("change", (event) => {
-      const val = parseFloat(event.target.value);
-      if (Number.isFinite(val) && val >= 0) onNavRestoreCapChange(val);
+    this.elements.playerPopupCloseButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closePlayerPopup();
+    });
+    this.elements.playerPopup.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (event.target === this.elements.playerPopup) {
+        this.closePlayerPopup();
+        return;
+      }
+      const card = event.target instanceof Element ? event.target.closest("[data-ship-id]") : null;
+      if (card instanceof HTMLElement && typeof onShipSelect === "function") {
+        event.preventDefault();
+        onShipSelect(card.dataset.shipId);
+      }
+    });
+    this.elements.playerPopup.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.closePlayerPopup();
     });
     this.elements.keyBindingList.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
@@ -446,9 +472,15 @@ export class UIManager {
       event.stopPropagation();
       if (typeof onToggleCameraMode === "function") onToggleCameraMode();
     });
+    this.elements.selectionFocusButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (this.onEnterTargetCam) this.onEnterTargetCam();
+    });
     this.elements.selectionSummary.addEventListener("click", async (event) => {
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest("#selectionClearButton")) return;
+      if (target?.closest("#selectionFocusButton")) return;
 
       event.preventDefault();
       event.stopPropagation();
@@ -504,6 +536,17 @@ export class UIManager {
         if (!object || !this.onNavigateToWorldObject) return;
 
         this.onNavigateToWorldObject(object);
+        this.closeObjectList({ restoreFocus: false });
+        return;
+      }
+
+      const processButton = target?.closest("[data-beta-void-process-id]");
+      if (processButton) {
+        event.preventDefault();
+        const object = this.findRenderedObject(processButton.dataset.betaVoidProcessId);
+        if (!object || !this.onProcessBetaVoid) return;
+
+        this.onProcessBetaVoid(object);
         this.closeObjectList({ restoreFocus: false });
         return;
       }
@@ -628,10 +671,10 @@ export class UIManager {
     this.elements.objectListPopup.setAttribute("aria-hidden", "false");
 
     try {
-      const payload = this.onRequestObjectList ? await this.onRequestObjectList() : { buildings: [], resources: [] };
-      this.renderObjectList(payload || { buildings: [], resources: [] });
+      const payload = this.onRequestObjectList ? await this.onRequestObjectList() : { buildings: [], resources: [], betaVoids: [] };
+      this.renderObjectList(payload || { buildings: [], resources: [], betaVoids: [] });
     } catch {
-      this.renderObjectList({ buildings: [], resources: [] });
+      this.renderObjectList({ buildings: [], resources: [], betaVoids: [] });
       this.showErrorToast("scanner unavailable");
     }
 
@@ -680,22 +723,62 @@ export class UIManager {
     this.objectListReturnFocus = null;
   }
 
-  renderObjectList({ buildings = [], resources = [] }) {
-    this.objectListPayload = { buildings, resources };
+  openPlayerPopup() {
+    this.playerPopupReturnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+      ? document.activeElement
+      : this.elements.bottomNavPlayerButton;
+    this.elements.playerPopup.hidden = false;
+    this.elements.playerPopup.removeAttribute("inert");
+    this.elements.playerPopup.classList.add("open");
+    this.elements.playerPopup.setAttribute("aria-hidden", "false");
+    try {
+      this.elements.playerPopupCloseButton.focus({ preventScroll: true });
+    } catch {
+      this.elements.playerPopupCloseButton.focus();
+    }
+  }
+
+  closePlayerPopup({ restoreFocus = true } = {}) {
+    if (this.elements.playerPopup.hidden) return;
+
+    const activeElement = document.activeElement;
+    this.elements.playerPopup.classList.remove("open");
+    this.elements.playerPopup.hidden = true;
+    this.elements.playerPopup.setAttribute("aria-hidden", "true");
+    this.elements.playerPopup.setAttribute("inert", "");
+
+    if (activeElement instanceof HTMLElement && this.elements.playerPopup.contains(activeElement)) {
+      activeElement.blur();
+    }
+
+    if (restoreFocus) {
+      const focusTarget = this.playerPopupReturnFocus instanceof HTMLElement && document.contains(this.playerPopupReturnFocus)
+        ? this.playerPopupReturnFocus
+        : this.elements.bottomNavPlayerButton;
+      try {
+        focusTarget.focus({ preventScroll: true });
+      } catch {
+        focusTarget.focus();
+      }
+    }
+
+    this.playerPopupReturnFocus = null;
+  }
+
+  renderObjectList({ buildings = [], resources = [], betaVoids = [] }) {
+    this.objectListPayload = { buildings, resources, betaVoids };
     this.renderObjectListCategory();
   }
 
   renderObjectListCategory() {
-    const category = this.objectListCategory === "buildings" ? "buildings" : "resources";
+    const category = this.getNormalizedObjectListCategory(this.objectListCategory);
     const items = this.getSortedObjectListItems(category);
     this.renderedObjectList = items;
     this.selectedObjectListTargetId = null;
     this.elements.objectListContent.replaceChildren();
     this.closeObjectListTransient();
 
-    this.elements.objectListCategoryCurrent.textContent = category === "buildings"
-      ? this.t("ui.scanner.categories.buildings", "Buildings")
-      : this.t("ui.scanner.categories.resources", "Resources");
+    this.elements.objectListCategoryCurrent.textContent = this.getObjectListCategoryLabel(category);
     this.renderObjectListSortControls(items.length);
 
     if (items.length === 0) {
@@ -719,7 +802,9 @@ export class UIManager {
     tableHead.className = "object-list-table-head";
     const columns = category === "buildings"
       ? ["Sector", "Name", "Position"]
-      : ["Sector", "Type", "Position"];
+      : category === "betaVoids"
+        ? ["Sector", "Name", "Position"]
+        : ["Sector", "Type", "Position"];
     columns.forEach((text) => {
       const cell = document.createElement("span");
       cell.textContent = text;
@@ -751,14 +836,16 @@ export class UIManager {
     const icon = document.createElement("img");
     icon.className = "object-row-icon";
     const iconUrl = item.iconUrl || (category === "buildings" ? "./rss/svg/ind_medium.svg" : "./rss/svg/ind_loot.svg");
+    icon.dataset.iconSrc = iconUrl;
     icon.src = iconUrl;
+    void this.applyObjectRowIconTint(icon, iconUrl);
     icon.alt = "";
     icon.decoding = "async";
     icon.setAttribute("aria-hidden", "true");
 
     const name = document.createElement("div");
     name.className = "object-row-name";
-    name.textContent = category === "buildings" ? item.name : item.typeLabel;
+    name.textContent = category === "buildings" || category === "betaVoids" ? item.name : item.typeLabel;
     name.title = name.textContent;
 
     main.append(icon, name);
@@ -804,6 +891,18 @@ export class UIManager {
       if (!object || !this.onNavigateToWorldObject) return;
 
       this.onNavigateToWorldObject(object);
+      this.closeObjectList({ restoreFocus: false });
+      return;
+    }
+
+    const processButton = target?.closest("[data-beta-void-process-id]");
+    if (processButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const object = this.findRenderedObject(processButton.dataset.betaVoidProcessId);
+      if (!object || !this.onProcessBetaVoid) return;
+
+      this.onProcessBetaVoid(object);
       this.closeObjectList({ restoreFocus: false });
       return;
     }
@@ -892,7 +991,7 @@ export class UIManager {
 
     const title = document.createElement("h3");
     title.className = "object-detail-popup-title";
-    title.textContent = object.kind === "building" ? object.name : object.typeLabel;
+    title.textContent = object.kind === "building" || object.kind === "betaVoid" ? object.name : object.typeLabel;
 
     const close = document.createElement("button");
     close.className = "object-detail-popup-close";
@@ -922,10 +1021,12 @@ export class UIManager {
     if (object.kind === "resource") {
       lines.splice(1, 0, this.createObjectBubbleLine(this.t("ui.scanner.fields.type", "Type"), object.typeLabel));
       lines.splice(2, 0, this.createObjectBubbleLine(this.t("ui.scanner.fields.amount", "Amount"), object.amountLabel));
-    } else {
+    } else if (object.kind === "building") {
       lines.splice(1, 0, this.createObjectBubbleLine(this.t("ui.scanner.fields.name", "Name"), object.name));
       lines.splice(2, 0, this.createObjectBubbleLine(this.t("ui.scanner.fields.status", "Status"), object.statusLabel));
       lines.splice(3, 0, this.createObjectBubbleLine(this.t("ui.scanner.fields.hp", "HP"), object.hpLabel));
+    } else if (object.kind === "betaVoid") {
+      lines.splice(1, 0, this.createObjectBubbleLine(this.t("ui.scanner.fields.name", "Name"), object.name));
     }
 
     const nav = document.createElement("button");
@@ -934,7 +1035,17 @@ export class UIManager {
     nav.dataset.objectNavId = object.id;
     nav.textContent = this.t("ui.scanner.autoNavigate", "Auto Navigate");
 
-    popup.append(header, ...lines, nav);
+    const actions = [nav];
+    if (object.kind === "betaVoid" && object.status === "active") {
+      const process = document.createElement("button");
+      process.className = "object-navigate-button";
+      process.type = "button";
+      process.dataset.betaVoidProcessId = object.id;
+      process.textContent = "Process";
+      actions.push(process);
+    }
+
+    popup.append(header, ...lines, ...actions);
     return popup;
   }
 
@@ -1049,11 +1160,13 @@ export class UIManager {
     popup.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
       const navButton = target?.closest("[data-object-nav-id]");
-      if (!navButton) return;
+      const processButton = target?.closest("[data-beta-void-process-id]");
+      if (!navButton && !processButton) return;
 
       event.preventDefault();
       event.stopPropagation();
-      if (this.onNavigateToWorldObject) this.onNavigateToWorldObject(object);
+      if (navButton && this.onNavigateToWorldObject) this.onNavigateToWorldObject(object);
+      if (processButton && this.onProcessBetaVoid) this.onProcessBetaVoid(object);
       this.closeStandaloneObjectDetailPopup();
     });
 
@@ -1149,7 +1262,18 @@ export class UIManager {
   getObjectListCategoryForKind(kind) {
     if (kind === "building") return "buildings";
     if (kind === "resource") return "resources";
+    if (kind === "betaVoid") return "betaVoids";
     return null;
+  }
+
+  getNormalizedObjectListCategory(category) {
+    return ["resources", "buildings", "betaVoids"].includes(category) ? category : "resources";
+  }
+
+  getObjectListCategoryLabel(category) {
+    if (category === "buildings") return this.t("ui.scanner.categories.buildings", "Buildings");
+    if (category === "betaVoids") return this.t("ui.scanner.categories.betaVoids", "Beta Void");
+    return this.t("ui.scanner.categories.resources", "Resources");
   }
 
   revealObjectListBubble(objectRef) {
@@ -1163,13 +1287,13 @@ export class UIManager {
   }
 
   setObjectListCategory(category) {
-    this.objectListCategory = category === "buildings" ? "buildings" : "resources";
+    this.objectListCategory = this.getNormalizedObjectListCategory(category);
     this.closeObjectDetailPopup();
     this.renderObjectListCategory();
   }
 
   stepObjectListCategory(step) {
-    const categories = ["resources", "buildings"];
+    const categories = ["resources", "buildings", "betaVoids"];
     const currentIndex = categories.indexOf(this.objectListCategory);
     const nextIndex = (currentIndex + (Number.isFinite(step) ? step : 1) + categories.length) % categories.length;
     this.setObjectListCategory(categories[nextIndex]);
@@ -1228,23 +1352,25 @@ export class UIManager {
   }
 
   getObjectListSortOptions(category) {
-    return category === "buildings"
-      ? [
-          { id: "sector", label: "Sector" },
-          { id: "name", label: "Name" },
-          { id: "status", label: "Status" },
-          { id: "x", label: "X" },
-          { id: "y", label: "Y" },
-          { id: "z", label: "Z" }
-        ]
-      : [
-          { id: "sector", label: "Sector" },
-          { id: "type", label: "Type" },
-          { id: "amount", label: "Amount" },
-          { id: "x", label: "X" },
-          { id: "y", label: "Y" },
-          { id: "z", label: "Z" }
-        ];
+    if (category === "resources") {
+      return [
+        { id: "sector", label: "Sector" },
+        { id: "type", label: "Type" },
+        { id: "amount", label: "Amount" },
+        { id: "x", label: "X" },
+        { id: "y", label: "Y" },
+        { id: "z", label: "Z" }
+      ];
+    }
+
+    return [
+      { id: "sector", label: "Sector" },
+      { id: "name", label: "Name" },
+      { id: "status", label: "Status" },
+      { id: "x", label: "X" },
+      { id: "y", label: "Y" },
+      { id: "z", label: "Z" }
+    ];
   }
 
   getSortedObjectListItems(category) {
@@ -1635,6 +1761,7 @@ export class UIManager {
     this.environmentMode = mode === "dark" ? "dark" : "light";
     document.documentElement.dataset.environmentMode = this.environmentMode;
     this.updateBottomNavIconColors();
+    this.refreshObjectRowIcons();
     [this.elements.environmentLightButton, this.elements.environmentDarkButton].forEach((button) => {
       const active = button.dataset.environmentMode === this.environmentMode;
       button.classList.toggle("active", active);
@@ -1676,6 +1803,102 @@ export class UIManager {
     if (icon.dataset.svgTintSource === sourceUrl && icon.dataset.svgTintColor === color) {
       icon.style.setProperty("--bottom-nav-icon-image", imageValue);
     }
+  }
+
+  tintSvgToDataUrl(svg, color, dark) {
+    let tinted = svg.replace(/#6975a0/gi, color);
+    if (dark) {
+      tinted = tinted.replace(
+        /\b(fill|stroke|color|stop-color)=("|')(?:#fff(?:fff)?|white)\2/gi,
+        "$1=$2#000000$2"
+      );
+      tinted = tinted.replace(
+        /\b(fill|stroke|color|stop-color)\s*:\s*(?:#fff(?:fff)?|white)(?=[;\s"'])/gi,
+        "$1:#000000"
+      );
+    }
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(tinted)}`;
+  }
+
+  async applyObjectRowIconTint(icon, url) {
+    if (!url || !/\.svg(?:[?#]|$)/i.test(url)) return;
+
+    const dark = this.environmentMode === "dark";
+    const color = getComputedStyle(document.documentElement)
+      .getPropertyValue("--ui_target_color").trim() || (dark ? "#00ff66" : "#7373ff");
+    const cacheKey = `${url}|${color}|${dark ? "d" : "l"}`;
+
+    const cached = this.objectRowIconTintedCache.get(cacheKey);
+    if (cached) {
+      icon.src = cached;
+      return;
+    }
+
+    try {
+      let fetchPromise = this.objectRowIconFetchCache.get(url);
+      if (!fetchPromise) {
+        fetchPromise = fetch(url).then((r) => {
+          if (!r.ok) throw new Error();
+          return r.text();
+        });
+        this.objectRowIconFetchCache.set(url, fetchPromise);
+      }
+      const svg = await fetchPromise;
+      const dataUrl = this.tintSvgToDataUrl(svg, color, dark);
+      this.objectRowIconTintedCache.set(cacheKey, dataUrl);
+      icon.src = dataUrl;
+    } catch {
+      // icon.src already shows original
+    }
+  }
+
+  async preloadObjectRowIcons(urls) {
+    const svgUrls = [...new Set((urls || []).filter((url) => url && /\.svg(?:[?#]|$)/i.test(url)))];
+    if (!svgUrls.length) return;
+
+    const root = document.documentElement;
+    const savedMode = root.dataset.environmentMode;
+    root.dataset.environmentMode = "light";
+    const lightColor = getComputedStyle(root).getPropertyValue("--ui_target_color").trim() || "#7373ff";
+    root.dataset.environmentMode = "dark";
+    const darkColor = getComputedStyle(root).getPropertyValue("--ui_target_color").trim() || "#00ff66";
+    if (savedMode !== undefined) {
+      root.dataset.environmentMode = savedMode;
+    } else {
+      delete root.dataset.environmentMode;
+    }
+
+    await Promise.all(svgUrls.map(async (url) => {
+      let fetchPromise = this.objectRowIconFetchCache.get(url);
+      if (!fetchPromise) {
+        fetchPromise = fetch(url).then((r) => {
+          if (!r.ok) throw new Error();
+          return r.text();
+        });
+        this.objectRowIconFetchCache.set(url, fetchPromise);
+      }
+      try {
+        const svg = await fetchPromise;
+        const lightKey = `${url}|${lightColor}|l`;
+        if (!this.objectRowIconTintedCache.has(lightKey)) {
+          this.objectRowIconTintedCache.set(lightKey, this.tintSvgToDataUrl(svg, lightColor, false));
+        }
+        const darkKey = `${url}|${darkColor}|d`;
+        if (!this.objectRowIconTintedCache.has(darkKey)) {
+          this.objectRowIconTintedCache.set(darkKey, this.tintSvgToDataUrl(svg, darkColor, true));
+        }
+      } catch {
+        // preload failure is non-critical
+      }
+    }));
+  }
+
+  refreshObjectRowIcons() {
+    document.querySelectorAll(".object-row-icon[data-icon-src]").forEach((icon) => {
+      if (icon instanceof HTMLImageElement) {
+        void this.applyObjectRowIconTint(icon, icon.dataset.iconSrc);
+      }
+    });
   }
 
   getSvgIconSourceUrl(icon) {
@@ -1744,18 +1967,12 @@ export class UIManager {
       ?.classList.toggle("is-off", !enabled);
   }
 
-  setNavRestoreMode(mode) {
-    this.navRestoreMode = mode === "infinite" ? "infinite" : "fixed";
-    [this.elements.navRestoreFixedButton, this.elements.navRestoreInfiniteButton].forEach((btn) => {
-      const active = btn.dataset.navRestoreMode === this.navRestoreMode;
-      btn.classList.toggle("active", active);
-      btn.setAttribute("aria-pressed", active ? "true" : "false");
+  setSelectedShipId(shipId) {
+    this.selectedShipId = shipId;
+    this.elements.playerShipGrid.querySelectorAll("[data-ship-id]").forEach((card) => {
+      card.classList.toggle("active", card.dataset.shipId === shipId);
+      card.setAttribute("aria-pressed", card.dataset.shipId === shipId ? "true" : "false");
     });
-    this.elements.navRestoreCapRow.hidden = this.navRestoreMode === "infinite";
-  }
-
-  setNavRestoreCap(minutes) {
-    this.elements.navRestoreCapInput.value = String(minutes);
   }
 
   setCameraOrbitActive(active) {
@@ -1836,8 +2053,18 @@ export class UIManager {
     this.elements.selectionSummary.hidden = true;
     this.elements.selectionSummary.removeAttribute("aria-label");
     this.elements.selectionName.textContent = "";
+    this.elements.selectionFocusButton.classList.remove("is-active");
+    this.elements.selectionFocusButton.hidden = true;
     this.closeSelectionSummaryBubble();
     this.closeStandaloneObjectDetailPopup();
+  }
+
+  setTargetCamActive(active) {
+    this.elements.selectionFocusButton.classList.toggle("is-active", active);
+  }
+
+  setFocusButtonVisible(visible) {
+    this.elements.selectionFocusButton.hidden = !visible;
   }
 
   hideStartScene() {
@@ -1906,22 +2133,27 @@ export class UIManager {
       : "Enable autopilot navigation";
   }
 
+  refreshSpeedGaugeRange() {
+    this.elements.speedGauge.setAttribute("aria-valuemin", String(this.shipStats.minSpeed));
+    this.elements.speedGauge.setAttribute("aria-valuemax", String(this.shipStats.maxSpeed));
+  }
+
   speedToGaugePercent(value) {
-    const clamped = Math.max(this.config.minSpeed, Math.min(this.config.maxSpeed, value));
+    const clamped = Math.max(this.shipStats.minSpeed, Math.min(this.shipStats.maxSpeed, value));
     if (clamped < 0) {
-      return this.mapLinear(clamped, this.config.minSpeed, 0, 0, this.config.reverseGaugePercent);
+      return this.mapLinear(clamped, this.shipStats.minSpeed, 0, 0, this.config.reverseGaugePercent);
     }
 
-    return this.mapLinear(clamped, 0, this.config.maxSpeed, this.config.reverseGaugePercent, 100);
+    return this.mapLinear(clamped, 0, this.shipStats.maxSpeed, this.config.reverseGaugePercent, 100);
   }
 
   gaugePercentToSpeed(percent) {
     const clamped = Math.max(0, Math.min(100, percent));
     if (clamped < this.config.reverseGaugePercent) {
-      return this.mapLinear(clamped, 0, this.config.reverseGaugePercent, this.config.minSpeed, 0);
+      return this.mapLinear(clamped, 0, this.config.reverseGaugePercent, this.shipStats.minSpeed, 0);
     }
 
-    return this.mapLinear(clamped, this.config.reverseGaugePercent, 100, 0, this.config.maxSpeed);
+    return this.mapLinear(clamped, this.config.reverseGaugePercent, 100, 0, this.shipStats.maxSpeed);
   }
 
   getSpeedFromPointer(event) {
@@ -1949,11 +2181,6 @@ export class UIManager {
     event.stopPropagation();
     this.speedPointerId = event.pointerId;
     this.elements.speedControl.classList.add("is-dragging");
-    try {
-      this.elements.speedGauge.focus({ preventScroll: true });
-    } catch {
-      this.elements.speedGauge.focus();
-    }
     this.elements.speedControl.setPointerCapture(event.pointerId);
     this.setSpeedFromPointer(event);
   }
@@ -1990,8 +2217,8 @@ export class UIManager {
     if (event.code === "ArrowRight" || event.code === "ArrowUp") nextSpeed = current + smallStep;
     if (event.code === "PageDown") nextSpeed = current - largeStep;
     if (event.code === "PageUp") nextSpeed = current + largeStep;
-    if (event.code === "Home") nextSpeed = this.config.minSpeed;
-    if (event.code === "End") nextSpeed = this.config.maxSpeed;
+    if (event.code === "Home") nextSpeed = this.shipStats.minSpeed;
+    if (event.code === "End") nextSpeed = this.shipStats.maxSpeed;
 
     if (nextSpeed === null) return;
 

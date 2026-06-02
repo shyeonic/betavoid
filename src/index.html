@@ -20,6 +20,31 @@
       --svg-default-color: #6975A0;
       --ui_color: #6975A0;
       --ui_target_color: #6975A0;
+      --bg: #f3fbff;
+      --speed-gauge-bg: rgba(255, 255, 255, 0.8);
+      --speed-gauge-border: rgba(43, 98, 140, 0.6);
+      --speed-values-color: rgba(19, 48, 71, 0.88);
+      --speed-gauge-zero-color: #00000066;
+      --speed-gauge-target-color: #6975a0;
+      --speed-gauge-target-shadow: rgb(10 17 113 / 30%);
+      --selection-bg: rgba(246, 251, 255, 0.82);
+      --selection-border: rgba(43, 98, 140, 0.26);
+      --selection-hover-border: rgba(43, 98, 140, 0.44);
+      --selection-hover-bg: rgba(246, 251, 255, 0.94);
+      --bubble-bg: #fff;
+      --bubble-border: rgba(43, 98, 140, 0.16);
+      --bubble-button-bg: #fff;
+      --backdrop-bg: rgb(237 249 255 / 45%);
+      --backdrop-blur: 0.4vh;
+      --list-panel-shadow: rgba(66, 139, 190, 0.22);
+      --row-hover-bg: rgba(255, 255, 255, 0.45);
+      --row-active-bg: rgba(229, 246, 255, 0.78);
+      --row-active-shadow: rgba(99, 210, 255, 0.78);
+      --navigate-border: rgba(99, 210, 255, 0.62);
+      --navigate-bg: rgba(99, 210, 255, 0.18);
+      --btn-active-bg: rgba(206, 238, 255, 0.85);
+      --selection-active-bg: rgba(200, 238, 255, 0.92);
+      --list-inner: rgba(0, 0, 255, 0.45);
     }
 
     :root[data-environment-mode="light"] {
@@ -28,8 +53,74 @@
     }
 
     :root[data-environment-mode="dark"] {
+      color-scheme: dark;
+      --panel: rgba(10, 20, 36, 0.86);
+      --panel-strong: #0a1624;
+      --line: rgba(60, 128, 190, 0.28);
+      --text: #c4e2f6;
+      --muted: #4e7a94;
+      --svg-default-color: #5278a8;
       --ui_color: #ffffff;
       --ui_target_color: #00ff66;
+      --bg: #060e1a;
+      --speed-gauge-bg: rgba(10, 22, 38, 0.85);
+      --speed-gauge-border: rgba(60, 128, 190, 0.55);
+      --speed-values-color: rgba(180, 220, 248, 0.90);
+      --speed-gauge-zero-color: rgba(255, 255, 255, 0.25);
+      --speed-gauge-target-color: #63d2ff;
+      --speed-gauge-target-shadow: rgba(99, 210, 255, 0.35);
+      --selection-bg: rgba(10, 20, 36, 0.88);
+      --selection-border: rgba(60, 128, 190, 0.30);
+      --selection-hover-border: rgba(80, 160, 220, 0.50);
+      --selection-hover-bg: rgba(10, 22, 40, 0.96);
+      --bubble-bg: #0d1e30;
+      --bubble-border: rgba(60, 128, 190, 0.22);
+      --bubble-button-bg: #0d1e30;
+      --backdrop-bg: rgba(4, 10, 20, 0.60);
+      --backdrop-blur: 0.6vh;
+      --list-panel-shadow: rgba(0, 30, 70, 0.50);
+      --row-hover-bg: rgba(255, 255, 255, 0.06);
+      --row-active-bg: rgba(20, 50, 80, 0.70);
+      --row-active-shadow: rgba(60, 180, 255, 0.60);
+      --navigate-border: rgba(60, 180, 255, 0.55);
+      --navigate-bg: rgba(60, 180, 255, 0.14);
+      --btn-active-bg: rgba(15, 42, 72, 0.80);
+      --selection-active-bg: rgba(8, 26, 50, 0.98);
+      --list-inner: rgba(0, 255, 102, 0.75);
+    }
+
+    /* start-scene / settings-backdrop 는 다크 모드에서도 라이트 테마 유지 */
+    .start-scene,
+    .start-settings-backdrop {
+      color-scheme: light;
+      color: var(--text);
+      --panel: rgba(246, 251, 255, 0.74);
+      --panel-strong: #edf7ff;
+      --line: rgba(43, 98, 140, 0.22);
+      --text: #133047;
+      --muted: #537083;
+      --svg-default-color: #6975A0;
+      --ui_color: #6975A0;
+      --ui_target_color: #6975A0;
+      --bg: #f3fbff;
+      --bubble-bg: #fff;
+      --bubble-border: rgba(43, 98, 140, 0.16);
+      --bubble-button-bg: #fff;
+      --backdrop-bg: rgb(237 249 255 / 45%);
+      --backdrop-blur: 0.4vh;
+      --list-panel-shadow: rgba(66, 139, 190, 0.22);
+      --row-hover-bg: rgba(255, 255, 255, 0.45);
+      --row-active-bg: rgba(229, 246, 255, 0.78);
+      --row-active-shadow: rgba(99, 210, 255, 0.78);
+      --navigate-border: rgba(99, 210, 255, 0.62);
+      --navigate-bg: rgba(99, 210, 255, 0.18);
+      --selection-bg: rgba(246, 251, 255, 0.82);
+      --selection-border: rgba(43, 98, 140, 0.26);
+      --selection-hover-border: rgba(43, 98, 140, 0.44);
+      --selection-hover-bg: rgba(246, 251, 255, 0.94);
+      --btn-active-bg: rgba(206, 238, 255, 0.85);
+      --selection-active-bg: rgba(200, 238, 255, 0.92);
+      --list-inner: rgba(0, 0, 255, 0.45);
     }
 
     * {
@@ -61,7 +152,7 @@
       height: 100%;
       margin: 0;
       overflow: hidden;
-      background: #f3fbff;
+      background: var(--bg);
       color: var(--text);
       font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
       letter-spacing: 0;
@@ -98,7 +189,7 @@
     }
 
     button:active:not(:disabled) {
-      background: rgba(206, 238, 255, 0.85);
+      background: var(--btn-active-bg);
     }
 
     button:disabled {
@@ -195,7 +286,7 @@
       transform: translateY(-50%);
       display: inline-flex;
       gap: 0.8vh;
-      color: rgba(19, 48, 71, 0.88);
+      color: var(--speed-values-color);
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
       pointer-events: none;
@@ -211,8 +302,8 @@
       height: 2.4vh;
       overflow: visible;
       border-radius: 0.6vh;
-      background: rgba(255, 255, 255, 0.8);
-      border: 0.12vh solid rgba(43, 98, 140, 0.6);
+      background: var(--speed-gauge-bg);
+      border: 0.12vh solid var(--speed-gauge-border);
       cursor: ew-resize;
       touch-action: none;
     }
@@ -230,20 +321,20 @@
     .speed-gauge-fill {
       left: 50%;
       width: 0;
-      background: rgba(99, 210, 255, 0.74);
+      background: rgba(99, 210, 255, 0.44);
       box-shadow: 0 0 1.9vh rgba(99, 210, 255, 0.22);
     }
 
     .speed-gauge-fill.is-negative {
-      background: rgb(255 99 144 / 74%);
+      background: rgb(255 99 144 / 24%);
       box-shadow: 0 0 1.9vh rgb(255 99 144 / 22%);
     }
 
     .speed-gauge-zero {
       left: 10%;
-      width: 0.28vh;
+      width: 0.12vh;
       transform: translateX(-0.14vh);
-      background: #00000066;
+      background: var(--speed-gauge-border);
     }
 
     .speed-gauge-target {
@@ -252,8 +343,8 @@
       bottom: -0.55vh;
       width: 0.42vh;
       transform: translateX(-0.21vh);
-      background: #6975a0;
-      box-shadow: 0 0 0.6vh rgb(10 17 113 / 30%);
+      background: var(--speed-gauge-target-color);
+      box-shadow: 0 0 0.6vh var(--speed-gauge-target-shadow);
     }
 
     .readout {
@@ -341,7 +432,7 @@
     .target-panel input {
       height: 3vh;
       width: 12vh;
-      border: 0.12vh solid rgba(43, 98, 140, 0.16);
+      border: 0.12vh solid var(--line);
       border-radius: 0.8vh;
       background: rgba(255, 255, 255, 0.58);
       color: var(--text);
@@ -350,6 +441,10 @@
       font-size: 1.4vh;
       font-variant-numeric: tabular-nums;
       outline: none;
+    }
+
+    :root[data-environment-mode="dark"] .target-panel input {
+      background: rgba(10, 28, 55, 0.60);
     }
 
     .target-panel.nav-active {
@@ -768,6 +863,15 @@
       --svg-icon-source: url("./rss/svg/ui_scan.svg");
     }
 
+    .svg-icon-player {
+      color: var(--svg-default-color);
+      --svg-icon-source: url("./rss/svg/ui_player.svg");
+    }
+
+    .svg-icon-target {
+      --svg-icon-source: url("./rss/svg/ui_main_toggle.svg");
+    }
+
     .svg-icon-drop-arrow {
       color: var(--svg-default-color);
       --svg-icon-source: url("./rss/svg/ui_drop_arrow.svg");
@@ -800,9 +904,9 @@
       justify-content: space-between;
       gap: 1.2vh;
       padding: 0.7vh 0.7vh 0.7vh 1.3vh;
-      border: 0.12vh solid rgba(43, 98, 140, 0.26);
+      border: 0.12vh solid var(--selection-border);
       border-radius: 1.1vh;
-      background: rgba(246, 251, 255, 0.82);
+      background: var(--selection-bg);
       backdrop-filter: blur(2.5vh);
       box-shadow: 0 0.4vh 1.6vh rgba(66, 139, 190, 0.18);
       color: var(--text);
@@ -816,8 +920,12 @@
 
     .selection-summary:hover,
     .selection-summary:focus-visible {
-      border-color: rgba(43, 98, 140, 0.44);
-      background: rgba(246, 251, 255, 0.94);
+      border-color: var(--selection-hover-border);
+      background: var(--selection-hover-bg);
+    }
+
+    .selection-summary:active {
+      background: var(--selection-active-bg);
     }
 
     .selection-name {
@@ -830,7 +938,8 @@
       line-height: 1.2;
     }
 
-    .selection-clear {
+    .selection-clear,
+    .selection-focus {
       flex: 0 0 3vh;
       width: 3vh;
       height: 3vh;
@@ -838,15 +947,22 @@
       place-items: center;
       padding: 0;
       border: none;
-      border-radius: 0;
+      border-radius: 0.5vh;
       background: transparent;
       color: var(--svg-default-color);
       cursor: pointer;
+      transition: color 0.15s, background 0.15s;
     }
 
-    .selection-clear .svg-icon {
+    .selection-clear .svg-icon,
+    .selection-focus .svg-icon {
       width: 2.2vh;
       height: 2.2vh;
+    }
+
+    .selection-focus.is-active {
+      color: var(--selection-hover-border);
+      background: rgba(66, 139, 190, 0.18);
     }
 
     .bottom-nav {
@@ -1031,8 +1147,8 @@
       display: none;
       place-items: center;
       padding: clamp(1.6vh, 4vw, 4vh);
-      background: rgb(237 249 255 / 45%);
-      backdrop-filter: blur(0.4vh);
+      background: var(--backdrop-bg);
+      backdrop-filter: blur(var(--backdrop-blur));
       pointer-events: auto;
     }
 
@@ -1051,7 +1167,7 @@
       border: 0.12vh solid var(--line);
       border-radius: 1.1vh;
       background: var(--panel-strong);
-      box-shadow: 0 2.4vh 7vh rgba(66, 139, 190, 0.22);
+      box-shadow: 0 2.4vh 7vh var(--list-panel-shadow);
     }
 
     .object-list-header {
@@ -1157,7 +1273,7 @@
     .object-list-sort-button .svg-icon {
       width: 1.2vh;
       height: 1.2vh;
-      color: #6975A0;
+      color: var(--svg-default-color);
       flex: 0 0 auto;
       transition: transform 160ms ease;
     }
@@ -1197,6 +1313,125 @@
     .object-list-sort-option.active {
       color: var(--text);
       background: rgba(99, 210, 255, 0.16);
+    }
+
+    :root[data-environment-mode="dark"] .object-list-sort-button {
+      background: rgba(10, 28, 55, 0.60);
+    }
+
+    :root[data-environment-mode="dark"] .object-list-sort-menu {
+      background: var(--bubble-bg);
+      box-shadow: 0 1vh 2.6vh rgba(0, 20, 50, 0.40);
+    }
+
+    .player-popup-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 16;
+      display: none;
+      place-items: center;
+      padding: clamp(1.6vh, 4vw, 4vh);
+      background: var(--backdrop-bg);
+      backdrop-filter: blur(var(--backdrop-blur));
+      pointer-events: auto;
+    }
+
+    .player-popup-backdrop.open {
+      display: grid;
+    }
+
+    .player-popup-panel {
+      position: relative;
+      width: min(52vh, 100%);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 0;
+      border: 0.12vh solid var(--line);
+      border-radius: 1.1vh;
+      background: var(--panel-strong);
+      box-shadow: 0 2.4vh 7vh var(--list-panel-shadow);
+    }
+
+    .player-popup-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.2vh;
+      min-height: 5.6vh;
+      padding: 1vh 1.2vh 1vh 1.6vh;
+      border-bottom: 0.12vh solid var(--line);
+    }
+
+    .player-popup-title {
+      margin: 0;
+      color: var(--line);
+      font-size: 2.4vh;
+      font-weight: normal;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .player-popup-body {
+      padding: 1.6vh;
+      display: flex;
+      flex-direction: column;
+      gap: 1.4vh;
+    }
+
+    .player-section-label {
+      color: var(--muted);
+      font-size: 1vh;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .player-ship-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(16vh, 1fr));
+      gap: 1vh;
+    }
+
+    .player-ship-card {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.6vh;
+      padding: 1.2vh 1.4vh;
+      border: 0.14vh solid var(--line);
+      border-radius: 0.8vh;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      transition: border-color 140ms ease, background 140ms ease;
+    }
+
+    .player-ship-card:hover {
+      border-color: var(--accent);
+      background: var(--row-hover-bg);
+    }
+
+    .player-ship-card.active {
+      border-color: var(--accent);
+      background: var(--btn-active-bg);
+    }
+
+    .player-ship-card-label {
+      font-size: 1.4vh;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .player-ship-card.active .player-ship-card-label {
+      color: var(--accent);
+    }
+
+    .player-ship-card-id {
+      font-size: 1vh;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      text-transform: uppercase;
     }
 
     .object-list-close {
@@ -1268,7 +1503,7 @@
 
     .object-row:hover,
     .object-row:focus-visible {
-      background: rgba(255, 255, 255, 0.45);
+      background: var(--row-hover-bg);
     }
 
     .object-row-main {
@@ -1284,7 +1519,6 @@
       flex: 0 0 auto;
       width: 2.8vh;
       height: 2.8vh;
-      opacity: 1;
       object-fit: contain;
     }
 
@@ -1300,7 +1534,6 @@
     .object-row-name {
       color: var(--text);
       font-size: 1.35vh;
-      font-weight: 700;
     }
 
     .object-row-sector,
@@ -1316,6 +1549,20 @@
       color: var(--text);
     }
 
+    .object-list-content .object-row-name {
+      color: var(--list-inner);
+    }
+
+    .object-list-content .object-row-sector,
+    .object-list-content .object-row-coordinates {
+      color: var(--list-inner);
+      opacity: 0.72;
+    }
+
+    .object-list-content .svg-icon {
+      color: var(--list-inner);
+    }
+
     .object-list-empty {
       display: grid;
       place-items: center;
@@ -1326,8 +1573,8 @@
     }
 
     .object-row.active {
-      background: rgba(229, 246, 255, 0.78);
-      box-shadow: inset 0.32vh 0 0 rgba(99, 210, 255, 0.78);
+      background: var(--row-active-bg);
+      box-shadow: inset 0.32vh 0 0 var(--row-active-shadow);
     }
 
     .object-detail-bubble {
@@ -1338,9 +1585,9 @@
       padding: 0.8vh 0.6vh;
       display: grid;
       gap: 0.6vh;
-      border: 0.12vh solid rgba(43, 98, 140, 0.16);
+      border: 0.12vh solid var(--bubble-border);
       border-radius: 1.2vh;
-      background: #fff;
+      background: var(--bubble-bg);
       box-shadow: 0 1.1vh 3.2vh rgba(66, 139, 190, 0.2);
     }
 
@@ -1353,7 +1600,7 @@
       height: 3vh;
       font-size: 1.2vh;
       padding: 0;
-      background: #fff;
+      background: var(--bubble-button-bg);
     }
 
     .object-bubble-line {
@@ -1375,8 +1622,8 @@
     }
 
     .object-navigate-button {
-      border-color: rgba(99, 210, 255, 0.62);
-      background: rgba(99, 210, 255, 0.18);
+      border-color: var(--navigate-border);
+      background: var(--navigate-bg);
       color: var(--text);
     }
 
@@ -1396,6 +1643,11 @@
       border-radius: 1vh;
       background: rgba(246, 251, 255, 0.98);
       box-shadow: 0 1.8vh 5vh rgba(66, 139, 190, 0.26);
+    }
+
+    :root[data-environment-mode="dark"] .object-detail-popup {
+      background: var(--bubble-bg);
+      box-shadow: 0 1.8vh 5vh rgba(0, 20, 50, 0.45);
     }
 
     .object-detail-popup.standalone {
@@ -1895,7 +2147,7 @@
 
   <div class="hud">
     <div class="speed-readout speed-readout-detail" id="speedControl">
-      <div class="speed-gauge" id="speedGauge" role="slider" tabindex="0" aria-label="Target speed"
+      <div class="speed-gauge" id="speedGauge" role="slider" tabindex="-1" aria-label="Target speed"
         aria-orientation="horizontal">
         <i class="speed-gauge-fill" id="speedGaugeFill"></i>
         <i class="speed-gauge-zero" id="speedZeroMark"></i>
@@ -1930,6 +2182,10 @@
 
     <div class="selection-summary" id="selectionSummary" tabindex="0" hidden>
       <div class="selection-name" id="selectionName"></div>
+      <button class="selection-focus" id="selectionFocusButton" type="button" aria-label="Focus camera on target"
+        title="Focus camera on target" hidden>
+        <span class="svg-icon svg-icon-target" aria-hidden="true"></span>
+      </button>
       <button class="selection-clear" id="selectionClearButton" type="button" aria-label="Cancel selection"
         title="Cancel selection">
         <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
@@ -1960,6 +2216,10 @@
         <div class="bottom-nav-stack" id="bottomNavMenuStack" aria-label="Burger menu actions">
           <button class="bottom-nav-button" id="bottomNavScanButton" type="button" aria-label="Scan" title="Scan">
             <span class="svg-icon svg-icon-scan bottom-nav-icon" aria-hidden="true"></span>
+          </button>
+          <button class="bottom-nav-button" id="bottomNavPlayerButton" type="button"
+            aria-label="Pilot" data-i18n-aria-label="ui.player.title" title="Pilot">
+            <span class="svg-icon svg-icon-player bottom-nav-icon" aria-hidden="true"></span>
           </button>
         </div>
         <button class="bottom-nav-button" id="bottomNavMenuButton" type="button" aria-label="Open menu"
@@ -2006,6 +2266,30 @@
           <div class="object-list-sort-controls" id="objectListSortControls" aria-label="Sort priority"></div>
         </div>
         <div class="object-list-content" id="objectListContent"></div>
+      </section>
+    </div>
+
+    <div class="player-popup-backdrop" id="playerPopup" aria-hidden="true" hidden inert>
+      <section class="player-popup-panel" role="dialog" aria-modal="true" aria-labelledby="playerPopupTitle">
+        <header class="player-popup-header">
+          <h2 class="player-popup-title" id="playerPopupTitle" data-i18n="ui.player.title">Pilot</h2>
+          <button class="object-list-close" id="playerPopupCloseButton" type="button" aria-label="Close" title="Close">
+            <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
+          </button>
+        </header>
+        <div class="player-popup-body">
+          <div class="player-section-label" data-i18n="ui.player.shipSection">Ship</div>
+          <div class="player-ship-grid" id="playerShipGrid">
+            <button class="player-ship-card active" id="playerShipCard01" type="button" data-ship-id="ship_01">
+              <span class="player-ship-card-label" data-i18n="ui.settings.gameplay.ship01">Ship I</span>
+              <span class="player-ship-card-id">ship_01</span>
+            </button>
+            <button class="player-ship-card" id="playerShipCard02" type="button" data-ship-id="ship_02">
+              <span class="player-ship-card-label" data-i18n="ui.settings.gameplay.ship02">Ship II</span>
+              <span class="player-ship-card-id">ship_02</span>
+            </button>
+          </div>
+        </div>
       </section>
     </div>
 
@@ -2083,22 +2367,6 @@
                 <button id="worldReloadButton" type="button" data-i18n="ui.settings.world.reloadDb">Reload DB</button>
                 <button class="danger" id="dataClearButton" type="button"
                   data-i18n="ui.settings.world.clearAllData">Clear All Data</button>
-              </div>
-              <div class="world-setting">
-                <div class="world-setting-label" data-i18n="ui.settings.gameplay.manualNavRestore">Manual Nav Restore
-                </div>
-                <div class="segmented-control col-2" role="group" aria-label="Manual navigation restore mode"
-                  data-i18n-aria-label="ui.settings.gameplay.manualNavRestore">
-                  <button class="active" id="navRestoreFixedButton" type="button" data-nav-restore-mode="fixed"
-                    data-i18n="ui.settings.gameplay.fixedStop">Fixed + Stop</button>
-                  <button id="navRestoreInfiniteButton" type="button" data-nav-restore-mode="infinite"
-                    data-i18n="ui.settings.gameplay.infinite">Infinite</button>
-                </div>
-              </div>
-              <div class="world-setting" id="navRestoreCapRow">
-                <div class="world-setting-label" data-i18n="ui.settings.gameplay.holdTimeMin">Hold Time (min)</div>
-                <input type="number" id="navRestoreCapInput" class="settings-number-input" min="0" max="1440" step="1"
-                  value="5">
               </div>
             </section>
             <section class="settings-panel-section" id="settingsKeysPanel" role="tabpanel"

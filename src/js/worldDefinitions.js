@@ -5,7 +5,7 @@ import { SECTOR_DEFINITIONS, SECTOR_IDS } from "./definitions/sectorDefinitions.
 
 export const WORLD_CONFIG = {
   dbName: "void-zero-world",
-  dbVersion: 5,
+  dbVersion: 6,
   renderScale: 0.01,
   sectorSize: {
     x: 400000,

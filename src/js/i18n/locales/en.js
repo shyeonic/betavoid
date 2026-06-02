@@ -36,10 +36,9 @@ export const en = {
         confirmClear: "Clear all stored data? (world, player, navigation)"
       },
       gameplay: {
-        manualNavRestore: "Manual Nav Restore",
-        fixedStop: "Fixed + Stop",
-        infinite: "Infinite",
-        holdTimeMin: "Hold Time (min)"
+        shipSelect: "Ship",
+        ship01: "Ship I",
+        ship02: "Ship II"
       },
       controls: {
         reset: "Reset"
@@ -61,10 +60,15 @@ export const en = {
         lightingEffects: "Lighting Effects"
       }
     },
+    player: {
+      title: "Pilot",
+      shipSection: "Ship"
+    },
     scanner: {
       categories: {
         buildings: "Buildings",
-        resources: "Resources"
+        resources: "Resources",
+        betaVoids: "Beta Void"
       },
       empty: "No objects detected",
       select: "Select",
@@ -86,6 +90,11 @@ export const en = {
         type: "Type"
       }
     }
+  },
+  betaVoid: {
+    name: "Beta Void",
+    processed: "Beta Void processed",
+    processFailed: "Beta Void process failed"
   },
   item: {
     item_001: { name: "Hydrite", description: "Hydrite mineral resource" },

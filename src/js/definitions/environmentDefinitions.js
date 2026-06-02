@@ -73,6 +73,16 @@ export const SPACE_ENVIRONMENT_PRESETS = {
           },
           fallbackColor: 0xffffff
         }
+      },
+      betaVoid: {
+        particleHue: 0.94,
+        particleHueRange: 0.04,
+        particleSaturation: 0.96,
+        particleMinLightness: 0.31,
+        particleMaxLightness: 0.67,
+        particleBlending: "normal",
+        coreColor: [1, 0.08, 0.22],
+        coreCenterColor: [1, 1, 1]
       }
     },
     targeting: {
@@ -135,6 +145,16 @@ export const SPACE_ENVIRONMENT_PRESETS = {
           },
           fallbackColor: 0xffffff
         }
+      },
+      betaVoid: {
+        particleHue: 0.94,
+        particleHueRange: 0.04,
+        particleSaturation: 0.96,
+        particleMinLightness: 0.05,
+        particleMaxLightness: 0.20,
+        particleBlending: "normal",
+        coreColor: [1, 0.08, 0.22],
+        coreCenterColor: [0, 0, 0]
       }
     },
     targeting: {

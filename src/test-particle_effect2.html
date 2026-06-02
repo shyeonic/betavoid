@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Void Rift - Batched GPU Test</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel: rgba(5, 8, 18, 0.66);
+      --line: rgba(126, 224, 255, 0.18);
+      --text: rgba(236, 248, 255, 0.92);
+      --muted: rgba(177, 205, 224, 0.7);
+      --accent: #78e4ff;
+      --accent-2: #b58cff;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #03040a;
+      color: var(--text);
+      font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      letter-spacing: 0;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    canvas:active {
+      cursor: grabbing;
+    }
+
+    .hud {
+      position: fixed;
+      left: 14px;
+      top: 14px;
+      width: min(390px, calc(100vw - 28px));
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 42px rgba(0, 0, 0, 0.24);
+      pointer-events: auto;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      color: #f5fbff;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .bar {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    button {
+      height: 30px;
+      min-width: 42px;
+      border: 1px solid rgba(126, 224, 255, 0.2);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    button.active {
+      border-color: rgba(120, 228, 255, 0.62);
+      background: rgba(120, 228, 255, 0.16);
+      color: var(--text);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px 12px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(126, 224, 255, 0.12);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .stats b {
+      color: #fff;
+      font-weight: 650;
+    }
+
+    .note {
+      margin-top: 9px;
+      color: rgba(177, 205, 224, 0.58);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+  <div class="hud">
+    <h1>Void Rift Batched GPU Test</h1>
+    <div class="bar" aria-label="Rifts per chunk">
+      <button type="button" data-density="1">1x</button>
+      <button type="button" data-density="2">2x</button>
+      <button type="button" data-density="3" class="active">3x</button>
+      <button type="button" id="toggleMotion">Pause</button>
+    </div>
+    <div class="stats">
+      <div>Chunks: <b id="statChunks">--</b></div>
+      <div>Rifts: <b id="statRifts">--</b></div>
+      <div>Visible: <b id="statVisible">--</b></div>
+      <div>Near: <b id="statNear">--</b></div>
+      <div>Points: <b id="statPoints">--</b></div>
+      <div>Draw calls: <b id="statDraws">--</b></div>
+      <div>FPS: <b id="statFps">--</b></div>
+      <div>CPU update: <b id="statCpu">--</b></div>
+      <div>Pixel ratio: <b id="statPixelRatio">--</b></div>
+      <div>Mode: <b>batched shader</b></div>
+    </div>
+    <div class="note">WASD/QE moves the probe. Drag or wheel adjusts the camera.</div>
+  </div>
+
+<script>
+(() => {
+  const CONFIG = {
+    chunkRadius: 2,
+    chunkSize: 46,
+    pointsPerRiftTarget: 126,
+    pixelRatioCap: 1.35,
+    farFadeStart: 130,
+    farFadeEnd: 190,
+    nearDistance: 72,
+    moveSpeed: 34,
+    seed: 918273
+  };
+
+  const state = {
+    density: 3,
+    paused: false,
+    time: 0,
+    cpuMs: 0,
+    fps: 0,
+    fpsFrames: 0,
+    fpsLastAt: performance.now(),
+    visibleRifts: 0,
+    nearRifts: 0,
+    riftCount: 0,
+    pointCount: 0,
+    chunkCount: 0,
+    keys: Object.create(null)
+  };
+
+  const ui = {
+    chunks: document.getElementById("statChunks"),
+    rifts: document.getElementById("statRifts"),
+    visible: document.getElementById("statVisible"),
+    near: document.getElementById("statNear"),
+    points: document.getElementById("statPoints"),
+    draws: document.getElementById("statDraws"),
+    fps: document.getElementById("statFps"),
+    cpu: document.getElementById("statCpu"),
+    pixelRatio: document.getElementById("statPixelRatio"),
+    densityButtons: Array.from(document.querySelectorAll("[data-density]")),
+    toggleMotion: document.getElementById("toggleMotion")
+  };
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x02030a);
+  scene.fog = new THREE.FogExp2(0x030611, 0.0065);
+
+  const camera = new THREE.PerspectiveCamera(64, window.innerWidth / window.innerHeight, 0.1, 1200);
+  const renderer = new THREE.WebGLRenderer({
+    antialias: false,
+    powerPreference: "high-performance"
+  });
+  renderer.setClearColor(0x02030a, 1);
+  renderer.setPixelRatio(getPixelRatio());
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  if ("outputEncoding" in renderer) renderer.outputEncoding = THREE.sRGBEncoding;
+  document.body.appendChild(renderer.domElement);
+
+  const clock = new THREE.Clock();
+  const root = new THREE.Group();
+  scene.add(root);
+
+  const ambient = new THREE.AmbientLight(0x9fbaff, 0.22);
+  const key = new THREE.DirectionalLight(0xbfefff, 0.55);
+  key.position.set(6, 9, 7);
+  scene.add(ambient, key);
+
+  const ship = new THREE.Group();
+  const shipBody = new THREE.Mesh(
+    new THREE.OctahedronGeometry(1.15, 0),
+    new THREE.MeshBasicMaterial({ color: 0xaeeaff, wireframe: true })
+  );
+  const shipCore = new THREE.Mesh(
+    new THREE.SphereGeometry(0.34, 12, 8),
+    new THREE.MeshBasicMaterial({ color: 0x78e4ff })
+  );
+  ship.add(shipBody, shipCore);
+  scene.add(ship);
+
+  const orbit = {
+    theta: 0.72,
+    phi: 1.12,
+    radius: 78,
+    targetTheta: 0.72,
+    targetPhi: 1.12,
+    targetRadius: 78,
+    minRadius: 24,
+    maxRadius: 190,
+    dragging: false,
+    lastX: 0,
+    lastY: 0
+  };
+
+  const scratch = {
+    forward: new THREE.Vector3(),
+    right: new THREE.Vector3(),
+    up: new THREE.Vector3(0, 1, 0),
+    movement: new THREE.Vector3(),
+    frustum: new THREE.Frustum(),
+    projection: new THREE.Matrix4(),
+    sphere: new THREE.Sphere(new THREE.Vector3(), 10)
+  };
+
+  const particleMaterial = makeRiftParticleMaterial({
+    baseOpacity: 0.74,
+    sizeScale: 1.0
+  });
+  const glowMaterial = makeRiftParticleMaterial({
+    baseOpacity: 0.14,
+    sizeScale: 5.2
+  });
+  const coreMaterial = makeCoreSpriteMaterial();
+
+  let particleGeometry = null;
+  let coreGeometry = null;
+  let glowPoints = null;
+  let riftPoints = null;
+  let corePoints = null;
+  let chunkLines = null;
+  let riftMeta = [];
+
+  const starField = createStarField(2600, 420, 1.45);
+  scene.add(starField);
+  rebuildField(state.density);
+  updateCamera();
+
+  window.addEventListener("keydown", (event) => {
+    state.keys[event.code] = true;
+  });
+
+  window.addEventListener("keyup", (event) => {
+    state.keys[event.code] = false;
+  });
+
+  renderer.domElement.addEventListener("pointerdown", (event) => {
+    orbit.dragging = true;
+    orbit.lastX = event.clientX;
+    orbit.lastY = event.clientY;
+    renderer.domElement.setPointerCapture(event.pointerId);
+  });
+
+  renderer.domElement.addEventListener("pointermove", (event) => {
+    if (!orbit.dragging) return;
+    const dx = event.clientX - orbit.lastX;
+    const dy = event.clientY - orbit.lastY;
+    orbit.lastX = event.clientX;
+    orbit.lastY = event.clientY;
+    orbit.targetTheta -= dx * 0.006;
+    orbit.targetPhi = THREE.MathUtils.clamp(orbit.targetPhi + dy * 0.005, 0.24, Math.PI - 0.24);
+  });
+
+  renderer.domElement.addEventListener("pointerup", (event) => {
+    orbit.dragging = false;
+    try {
+      renderer.domElement.releasePointerCapture(event.pointerId);
+    } catch (_) {}
+  });
+
+  renderer.domElement.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const zoom = Math.exp(event.deltaY * 0.0011);
+    orbit.targetRadius = THREE.MathUtils.clamp(orbit.targetRadius * zoom, orbit.minRadius, orbit.maxRadius);
+  }, { passive: false });
+
+  renderer.domElement.addEventListener("dblclick", () => {
+    ship.position.set(0, 0, 0);
+    orbit.targetTheta = 0.72;
+    orbit.targetPhi = 1.12;
+    orbit.targetRadius = 78;
+  });
+
+  ui.densityButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const density = Number(button.dataset.density);
+      if (!Number.isFinite(density) || density === state.density) return;
+      rebuildField(density);
+    });
+  });
+
+  ui.toggleMotion.addEventListener("click", () => {
+    state.paused = !state.paused;
+    ui.toggleMotion.textContent = state.paused ? "Play" : "Pause";
+    ui.toggleMotion.classList.toggle("active", state.paused);
+  });
+
+  window.addEventListener("resize", () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setPixelRatio(getPixelRatio());
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    updatePixelRatioUniforms();
+  });
+
+  function getPixelRatio() {
+    return Math.min(window.devicePixelRatio || 1, CONFIG.pixelRatioCap);
+  }
+
+  function makeRng(seed) {
+    let value = seed >>> 0;
+    return () => {
+      value = (value * 1664525 + 1013904223) >>> 0;
+      return value / 4294967296;
+    };
+  }
+
+  function randomUnitVector(rng) {
+    const z = rng() * 2 - 1;
+    const angle = rng() * Math.PI * 2;
+    const radius = Math.sqrt(Math.max(0, 1 - z * z));
+    return new THREE.Vector3(
+      radius * Math.cos(angle),
+      radius * Math.sin(angle),
+      z
+    );
+  }
+
+  function makeRiftParticleMaterial({ baseOpacity, sizeScale }) {
+    return new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uBaseOpacity: { value: baseOpacity },
+        uSizeScale: { value: sizeScale },
+        uPixelRatio: { value: getPixelRatio() },
+        uCameraPosition: { value: new THREE.Vector3() },
+        uFarFadeStart: { value: CONFIG.farFadeStart },
+        uFarFadeEnd: { value: CONFIG.farFadeEnd },
+        uNearDistance: { value: CONFIG.nearDistance }
+      },
+      vertexShader: `
+        attribute vec3 color;
+        attribute vec3 aCenter;
+        attribute vec3 aDrift;
+        attribute float aProgress;
+        attribute float aSeed;
+        attribute float aSize;
+        attribute float aAlpha;
+        attribute float aSpin;
+        attribute float aPhase;
+
+        varying vec3 vColor;
+        varying float vAlpha;
+
+        uniform float uTime;
+        uniform float uSizeScale;
+        uniform float uPixelRatio;
+        uniform vec3 uCameraPosition;
+        uniform float uFarFadeStart;
+        uniform float uFarFadeEnd;
+        uniform float uNearDistance;
+
+        void main() {
+          float angle = uTime * aSpin + aPhase;
+          float ca = cos(angle);
+          float sa = sin(angle);
+          vec3 local = position;
+          local.xz = mat2(ca, -sa, sa, ca) * local.xz;
+
+          float roll = angle * 0.31 + aSeed * 2.8;
+          float cr = cos(roll);
+          float sr = sin(roll);
+          local.xy = mat2(cr, -sr, sr, cr) * local.xy;
+
+          float wave = 1.0 + sin(uTime * (1.35 + aSeed * 0.35) + aProgress * 7.4 + aSeed * 19.0) * (0.025 + aProgress * 0.11);
+          float flow = sin(uTime * (0.72 + aSeed * 0.45) + aSeed * 24.0) * (0.08 + aProgress * 0.34);
+          vec3 worldPosition = aCenter + local * wave + aDrift * flow;
+
+          float distanceToCamera = length(aCenter - uCameraPosition);
+          float distanceFade = 1.0 - smoothstep(uFarFadeStart, uFarFadeEnd, distanceToCamera);
+          float nearBoost = 1.0 + (1.0 - smoothstep(0.0, uNearDistance, distanceToCamera)) * 0.38;
+          float pulse = 0.86 + 0.18 * sin(uTime * 2.2 + aSeed * 6.283 + aProgress * 8.0);
+
+          vColor = color;
+          vAlpha = aAlpha * pulse * distanceFade;
+
+          vec4 mvPosition = viewMatrix * vec4(worldPosition, 1.0);
+          float perspective = 260.0 / max(1.0, -mvPosition.z);
+          gl_PointSize = clamp(aSize * uSizeScale * perspective * uPixelRatio * nearBoost, 1.0, 74.0);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        varying float vAlpha;
+
+        uniform float uBaseOpacity;
+
+        void main() {
+          vec2 uv = gl_PointCoord - 0.5;
+          float d = length(uv);
+          float core = smoothstep(0.5, 0.06, d);
+          float haze = smoothstep(0.5, 0.23, d) * 0.36;
+          float alpha = (core + haze) * vAlpha * uBaseOpacity;
+          if (alpha < 0.008) discard;
+          gl_FragColor = vec4(vColor, alpha);
+        }
+      `
+    });
+  }
+
+  function makeCoreSpriteMaterial() {
+    return new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      blending: THREE.NormalBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uPixelRatio: { value: getPixelRatio() },
+        uCameraPosition: { value: new THREE.Vector3() },
+        uFarFadeStart: { value: CONFIG.farFadeStart },
+        uFarFadeEnd: { value: CONFIG.farFadeEnd }
+      },
+      vertexShader: `
+        attribute vec3 color;
+        attribute float aCoreSize;
+        attribute float aSeed;
+
+        varying vec3 vColor;
+        varying float vAlpha;
+
+        uniform float uTime;
+        uniform float uPixelRatio;
+        uniform vec3 uCameraPosition;
+        uniform float uFarFadeStart;
+        uniform float uFarFadeEnd;
+
+        void main() {
+          vec3 worldPosition = position;
+          float distanceToCamera = length(worldPosition - uCameraPosition);
+          float distanceFade = 1.0 - smoothstep(uFarFadeStart, uFarFadeEnd, distanceToCamera);
+          float pulse = 0.92 + 0.1 * sin(uTime * 1.8 + aSeed * 9.0);
+
+          vColor = color;
+          vAlpha = distanceFade * pulse;
+
+          vec4 mvPosition = modelViewMatrix * vec4(worldPosition, 1.0);
+          float perspective = 460.0 / max(1.0, -mvPosition.z);
+          gl_PointSize = clamp(aCoreSize * perspective * uPixelRatio, 12.0, 92.0);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        varying float vAlpha;
+
+        void main() {
+          vec2 uv = gl_PointCoord - 0.5;
+          float d = length(uv);
+          float mask = smoothstep(0.5, 0.455, d);
+          float core = 1.0 - smoothstep(0.31, 0.39, d);
+          float rim = smoothstep(0.5, 0.34, d) * (1.0 - smoothstep(0.34, 0.2, d));
+
+          vec3 color = mix(vec3(0.0), vColor * (0.38 + rim * 1.05), rim);
+          color = mix(color, vec3(0.0), core);
+
+          float edgeAlpha = (mask * smoothstep(0.5, 0.37, d) * 0.64 + rim * 0.32) * vAlpha;
+          float alpha = max(core, edgeAlpha);
+          if (alpha < 0.01) discard;
+          gl_FragColor = vec4(color, alpha);
+        }
+      `
+    });
+  }
+
+  function rebuildField(density) {
+    state.density = density;
+    ui.densityButtons.forEach((button) => {
+      button.classList.toggle("active", Number(button.dataset.density) === density);
+    });
+
+    const data = buildRiftField(density);
+    riftMeta = data.riftMeta;
+    state.riftCount = data.riftCount;
+    state.pointCount = data.pointCount;
+    state.chunkCount = data.chunkCount;
+
+    if (!glowPoints) {
+      particleGeometry = data.particleGeometry;
+      coreGeometry = data.coreGeometry;
+
+      glowPoints = new THREE.Points(particleGeometry, glowMaterial);
+      riftPoints = new THREE.Points(particleGeometry, particleMaterial);
+      corePoints = new THREE.Points(coreGeometry, coreMaterial);
+      glowPoints.frustumCulled = false;
+      riftPoints.frustumCulled = false;
+      corePoints.frustumCulled = false;
+      glowPoints.renderOrder = 1;
+      riftPoints.renderOrder = 2;
+      corePoints.renderOrder = 3;
+      root.add(glowPoints, riftPoints, corePoints);
+    } else {
+      const oldParticleGeometry = particleGeometry;
+      const oldCoreGeometry = coreGeometry;
+      particleGeometry = data.particleGeometry;
+      coreGeometry = data.coreGeometry;
+      glowPoints.geometry = particleGeometry;
+      riftPoints.geometry = particleGeometry;
+      corePoints.geometry = coreGeometry;
+      oldParticleGeometry.dispose();
+      oldCoreGeometry.dispose();
+    }
+
+    if (chunkLines) {
+      root.remove(chunkLines);
+      chunkLines.geometry.dispose();
+      chunkLines.material.dispose();
+    }
+    chunkLines = createChunkLines(CONFIG.chunkRadius, CONFIG.chunkSize);
+    root.add(chunkLines);
+    updateVisibilityStats();
+    updateHud();
+  }
+
+  function buildRiftField(density) {
+    const rng = makeRng(CONFIG.seed + density * 9973);
+    const chunkIds = [];
+    const positions = [];
+    const centers = [];
+    const drifts = [];
+    const colors = [];
+    const progress = [];
+    const seeds = [];
+    const sizes = [];
+    const alphas = [];
+    const spins = [];
+    const phases = [];
+    const corePositions = [];
+    const coreColors = [];
+    const coreSizes = [];
+    const coreSeeds = [];
+    const meta = [];
+    const radius = CONFIG.chunkRadius;
+    const size = CONFIG.chunkSize;
+
+    for (let z = -radius; z <= radius; z += 1) {
+      for (let y = -radius; y <= radius; y += 1) {
+        for (let x = -radius; x <= radius; x += 1) {
+          chunkIds.push({ x, y, z });
+          for (let i = 0; i < density; i += 1) {
+            const chunkCenter = new THREE.Vector3(x * size, y * size, z * size);
+            const margin = size * 0.2;
+            const center = new THREE.Vector3(
+              chunkCenter.x + (rng() - 0.5) * (size - margin * 2),
+              chunkCenter.y + (rng() - 0.5) * (size - margin * 2),
+              chunkCenter.z + (rng() - 0.5) * (size - margin * 2)
+            );
+            const scale = 0.76 + rng() * 0.58;
+            const seed = rng();
+            const phase = rng() * Math.PI * 2;
+            const hue = (0.55 + rng() * 0.19) % 1;
+            const spin = 0.035 + rng() * 0.055;
+            const branchCount = 5 + Math.floor(rng() * 2);
+            const pointsPerBranch = Math.max(8, Math.round(CONFIG.pointsPerRiftTarget / branchCount));
+
+            meta.push({
+              center,
+              radius: 11.5 * scale
+            });
+            addRiftBranches({
+              rng,
+              center,
+              scale,
+              seed,
+              phase,
+              hue,
+              spin,
+              branchCount,
+              pointsPerBranch,
+              positions,
+              centers,
+              drifts,
+              colors,
+              progress,
+              seeds,
+              sizes,
+              alphas,
+              spins,
+              phases
+            });
+
+            const coreColor = new THREE.Color().setHSL(hue + 0.04, 0.95, 0.56);
+            corePositions.push(center.x, center.y, center.z);
+            coreColors.push(coreColor.r, coreColor.g, coreColor.b);
+            coreSizes.push(7.4 * scale);
+            coreSeeds.push(seed);
+          }
+        }
+      }
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute("aCenter", new THREE.Float32BufferAttribute(centers, 3));
+    geometry.setAttribute("aDrift", new THREE.Float32BufferAttribute(drifts, 3));
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setAttribute("aProgress", new THREE.Float32BufferAttribute(progress, 1));
+    geometry.setAttribute("aSeed", new THREE.Float32BufferAttribute(seeds, 1));
+    geometry.setAttribute("aSize", new THREE.Float32BufferAttribute(sizes, 1));
+    geometry.setAttribute("aAlpha", new THREE.Float32BufferAttribute(alphas, 1));
+    geometry.setAttribute("aSpin", new THREE.Float32BufferAttribute(spins, 1));
+    geometry.setAttribute("aPhase", new THREE.Float32BufferAttribute(phases, 1));
+
+    const coreGeometry = new THREE.BufferGeometry();
+    coreGeometry.setAttribute("position", new THREE.Float32BufferAttribute(corePositions, 3));
+    coreGeometry.setAttribute("color", new THREE.Float32BufferAttribute(coreColors, 3));
+    coreGeometry.setAttribute("aCoreSize", new THREE.Float32BufferAttribute(coreSizes, 1));
+    coreGeometry.setAttribute("aSeed", new THREE.Float32BufferAttribute(coreSeeds, 1));
+
+    return {
+      particleGeometry: geometry,
+      coreGeometry,
+      riftMeta: meta,
+      riftCount: meta.length,
+      pointCount: geometry.attributes.position.count,
+      chunkCount: chunkIds.length
+    };
+  }
+
+  function addRiftBranches(options) {
+    const {
+      rng,
+      center,
+      scale,
+      seed,
+      phase,
+      hue,
+      spin,
+      branchCount,
+      pointsPerBranch,
+      positions,
+      centers,
+      drifts,
+      colors,
+      progress,
+      seeds,
+      sizes,
+      alphas,
+      spins,
+      phases
+    } = options;
+
+    for (let branch = 0; branch < branchCount; branch += 1) {
+      const dir = randomUnitVector(rng);
+      const tangent = Math.abs(dir.y) < 0.92
+        ? new THREE.Vector3(0, 1, 0)
+        : new THREE.Vector3(1, 0, 0);
+      const sideA = new THREE.Vector3().crossVectors(dir, tangent).normalize();
+      const sideB = new THREE.Vector3().crossVectors(dir, sideA).normalize();
+      const branchLength = (4.4 + rng() * 3.2) * scale;
+      const branchSeed = rng();
+
+      for (let j = 0; j < pointsPerBranch; j += 1) {
+        const rawT = j / Math.max(1, pointsPerBranch - 1);
+        const t = Math.pow(rawT, 1.34);
+        if (t > 0.77 && rng() < (t - 0.77) * 2.25) continue;
+
+        const radius = t * branchLength + 0.55 * scale;
+        const spiral = t * 9.6 + branchSeed * 6.283;
+        const rootSpread = smoothstep(0.045, 0.27, t);
+        const taper = Math.pow(Math.max(0, 1 - t), 0.74);
+        const branchWidth = (0.08 + 0.52 * rootSpread * taper) * scale * (0.55 + rng() * 0.72);
+        const jitter = (rng() - 0.5) * 0.42 * rootSpread * taper * scale;
+        const curlX = Math.cos(spiral) * branchWidth + jitter;
+        const curlY = Math.sin(spiral) * branchWidth + jitter * 0.5;
+        const x = dir.x * radius + sideA.x * curlX + sideB.x * curlY;
+        const y = dir.y * radius + sideA.y * curlX + sideB.y * curlY;
+        const z = dir.z * radius + sideA.z * curlX + sideB.z * curlY;
+
+        positions.push(x, y, z);
+        centers.push(center.x, center.y, center.z);
+        progress.push(t);
+
+        const pointSeed = (seed + rng()) % 1;
+        seeds.push(pointSeed);
+        spins.push(spin);
+        phases.push(phase + branch * 0.24);
+
+        const fade = 1 - t;
+        const color = new THREE.Color().setHSL((hue + t * 0.18) % 1, 0.96, 0.32 + fade * 0.34);
+        colors.push(color.r, color.g, color.b);
+        sizes.push((0.72 + fade * 1.15 + rng() * 0.34) * scale);
+        alphas.push(0.18 + fade * 0.86);
+
+        const drift = randomUnitVector(rng).multiplyScalar((0.14 + t * 0.56) * scale);
+        drifts.push(drift.x, drift.y, drift.z);
+      }
+    }
+  }
+
+  function smoothstep(edge0, edge1, value) {
+    const x = THREE.MathUtils.clamp((value - edge0) / (edge1 - edge0), 0, 1);
+    return x * x * (3 - 2 * x);
+  }
+
+  function createChunkLines(radius, size) {
+    const positions = [];
+    for (let z = -radius; z <= radius; z += 1) {
+      for (let y = -radius; y <= radius; y += 1) {
+        for (let x = -radius; x <= radius; x += 1) {
+          const min = new THREE.Vector3(
+            x * size - size / 2,
+            y * size - size / 2,
+            z * size - size / 2
+          );
+          const max = new THREE.Vector3(
+            x * size + size / 2,
+            y * size + size / 2,
+            z * size + size / 2
+          );
+          addBoxSegments(positions, min, max);
+        }
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    const material = new THREE.LineBasicMaterial({
+      color: 0x4e6a86,
+      transparent: true,
+      opacity: 0.18,
+      depthWrite: false
+    });
+    const lines = new THREE.LineSegments(geometry, material);
+    lines.renderOrder = 0;
+    return lines;
+  }
+
+  function addBoxSegments(target, min, max) {
+    const corners = [
+      [min.x, min.y, min.z],
+      [max.x, min.y, min.z],
+      [max.x, max.y, min.z],
+      [min.x, max.y, min.z],
+      [min.x, min.y, max.z],
+      [max.x, min.y, max.z],
+      [max.x, max.y, max.z],
+      [min.x, max.y, max.z]
+    ];
+    const edges = [
+      [0, 1], [1, 2], [2, 3], [3, 0],
+      [4, 5], [5, 6], [6, 7], [7, 4],
+      [0, 4], [1, 5], [2, 6], [3, 7]
+    ];
+    edges.forEach(([a, b]) => {
+      target.push(...corners[a], ...corners[b]);
+    });
+  }
+
+  function createStarField(count, radius, size) {
+    const rng = makeRng(2112);
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i += 1) {
+      const p = i * 3;
+      positions[p] = (rng() * 2 - 1) * radius;
+      positions[p + 1] = (rng() * 2 - 1) * radius;
+      positions[p + 2] = (rng() * 2 - 1) * radius;
+      const c = new THREE.Color().setHSL(0.56 + rng() * 0.1, 0.58, 0.55 + rng() * 0.34);
+      colors[p] = c.r;
+      colors[p + 1] = c.g;
+      colors[p + 2] = c.b;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    const material = new THREE.PointsMaterial({
+      size,
+      transparent: true,
+      opacity: 0.66,
+      vertexColors: true,
+      depthWrite: false,
+      fog: false
+    });
+    return new THREE.Points(geometry, material);
+  }
+
+  function updatePixelRatioUniforms() {
+    const ratio = getPixelRatio();
+    particleMaterial.uniforms.uPixelRatio.value = ratio;
+    glowMaterial.uniforms.uPixelRatio.value = ratio;
+    coreMaterial.uniforms.uPixelRatio.value = ratio;
+  }
+
+  function updateCamera() {
+    orbit.theta += (orbit.targetTheta - orbit.theta) * 0.13;
+    orbit.phi += (orbit.targetPhi - orbit.phi) * 0.13;
+    orbit.radius += (orbit.targetRadius - orbit.radius) * 0.16;
+
+    const sinPhi = Math.sin(orbit.phi);
+    camera.position.set(
+      ship.position.x + orbit.radius * sinPhi * Math.sin(orbit.theta),
+      ship.position.y + orbit.radius * Math.cos(orbit.phi),
+      ship.position.z + orbit.radius * sinPhi * Math.cos(orbit.theta)
+    );
+    camera.lookAt(ship.position);
+  }
+
+  function updateShip(delta) {
+    scratch.forward.set(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+    scratch.right.set(1, 0, 0).applyQuaternion(camera.quaternion).normalize();
+    scratch.movement.set(0, 0, 0);
+
+    if (state.keys.KeyW) scratch.movement.add(scratch.forward);
+    if (state.keys.KeyS) scratch.movement.sub(scratch.forward);
+    if (state.keys.KeyD) scratch.movement.add(scratch.right);
+    if (state.keys.KeyA) scratch.movement.sub(scratch.right);
+    if (state.keys.KeyE) scratch.movement.add(scratch.up);
+    if (state.keys.KeyQ) scratch.movement.sub(scratch.up);
+
+    if (scratch.movement.lengthSq() > 0) {
+      scratch.movement.normalize().multiplyScalar(CONFIG.moveSpeed * delta);
+      ship.position.add(scratch.movement);
+    }
+
+    ship.rotation.y += delta * 0.82;
+    ship.rotation.x = Math.sin(state.time * 1.4) * 0.08;
+  }
+
+  function updateUniforms() {
+    particleMaterial.uniforms.uTime.value = state.time;
+    glowMaterial.uniforms.uTime.value = state.time;
+    coreMaterial.uniforms.uTime.value = state.time;
+    particleMaterial.uniforms.uCameraPosition.value.copy(camera.position);
+    glowMaterial.uniforms.uCameraPosition.value.copy(camera.position);
+    coreMaterial.uniforms.uCameraPosition.value.copy(camera.position);
+  }
+
+  function updateVisibilityStats() {
+    camera.updateMatrixWorld();
+    camera.updateProjectionMatrix();
+    scratch.projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    scratch.frustum.setFromProjectionMatrix(scratch.projection);
+
+    let visible = 0;
+    let near = 0;
+    for (const item of riftMeta) {
+      scratch.sphere.center.copy(item.center);
+      scratch.sphere.radius = item.radius;
+      const distance = item.center.distanceTo(camera.position);
+      if (distance < CONFIG.farFadeEnd && scratch.frustum.intersectsSphere(scratch.sphere)) {
+        visible += 1;
+        if (distance < CONFIG.nearDistance) near += 1;
+      }
+    }
+    state.visibleRifts = visible;
+    state.nearRifts = near;
+  }
+
+  function updateHud() {
+    ui.chunks.textContent = String(state.chunkCount);
+    ui.rifts.textContent = `${state.riftCount} (${state.density}/chunk)`;
+    ui.visible.textContent = String(state.visibleRifts);
+    ui.near.textContent = String(state.nearRifts);
+    ui.points.textContent = state.pointCount.toLocaleString();
+    ui.draws.textContent = String(renderer.info.render.calls);
+    ui.fps.textContent = state.fps ? String(state.fps) : "--";
+    ui.cpu.textContent = `${state.cpuMs.toFixed(3)} ms`;
+    ui.pixelRatio.textContent = getPixelRatio().toFixed(2);
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    const delta = Math.min(clock.getDelta(), 0.05);
+    const cpuStart = performance.now();
+
+    if (!state.paused) state.time += delta;
+    updateShip(delta);
+    updateCamera();
+    updateUniforms();
+
+    const now = performance.now();
+    state.cpuMs = state.cpuMs * 0.86 + (now - cpuStart) * 0.14;
+
+    renderer.render(scene, camera);
+
+    state.fpsFrames += 1;
+    if (now - state.fpsLastAt > 500) {
+      state.fps = Math.round((state.fpsFrames * 1000) / (now - state.fpsLastAt));
+      state.fpsFrames = 0;
+      state.fpsLastAt = now;
+      updateVisibilityStats();
+      updateHud();
+    }
+  }
+
+  animate();
+})();
+</script>
+</body>
+</html>

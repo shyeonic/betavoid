@@ -36,10 +36,9 @@ export const ko = {
         confirmClear: "저장된 모든 데이터를 삭제할까요? (월드, 플레이어, 항법)"
       },
       gameplay: {
-        manualNavRestore: "수동 항법 복구",
-        fixedStop: "고정 + 정지",
-        infinite: "무제한",
-        holdTimeMin: "유지 시간 (분)"
+        shipSelect: "함선",
+        ship01: "함선 I",
+        ship02: "함선 II"
       },
       controls: {
         reset: "초기화"
@@ -61,10 +60,15 @@ export const ko = {
         lightingEffects: "광원 효과"
       }
     },
+    player: {
+      title: "파일럿",
+      shipSection: "함선"
+    },
     scanner: {
       categories: {
         buildings: "건물",
-        resources: "자원"
+        resources: "자원",
+        betaVoids: "베타 보이드"
       },
       empty: "감지된 객체 없음",
       select: "선택",
@@ -86,6 +90,11 @@ export const ko = {
         type: "유형"
       }
     }
+  },
+  betaVoid: {
+    name: "베타 보이드",
+    processed: "베타 보이드 처리 완료",
+    processFailed: "베타 보이드 처리 실패"
   },
   item: {
     item_001: { name: "하이드라이트", description: "수소광물 자원" },

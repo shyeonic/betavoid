@@ -74,11 +74,11 @@ export class ResourceManager {
     if (this.onChange) this.onChange(this.snapshot);
   }
 
-  getShipSources() {
-    return [
-      ASSETS.ships.local,
-      ASSETS.ships.remoteFallback
-    ];
+  getShipSources(shipId = "ship_01") {
+    const ship = ASSETS.ships[shipId] || ASSETS.ships["ship_01"];
+    const sources = [ship.local];
+    if (ship.remoteFallback) sources.push(ship.remoteFallback);
+    return sources;
   }
 
   looksLikeObjFile(text) {
@@ -251,21 +251,23 @@ export class ResourceManager {
     return loader.parse(text);
   }
 
-  async loadShipModel() {
+  async loadShipModel(shipId = "ship_01", { silent = false } = {}) {
     if (this.disposed) throw new Error("ResourceManager has been disposed.");
-    const id = "ship:ship_01";
-    const sources = this.getShipSources().map((source) => this.resolveShipSource(source));
-    this.begin(id, sources[0]?.label || "ship_01.glb", sources[0]?.url);
+    const id = `ship:${shipId}`;
+    const sources = this.getShipSources(shipId).map((source) => this.resolveShipSource(source));
+    if (!silent) this.begin(id, sources[0]?.label || `${shipId}.glb`, sources[0]?.url);
 
     for (const source of sources) {
       try {
         const object = source.type === "glb"
           ? await this.loadGlbObject(source.url)
           : await this.loadObjObject(source.url);
-        if (!object.children.length) continue;
+        let hasMesh = false;
+        object.traverse((c) => { if (c.isMesh) hasMesh = true; });
+        if (!hasMesh) continue;
         if (this.disposed) throw new Error("ResourceManager has been disposed.");
 
-        this.complete(id, source.url);
+        if (!silent) this.complete(id, source.url);
         return {
           id,
           source: source.url,
@@ -273,13 +275,14 @@ export class ResourceManager {
           remote: source.url.startsWith("http"),
           object: this.normalizeModel(object)
         };
-      } catch {
+      } catch (err) {
+        console.warn(`[ship-load] ${shipId} failed (${source.url}):`, err?.message ?? err);
         continue;
       }
     }
 
-    const error = new Error("player ship model could not be loaded from local GLB or remote OBJ sources.");
-    this.fail(id, error);
+    const error = new Error(`ship model "${shipId}" could not be loaded from local GLB or remote OBJ sources.`);
+    if (!silent) this.fail(id, error);
     throw error;
   }
 

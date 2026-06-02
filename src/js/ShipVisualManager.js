@@ -173,9 +173,9 @@ export class ShipVisualManager {
       });
     });
 
-    return match
-      ? shipState.lightProfiles[match.id]
-      : shipState.lightProfiles[shipState.definition.vfx.defaultLightType];
+    if (match) return shipState.lightProfiles[match.id];
+    const fallbackId = shipState.definition.vfx.defaultLightType;
+    return fallbackId ? shipState.lightProfiles[fallbackId] : Object.values(shipState.lightProfiles)[0];
   }
 
   getProfileColor(profile) {

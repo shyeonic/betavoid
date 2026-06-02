@@ -7,7 +7,11 @@ import {
   WORLD_CONFIG
 } from "./worldDefinitions.js";
 
-const STORE_NAMES = ["sectors", "chunks", "resourceNodes", "buildings", "meta", "settings"];
+const STORE_NAMES = ["sectors", "chunks", "resourceNodes", "buildings", "betaVoids", "meta", "settings"];
+const BETA_VOID_TARGET_SECTOR_IDS = new Set(["SEC-001", "SEC-002"]);
+const BETA_VOID_TARGETS_PER_SECTOR = 5;
+const BETA_VOID_MIN_DISTANCE = 200;
+const BETA_VOID_PLACEMENT_MARGIN = 500;
 
 export class WorldDataManager {
   constructor({ config = WORLD_CONFIG } = {}) {
@@ -31,6 +35,7 @@ export class WorldDataManager {
         this.ensureStore(db, "chunks", "chunk_id");
         this.ensureStore(db, "resourceNodes", "resource_instance_id");
         this.ensureStore(db, "buildings", "building_instance_id");
+        this.ensureStore(db, "betaVoids", "id");
         this.ensureStore(db, "meta", "key");
         this.ensureStore(db, "settings", "key");
         this.ensureStore(db, "navLogs", "id");
@@ -56,6 +61,7 @@ export class WorldDataManager {
     if (!meta) return this.createNewWorld();
 
     await this.checkAndSpawnResources();
+    await this.processBetaVoidLifecycle();
     this.snapshot = await this.getWorldSnapshot();
     return this.snapshot;
   }
@@ -82,6 +88,13 @@ export class WorldDataManager {
       sectors,
       seed
     });
+    const betaVoids = this.createInitialBetaVoids({
+      buildings,
+      createdAt: now,
+      resourceNodes,
+      rng,
+      sectors
+    });
     const resourceManager = this.createResourceManager(now, resourceNodes, buildings);
 
     this.assignObjectCounts(chunks, [...resourceNodes, ...buildings]);
@@ -92,7 +105,7 @@ export class WorldDataManager {
     };
     const playerShip = this.createDefaultPlayerShipState(now, sectors);
 
-    await this.replaceWorldData({ sectors, chunks, resourceNodes, buildings, meta, playerShip, resourceManager });
+    await this.replaceWorldData({ sectors, chunks, resourceNodes, buildings, betaVoids, meta, playerShip, resourceManager });
     this.snapshot = await this.getWorldSnapshot();
     return this.snapshot;
   }
@@ -411,6 +424,199 @@ export class WorldDataManager {
 
     removeConsumedResourceNodes(resourceNodes, consumedResourceNodeIds);
     return buildings;
+  }
+
+  createInitialBetaVoids({ buildings, createdAt, resourceNodes, rng, sectors }) {
+    const betaVoids = [];
+    const placedObjects = [...buildings, ...resourceNodes];
+    const targetSectors = sectors.filter((sector) => BETA_VOID_TARGET_SECTOR_IDS.has(sector.sector_id));
+
+    for (const sector of targetSectors) {
+      let placedCount = 0;
+      let attempts = 0;
+      const maxAttempts = 100;
+
+      while (placedCount < BETA_VOID_TARGETS_PER_SECTOR && attempts < maxAttempts) {
+        attempts += 1;
+        const position = this.findAvailableBetaVoidPositionInSector({
+          sector,
+          placedObjects,
+          rng
+        });
+        if (!position) continue;
+
+        const betaVoid = this.createBetaVoidRecord({
+          createdAt,
+          position,
+          sector,
+          sectorIndex: placedCount + 1
+        });
+        betaVoids.push(betaVoid);
+        placedObjects.push(betaVoid);
+        placedCount += 1;
+      }
+    }
+
+    return betaVoids;
+  }
+
+  createBetaVoidRecord({ createdAt, position, sector, sectorIndex }) {
+    const chunkData = this.getChunkDataAtPosition(position);
+    return {
+      id: `BETA-VOID-${sector.sector_id}-${sectorIndex}`,
+      sector_id: sector.sector_id,
+      sector_index: sectorIndex,
+      position,
+      chunk_id: chunkData.chunk_id,
+      chunk: chunkData.chunk,
+      local_position: chunkData.local_position,
+      status: "active",
+      defeated_at: null,
+      next_regeneration_checkpoint: null,
+      created_at: createdAt,
+      last_updated: createdAt
+    };
+  }
+
+  findAvailableBetaVoidPositionInSector({ sector, placedObjects, rng }) {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const position = this.pickBetaVoidPositionInBounds(sector.global_bounds, rng);
+      if (this.isFarEnough(position, placedObjects, BETA_VOID_MIN_DISTANCE)) return position;
+    }
+
+    return this.getBoundsCenter(sector.global_bounds);
+  }
+
+  pickBetaVoidPositionInBounds(bounds, rng) {
+    return {
+      x: Math.round(lerp(bounds.min.x + BETA_VOID_PLACEMENT_MARGIN, bounds.max.x - BETA_VOID_PLACEMENT_MARGIN, rng())),
+      y: Math.round(lerp(bounds.min.y + BETA_VOID_PLACEMENT_MARGIN, bounds.max.y - BETA_VOID_PLACEMENT_MARGIN, rng())),
+      z: Math.round(lerp(bounds.min.z + BETA_VOID_PLACEMENT_MARGIN, bounds.max.z - BETA_VOID_PLACEMENT_MARGIN, rng()))
+    };
+  }
+
+  getNext6HourCheckpoint(timestamp) {
+    const date = new Date(timestamp);
+    const hour = date.getHours();
+    const minutes = date.getMinutes();
+    const seconds = date.getSeconds();
+    const milliseconds = date.getMilliseconds();
+    const currentMs = hour * 3600000 + minutes * 60000 + seconds * 1000 + milliseconds;
+
+    let nextHour;
+    if (hour < 6) {
+      nextHour = 6;
+    } else if (hour < 12) {
+      nextHour = 12;
+    } else if (hour < 18) {
+      nextHour = 18;
+    } else {
+      nextHour = 24;
+    }
+
+    const diffMs = nextHour * 3600000 - currentMs;
+    if (diffMs <= 0) {
+      const nextDay = new Date(date);
+      nextDay.setDate(nextDay.getDate() + 1);
+      nextDay.setHours(0, 0, 0, 0);
+      return nextDay.getTime();
+    }
+
+    const nextCheckpoint = new Date(date);
+    nextCheckpoint.setHours(nextHour, 0, 0, 0);
+    return nextCheckpoint.getTime();
+  }
+
+  async processBetaVoid(betaVoidId, processedAt = Date.now()) {
+    const betaVoid = await this.getStoreValue("betaVoids", betaVoidId);
+    if (!betaVoid || betaVoid.status !== "active") return betaVoid || null;
+
+    const updated = {
+      ...betaVoid,
+      status: "defeated",
+      defeated_at: processedAt,
+      next_regeneration_checkpoint: this.getNext6HourCheckpoint(processedAt),
+      last_updated: processedAt
+    };
+    await this.putStoreValue("betaVoids", updated);
+
+    if (this.snapshot?.betaVoids) {
+      const index = this.snapshot.betaVoids.findIndex((item) => item.id === betaVoidId);
+      if (index >= 0) this.snapshot.betaVoids[index] = updated;
+    }
+
+    return updated;
+  }
+
+  async processBetaVoidLifecycle({ now = Date.now() } = {}) {
+    const [sectors, resourceNodes, buildings, storedBetaVoids, worldMeta] = await Promise.all([
+      this.getAll("sectors"),
+      this.getAll("resourceNodes"),
+      this.getAll("buildings"),
+      this.getAll("betaVoids"),
+      this.getStoreValue("meta", "world")
+    ]);
+
+    if (!worldMeta || sectors.length === 0) return { checked: false, reason: "missing-world" };
+
+    let betaVoids = storedBetaVoids;
+    let changed = false;
+
+    if (betaVoids.length === 0) {
+      betaVoids = this.createInitialBetaVoids({
+        buildings,
+        createdAt: now,
+        resourceNodes,
+        rng: createSeededRandom(`${worldMeta.seed}:beta-void:${now}`),
+        sectors
+      });
+      changed = betaVoids.length > 0;
+    }
+
+    const placedObjects = [
+      ...resourceNodes,
+      ...buildings,
+      ...betaVoids
+    ];
+
+    for (const betaVoid of betaVoids) {
+      if (betaVoid.status !== "defeated" || !betaVoid.next_regeneration_checkpoint) continue;
+      if (now < betaVoid.next_regeneration_checkpoint) continue;
+
+      const sector = sectors.find((item) => item.sector_id === betaVoid.sector_id);
+      if (!sector) continue;
+
+      const position = this.findAvailableBetaVoidPositionInSector({
+        sector,
+        placedObjects: placedObjects.filter((item) => item.id !== betaVoid.id),
+        rng: createSeededRandom(`${worldMeta.seed}:${betaVoid.id}:${now}`)
+      });
+      if (!position) continue;
+      const chunkData = this.getChunkDataAtPosition(position);
+
+      betaVoid.position = position;
+      betaVoid.chunk_id = chunkData.chunk_id;
+      betaVoid.chunk = chunkData.chunk;
+      betaVoid.local_position = chunkData.local_position;
+      betaVoid.status = "active";
+      betaVoid.defeated_at = null;
+      betaVoid.next_regeneration_checkpoint = null;
+      betaVoid.last_updated = now;
+      changed = true;
+    }
+
+    if (changed) {
+      const transaction = this.db.transaction(["betaVoids"], "readwrite");
+      const store = transaction.objectStore("betaVoids");
+      betaVoids.forEach((betaVoid) => store.put(betaVoid));
+      await transactionDone(transaction);
+    }
+
+    return {
+      checked: true,
+      changed,
+      betaVoids
+    };
   }
 
   createResourceManager(createdAt = Date.now(), resourceNodes = [], buildings = []) {
@@ -744,7 +950,7 @@ export class WorldDataManager {
     return nextState;
   }
 
-  async replaceWorldData({ sectors, chunks, resourceNodes, buildings, meta, playerShip, resourceManager }) {
+  async replaceWorldData({ sectors, chunks, resourceNodes, buildings, betaVoids = [], meta, playerShip, resourceManager }) {
     const transaction = this.db.transaction(STORE_NAMES, "readwrite");
 
     const stores = Object.fromEntries(STORE_NAMES.map((storeName) => [storeName, transaction.objectStore(storeName)]));
@@ -753,6 +959,7 @@ export class WorldDataManager {
     chunks.forEach((chunk) => stores.chunks.put(chunk));
     resourceNodes.forEach((node) => stores.resourceNodes.put(node));
     buildings.forEach((building) => stores.buildings.put(building));
+    betaVoids.forEach((betaVoid) => stores.betaVoids.put(betaVoid));
     stores.meta.put(meta);
     if (playerShip) stores.meta.put(playerShip);
     if (resourceManager) stores.meta.put(resourceManager);
@@ -837,11 +1044,12 @@ export class WorldDataManager {
   }
 
   async getWorldSnapshot() {
-    const [sectors, chunks, resourceNodes, buildings, meta, resourceManager] = await Promise.all([
+    const [sectors, chunks, resourceNodes, buildings, betaVoids, meta, resourceManager] = await Promise.all([
       this.getAll("sectors"),
       this.getAll("chunks"),
       this.getAll("resourceNodes"),
       this.getAll("buildings"),
+      this.getAll("betaVoids"),
       this.getStoreValue("meta", "world"),
       this.getStoreValue("meta", "resourceManager")
     ]);
@@ -851,6 +1059,7 @@ export class WorldDataManager {
       chunks,
       resourceNodes,
       buildings,
+      betaVoids,
       meta: meta || null,
       resourceManager: resourceManager || null
     };
@@ -964,19 +1173,23 @@ export class WorldDataManager {
     return `${prefix}-${type.toUpperCase()}-${seed}-${index}-${suffix}`;
   }
 
-  createNavLog({ target }) {
+  createNavLog({ type = "standard", target, from_position = null, flight_start_at = null, peak_speed = 0, flight_duration = 0, desired_speed = null, coast_duration = null, heading = null, status = "active", completed_at = null, cancelled_at = null }) {
     const id = `NAV-${Date.now()}-${Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0")}`;
     const log = {
       id,
+      type,
       issued_at: Date.now(),
-      from_position: null,
+      from_position,
       target,
-      flight_start_at: null,
-      peak_speed: 0,
-      flight_duration: 0,
-      status: "active",
-      completed_at: null,
-      cancelled_at: null
+      flight_start_at,
+      peak_speed,
+      flight_duration,
+      desired_speed,
+      coast_duration,
+      heading,
+      status,
+      completed_at,
+      cancelled_at
     };
     this.putStoreValue("navLogs", log);
     return id;

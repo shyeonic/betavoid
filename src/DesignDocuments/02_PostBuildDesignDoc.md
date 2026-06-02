@@ -104,14 +104,14 @@ Void Zero의 현재 구현 상태를 기준으로 완료된 시스템, 주요 �
 - 자동항법 중 특정 수동 조작이 발생하면 항법을 취소한다.
 - 자동항법 로그는 `navLogs` 저장소에 기록되며, 진행 중인 항법은 재접속 시 복원 계산에 사용된다.
 
-### 4.5 재접속/오프라인 이동 복원
+### 4.5 결정론적 항법 및 비활성화 복원
 
-- 플레이어 함선 위치, 회전, 속도, 목표 속도는 `meta/playerShip`에 주기적으로 저장된다.
-- 저장 주기는 `playerShipSaveInterval = 1000ms`이다.
-- 실행 재개 시 저장된 속도와 경과 시간을 이용해 위치를 추정한다.
-- 복원 방식은 설정에서 `Fixed + Stop` 또는 `Infinite`으로 선택할 수 있다.
-- `Fixed + Stop` 모드는 일정 시간 유지 후 감속 정지하며, 기본 보존 시간은 5분이다.
-- `Infinite` 모드는 목표 속도까지의 가속/감속 후 계속 이동한 것으로 계산한다.
+- 플레이어 함선 위치, 회전, 속도, 목표 속도는 `meta/playerShip`에 `playerShipSaveInterval = 1000ms` 주기로 저장된다.
+- 모든 항법 이벤트(자동항해 시작·완료, 비활성화 이탈·복귀)는 `navLogs`에 타임스탬프 기반 로그로 기록된다.
+- 탭 전환·페이지 이탈 시 비활성화 항해 로그(`type: "deactivation"`)를 즉시 발행하고, 복귀 시 경과 시간으로 위치를 역산한다.
+- 비활성화 물리는 3단계: 목표속도 전이 → 등속 유지(`deactivationCoastDuration: 600초`) → 감속 정지.
+- 자동항해는 `flight_start_at` 타임스탬프 기반 수식으로 완전 결정론적 역산이 가능하므로 별도 비활성화 처리 없이 복원된다.
+- 상세 구현: `PBDD/PBDD_Navigation.md` 참조
 
 ### 4.6 카메라 시스템
 
@@ -295,7 +295,9 @@ Void Zero의 현재 구현 상태를 기준으로 완료된 시스템, 주요 �
 ### 7.6 NavLog
 
 - 저장 위치: `navLogs`
-- 주요 필드: `id`, `issued_at`, `from_position`, `target`, `flight_start_at`, `peak_speed`, `flight_duration`, `status`, `completed_at`, `cancelled_at`
+- 타입: `"standard"` (자동항해) | `"glide"` (감속 항해) | `"deactivation"` (비활성화 항해)
+- 주요 필드: `id`, `type`, `issued_at`, `from_position`, `target`, `flight_start_at`, `peak_speed`, `desired_speed`, `coast_duration`, `flight_duration`, `status`, `completed_at`, `cancelled_at`
+- 상세 스키마 및 타입별 규격: `PBDD/PBDD_Navigation.md` 참조
 
 ## 8. 현재 제약 및 후속 기획 후보
 
@@ -313,7 +315,7 @@ Void Zero의 현재 구현 상태를 기준으로 완료된 시스템, 주요 �
 
 - `PBDD_WorldData.md`: 월드/청크/섹터/자원 데이터 모델
 - `PBDD_WorldObjectRenderOptimization.md`: 월드 오브젝트 렌더 큐와 visible chunk diff 최적화
-- `PBDD_Navigation.md`: 자동항법, 오프라인 복원, 항법 로그
+- `PBDD_Navigation.md`: 자동항법, 비활성화 항법, 결정론적 복원, 항법 로그 ✅ 작성 완료
 - `PBDD_InputCamera.md`: PC/모바일 입력과 카메라 모드
 - `PBDD_UI.md`: HUD, 시작 화면, 설정, 스캐너 UI
 - `PBDD_AudioResource.md`: 리소스 로딩과 사운드 정책

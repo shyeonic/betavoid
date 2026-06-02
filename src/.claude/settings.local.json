@@ -1,7 +1,19 @@
 {
   "permissions": {
     "allow": [
-      "Bash(Get-Content \"c:\\\\inf_workspace_local\\\\Void Zero\\\\src\\\\js\\\\definitions\\\\shipDefinitions.js\")"
+      "Bash(Get-Content \"c:\\\\inf_workspace_local\\\\Void Zero\\\\src\\\\js\\\\definitions\\\\shipDefinitions.js\")",
+      "Bash(node --input-type=module)",
+      "Bash(node -e \"import\\('./src/js/definitions/shipVisualDefinitions.js'\\).then\\(m => console.log\\('OK', Object.keys\\(m.SHIP_VISUAL_DEFINITIONS\\)\\)\\).catch\\(e => console.error\\('ERR', e.message\\)\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\inf_workspace_local\\\\Void Zero\\\\src\" -Recurse -File)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\inf_workspace_local\\\\Void Zero\\\\src\" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @\\('.md', '.txt'\\) -or $_.Name -eq 'CLAUDE.md' } | Select-Object -ExpandProperty FullName | head -20)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\inf_workspace_local\\\\Void Zero\\\\src\" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @\\('.md', '.txt'\\) -or $_.Name -eq 'CLAUDE.md' } | Select-Object -ExpandProperty FullName | Select-Object -First 20)",
+      "Bash(Get-ChildItem -Path \"c:\\\\inf_workspace_local\\\\Void Zero\\\\src\" -Recurse -Filter \"*.js\" -File)",
+      "Bash(Select-Object -First 30 FullName)",
+      "Bash(node --input-type=module --experimental-vm-modules -)",
+      "Bash(git config *)",
+      "Bash(git add *)"
     ]
   }
 }

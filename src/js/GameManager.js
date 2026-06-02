@@ -21,7 +21,7 @@ import {
   normalizeRenderResolutionScale,
   normalizePerformanceSettings
 } from "./definitions/environmentDefinitions.js";
-import { SHIP_VISUAL_IDS, getShipVisualDefinition } from "./definitions/shipVisualDefinitions.js";
+import { DEFAULT_SHIP_ID, SHIP_DEFINITIONS, getShipDefinition, getShipSpecs } from "./definitions/shipDefinitions.js";
 import { BUILDING_DEFINITIONS, ITEM_DEFINITIONS, RESOURCE_DEFINITIONS, WORLD_CONFIG } from "./worldDefinitions.js";
 import { createI18n } from "./i18n/i18n.js";
 
@@ -51,7 +51,6 @@ export class GameManager {
     this.performanceSettings = { ...DEFAULT_PERFORMANCE_SETTINGS };
     this.i18n = createI18n();
     this.worldViewSettings = { chunkBoundsMode: "all" };
-    this.navDeadReckonSettings = { mode: "fixed", capMinutes: 5 };
     this.keyToAction = this.createKeyToAction(this.keyBindings);
     this.state = {
       phase: "standby",
@@ -64,11 +63,16 @@ export class GameManager {
     };
     this.navTarget = null;
     this.activeNavLogId = null;
+    this.activeNavLog = null;
+    this._deactivationLog = null;
+    this._lastDeactivationResolvedAt = 0;
 
     this.activeActions = new Set();
     this.clock = new THREE.Clock();
+    this.shipStats = { ...getShipSpecs(DEFAULT_SHIP_ID) };
     this.ui = new UIManager({
       config: this.config,
+      shipStats: this.shipStats,
       i18n: this.i18n,
       keyBindings: this.keyBindings,
       keyBindingGroups: KEY_BINDING_GROUPS,
@@ -120,7 +124,10 @@ export class GameManager {
       cameraActionTarget: new THREE.Vector3(),
       cameraOrbitRightAxis: new THREE.Vector3(),
       cameraOrbitUpAxis: new THREE.Vector3(),
-      cameraLocalOffset: new THREE.Vector3()
+      cameraLocalOffset: new THREE.Vector3(),
+      targetCamPivot: new THREE.Vector3(),
+      targetCamLocalOffset: new THREE.Vector3(),
+      targetCamUp: new THREE.Vector3(0, 1, 0)
     };
 
     this.quaternions = {
@@ -132,7 +139,11 @@ export class GameManager {
       cameraOrbitPitchDelta: new THREE.Quaternion(),
       cameraReturnStart: new THREE.Quaternion(),
       cameraReturn: new THREE.Quaternion(),
-      cameraFollowTarget: new THREE.Quaternion()
+      cameraFollowTarget: new THREE.Quaternion(),
+      targetCamOrbit: new THREE.Quaternion(),
+      targetCamOrbitTarget: new THREE.Quaternion(),
+      targetCamOrbitYawDelta: new THREE.Quaternion(),
+      targetCamOrbitPitchDelta: new THREE.Quaternion()
     };
 
     this.axes = {
@@ -168,6 +179,19 @@ export class GameManager {
       lastY: 0
     };
 
+    this.cameraContext = "ship"; // "ship" | "target"
+    this.targetCamObject = null; // { id, kind } — object currently tracked by target cam (independent from selectedWorldObject)
+    this.targetCamControl = {
+      orbitDistance: 30,
+      dragging: false,
+      pointerId: null,
+      pointers: new Map(),
+      pinching: false,
+      pinchDistance: 0,
+      lastX: 0,
+      lastY: 0
+    };
+
     this.starLayers = [];
     this.worldLights = null;
     this.loadingStarted = false;
@@ -177,9 +201,13 @@ export class GameManager {
     this.boundEvents = null;
     this.worldSummaryLastUpdatedAt = 0;
     this.worldSummaryPending = false;
+    this.betaVoidLifecycleLastCheckedAt = 0;
+    this.betaVoidLifecyclePending = false;
+    this.betaVoidLifecycleInterval = 30000;
     this.playerShipSaveLastUpdatedAt = 0;
     this.playerShipSavePending = false;
     this.playerShipSaveInterval = 1000;
+    this._lastFrameTimestamp = 0;
     this.currentLocationBgmId = null;
     this.worldDataResetting = false;
     this.shipReflectionTexture = null;
@@ -191,6 +219,7 @@ export class GameManager {
     this.shipVisualManager = null;
     this.playerShipVisualState = null;
     this.shipEngineOutputPercent = null;
+    this.selectedShipId = DEFAULT_SHIP_ID;
     this.materialMapSlots = [
       "map",
       "normalMap",
@@ -232,24 +261,27 @@ export class GameManager {
       onChunkBoundsModeChange: (mode) => this.setChunkBoundsMode(mode),
       onEnvironmentModeChange: (mode) => this.setEnvironmentMode(mode),
       onPerformanceSettingChange: (key, enabled) => this.setPerformanceSetting(key, enabled),
-      onNavRestoreModeChange: (mode) => {
-        this.navDeadReckonSettings.mode = mode === "infinite" ? "infinite" : "fixed";
-        this.ui.setNavRestoreMode(this.navDeadReckonSettings.mode);
-        void this.saveNavDeadReckonSettings();
-      },
-      onNavRestoreCapChange: (minutes) => {
-        this.navDeadReckonSettings.capMinutes = minutes;
-        void this.saveNavDeadReckonSettings();
-      },
+      onShipSelect: (shipId) => void this.setSelectedShipId(shipId),
       onRequestObjectList: () => this.getWorldObjectList(),
       onSelectWorldObject: (object) => this.selectWorldObjectFromListItem(object),
       onNavigateToWorldObject: (object) => this.navigateToWorldObject(object),
       onClearWorldSelection: () => this.clearWorldSelection(),
+      onEnterTargetCam: () => this.enterTargetCameraMode(),
+      onProcessBetaVoid: (object) => this.processBetaVoidFromUi(object),
       onToggleCameraMode: () => this.requestCameraToggle()
     });
     this.ui.setChunkBoundsMode(this.worldViewSettings.chunkBoundsMode);
     this.ui.setEnvironmentMode(this.environmentMode);
     this.ui.setPerformanceSettings(this.performanceSettings);
+    this.ui.setSelectedShipId(this.selectedShipId);
+    void this.ui.preloadObjectRowIcons([
+      new URL("../rss/svg/ind_void.svg", import.meta.url).href,
+      new URL("../rss/svg/ind_loot.svg", import.meta.url).href,
+      new URL("../rss/svg/ind_ex.svg", import.meta.url).href,
+      new URL("../rss/svg/ind_large.svg", import.meta.url).href,
+      new URL("../rss/svg/ind_small.svg", import.meta.url).href,
+      new URL("../rss/svg/ind_medium.svg", import.meta.url).href,
+    ]);
 
     this.ui.setInteractionGate();
     this.updateCameraProjection();
@@ -262,7 +294,9 @@ export class GameManager {
     const preset = this.getEnvironmentPreset();
     this.worldMapManager = new WorldMapManager({
       scene: this.scene,
+      camera: this.camera,
       renderScale: WORLD_CONFIG.renderScale,
+      renderResolutionScale: this.getRenderResolutionScale(),
       environmentVisuals: preset.worldMap,
       onRenderMutation: () => this.renderPipeline?.markTargetsDirty()
     });
@@ -353,26 +387,64 @@ export class GameManager {
     }
   }
 
-  async loadSavedNavDeadReckonSettings() {
-    const saved = await this.worldDataManager.getStoreValue("settings", "navDeadReckonSettings");
-    const mode = saved?.mode === "infinite" ? "infinite" : "fixed";
-    const capMinutes = Number.isFinite(Number(saved?.capMinutes)) && Number(saved.capMinutes) >= 0
-      ? Number(saved.capMinutes) : 5;
-    this.navDeadReckonSettings = { mode, capMinutes };
-    this.ui.setNavRestoreMode(mode);
-    this.ui.setNavRestoreCap(capMinutes);
+  async loadSavedShipSettings() {
+    const saved = await this.worldDataManager.getStoreValue("settings", "shipSettings");
+    const shipId = saved?.selectedShipId;
+    this.selectedShipId = (shipId && SHIP_DEFINITIONS[shipId]) ? shipId : DEFAULT_SHIP_ID;
+    this._applyShipSpecs(this.selectedShipId);
+    this.ui.setSelectedShipId(this.selectedShipId);
   }
 
-  async saveNavDeadReckonSettings() {
+  async saveShipSettings() {
     if (!this.worldDataManager.db) return;
     try {
       await this.worldDataManager.putStoreValue("settings", {
-        key: "navDeadReckonSettings",
-        mode: this.navDeadReckonSettings.mode,
-        capMinutes: this.navDeadReckonSettings.capMinutes
+        key: "shipSettings",
+        selectedShipId: this.selectedShipId
       });
     } catch {
       this.ui.showErrorToast("settings storage unavailable");
+    }
+  }
+
+  _applyShipSpecs(shipId) {
+    Object.assign(this.shipStats, getShipSpecs(shipId));
+    this.ui.refreshSpeedGaugeRange();
+  }
+
+  async setSelectedShipId(shipId) {
+    if (!SHIP_DEFINITIONS[shipId] || shipId === this.selectedShipId) return;
+
+    const previousShipId = this.selectedShipId;
+
+    this.shipVisualManager?.disposeShipState(this.playerShipVisualState);
+    this.playerShipVisualState = null;
+
+    const oldModel = this.ship.getObjectByName(previousShipId);
+    if (oldModel) {
+      this.ship.remove(oldModel);
+      oldModel.traverse((child) => {
+        if (!child.isMesh) return;
+        child.geometry?.dispose();
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach((m) => m?.dispose());
+      });
+    }
+
+    this.selectedShipId = shipId;
+    this._applyShipSpecs(shipId);
+    this.ui.setSelectedShipId(shipId);
+
+    try {
+      const result = await this.resourceManager.loadShipModel(shipId, { silent: true });
+      if (this.disposed) return;
+      this.addShipModel(result.object);
+      void this.saveShipSettings();
+    } catch (err) {
+      console.error("[ship-swap] failed:", err);
+      this.selectedShipId = previousShipId;
+      this.ui.setSelectedShipId(previousShipId);
+      this.ui.showErrorToast("failed to load ship model");
     }
   }
 
@@ -512,6 +584,7 @@ export class GameManager {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderPipeline?.setRenderResolutionScale(this.getRenderResolutionScale());
     this.renderPipeline?.setSize(window.innerWidth, window.innerHeight);
+    this.worldMapManager?.setRenderResolutionScale(this.getRenderResolutionScale());
   }
 
   setupWorld() {
@@ -563,11 +636,26 @@ export class GameManager {
       pointerdown: (event) => this.onPointerDown(event),
       pointermove: (event) => this.onPointerMove(event),
       pointerup: (event) => this.onPointerUp(event),
-      pointercancel: (event) => this.stopCameraDrag(event),
+      pointercancel: (event) => this.cameraContext === "target" ? this.stopTargetCamDrag(event) : this.stopCameraDrag(event),
       wheel: (event) => this.onWheel(event),
       keydown: (event) => this.onKeyDown(event),
       keyup: (event) => this.onKeyUp(event),
-      resize: () => this.onResize()
+      resize: () => this.onResize(),
+      pagehide: () => {
+        if (this.state.phase === "running") {
+          this._commitDeactivationNavLog();
+          this.savePlayerShipState({ force: true });
+        }
+      },
+      visibilitychange: () => {
+        if (this.state.phase !== "running") return;
+        if (document.visibilityState === "hidden") {
+          this._commitDeactivationNavLog();
+        } else if (document.visibilityState === "visible") {
+          this._resolveDeactivationNavLog();
+          this._snapToActiveNavLog();
+        }
+      }
     };
 
     this.renderer.domElement.addEventListener("pointerdown", this.boundEvents.pointerdown);
@@ -578,6 +666,8 @@ export class GameManager {
     window.addEventListener("keydown", this.boundEvents.keydown);
     window.addEventListener("keyup", this.boundEvents.keyup);
     window.addEventListener("resize", this.boundEvents.resize);
+    window.addEventListener("pagehide", this.boundEvents.pagehide);
+    document.addEventListener("visibilitychange", this.boundEvents.visibilitychange);
   }
 
   async loadResources() {
@@ -592,7 +682,8 @@ export class GameManager {
     });
 
     const warnings = [];
-    const shipTask = this.resourceManager.loadShipModel()
+    await this.loadSavedShipSettings();
+    const shipTask = this.resourceManager.loadShipModel(this.selectedShipId)
       .then((result) => {
         if (this.disposed) return result;
         this.addShipModel(result.object);
@@ -635,7 +726,6 @@ export class GameManager {
     const snapshot = await this.worldDataManager.loadOrCreateWorld();
     this.worldMapManager.renderWorld(snapshot);
     await this.loadSavedWorldViewSettings();
-    await this.loadSavedNavDeadReckonSettings();
     await this.restorePlayerShipState();
     this.syncWorldRuntimeWithPlayer({ force: true });
     await this.refreshWorldSummary({ force: true });
@@ -654,50 +744,98 @@ export class GameManager {
     if (activeLog?.flight_start_at != null && activeLog?.from_position != null) {
       const tSec = (Date.now() - activeLog.flight_start_at) / 1000;
 
-      if (tSec >= activeLog.flight_duration) {
-        this.ship.position.set(activeLog.target.x, activeLog.target.y, activeLog.target.z);
-        this.state.speed = 0;
-        this.state.desiredSpeed = 0;
-        void this.worldDataManager.updateNavLog(activeLog.id, { status: "completed", completed_at: Date.now() });
+      if (activeLog.type === "glide") {
+        if (tSec >= activeLog.flight_duration) {
+          this.ship.position.set(activeLog.target.x, activeLog.target.y, activeLog.target.z);
+          this.state.speed = 0;
+          this.state.desiredSpeed = 0;
+          void this.worldDataManager.updateNavLog(activeLog.id, { status: "completed", completed_at: Date.now() });
+        } else {
+          const computedPos = this.computeGlidePositionAtTime(activeLog, tSec);
+          const computedSpeed = this.computeGlideSpeedAtTime(activeLog, tSec);
+          this.ship.position.copy(computedPos);
+          this.state.speed = computedSpeed;
+          this.state.desiredSpeed = 0;
+          const glideDir = new THREE.Vector3(activeLog.target.x, activeLog.target.y, activeLog.target.z).sub(computedPos);
+          if (glideDir.lengthSq() > 0.0001) {
+            this.lookMatrix.lookAt(glideDir.normalize(), new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+            this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
+          }
+        }
+        usedNavLog = true;
+      } else if (activeLog.type === "deactivation") {
+        if (tSec >= activeLog.flight_duration) {
+          this.ship.position.set(activeLog.target.x, activeLog.target.y, activeLog.target.z);
+          this.state.speed = 0;
+          this.state.desiredSpeed = 0;
+          void this.worldDataManager.updateNavLog(activeLog.id, { status: "completed", completed_at: Date.now() });
+        } else {
+          const computedPos = this.computeDeactivationPositionAtTime(activeLog, tSec);
+          const computedSpeed = this.computeDeactivationSpeedAtTime(activeLog, tSec);
+          this.ship.position.copy(computedPos);
+          this.state.speed = computedSpeed;
+          this.state.desiredSpeed = 0;
+          const deactDir = new THREE.Vector3(activeLog.target.x, activeLog.target.y, activeLog.target.z).sub(computedPos);
+          if (deactDir.lengthSq() > 0.0001) {
+            this.lookMatrix.lookAt(deactDir.normalize(), new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+            this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
+          }
+          void this.worldDataManager.updateNavLog(activeLog.id, { status: "cancelled", cancelled_at: Date.now() });
+        }
         usedNavLog = true;
       } else {
-        const computedPos = this.computeNavPositionAtTime(activeLog, tSec);
-        const computedSpeed = this.computeNavSpeedAtTime(activeLog, tSec);
-        this.ship.position.copy(computedPos);
-        this.state.speed = computedSpeed;
-
-        const navTargetVec = new THREE.Vector3(activeLog.target.x, activeLog.target.y, activeLog.target.z);
-        const toTarget = navTargetVec.clone().sub(computedPos);
-
-        if (toTarget.lengthSq() > 0.0001) {
-          const direction = toTarget.clone().normalize();
-          this.lookMatrix.lookAt(direction, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
-          this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
-        }
-
-        this.navTarget = navTargetVec;
-        this.activeNavLogId = activeLog.id;
-        this.state.autopilotPeakSpeed = activeLog.peak_speed;
-        this.targetMarker.visible = true;
-        this.targetMarker.position.copy(navTargetVec);
-
-        const remaining = toTarget.length() - this.config.arrivalRadius;
-        const decelDist = computedSpeed > 0
-          ? 0.5 * computedSpeed * computedSpeed / this.config.decelerationRate
-          : 0;
-
-        if (remaining <= decelDist) {
-          this.state.autopilotPhase = "decelerating";
+        if (tSec >= activeLog.flight_duration) {
+          this.ship.position.set(activeLog.target.x, activeLog.target.y, activeLog.target.z);
+          this.state.speed = 0;
           this.state.desiredSpeed = 0;
+          void this.worldDataManager.updateNavLog(activeLog.id, { status: "completed", completed_at: Date.now() });
         } else {
-          this.state.autopilotPhase = "cruising";
-          this.state.desiredSpeed = activeLog.peak_speed;
-        }
+          const computedPos = this.computeNavPositionAtTime(activeLog, tSec);
+          const computedSpeed = this.computeNavSpeedAtTime(activeLog, tSec);
+          this.ship.position.copy(computedPos);
+          this.state.speed = computedSpeed;
 
+          const navTargetVec = new THREE.Vector3(activeLog.target.x, activeLog.target.y, activeLog.target.z);
+          const toTarget = navTargetVec.clone().sub(computedPos);
+          const toTargetDist = toTarget.length();
+
+          if (toTarget.lengthSq() > 0.0001) {
+            this.lookMatrix.lookAt(toTarget.clone().normalize(), new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+            this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
+          }
+
+          this.navTarget = navTargetVec;
+          this.activeNavLogId = activeLog.id;
+          this.activeNavLog = activeLog;
+          this.state.autopilotPeakSpeed = activeLog.peak_speed;
+          this.targetMarker.visible = true;
+          this.targetMarker.position.copy(navTargetVec);
+
+          const remaining = toTargetDist - this.shipStats.arrivalRadius;
+          const decelDist = computedSpeed > 0
+            ? 0.5 * computedSpeed * computedSpeed / this.shipStats.decelerationRate
+            : 0;
+
+          if (remaining <= decelDist) {
+            this.state.autopilotPhase = "decelerating";
+            this.state.desiredSpeed = 0;
+          } else {
+            this.state.autopilotPhase = "cruising";
+            this.state.desiredSpeed = activeLog.peak_speed;
+          }
+        }
         usedNavLog = true;
       }
     } else if (activeLog) {
-      void this.worldDataManager.updateNavLog(activeLog.id, { status: "cancelled", cancelled_at: Date.now() });
+      // flight_start_at 없는 활성 log: 취소하지 않고 autopilot 재개
+      const navTargetVec = new THREE.Vector3(activeLog.target.x, activeLog.target.y, activeLog.target.z);
+      this.navTarget = navTargetVec;
+      this.activeNavLogId = activeLog.id;
+      this.targetMarker.visible = true;
+      this.targetMarker.position.copy(navTargetVec);
+      this.state.autopilotPhase = "stopping";
+      this.state.autopilotPeakSpeed = 0;
+      // usedNavLog = false: 위치/속도는 아래 playerShipState에서 복원
     }
 
     if (!usedNavLog) {
@@ -711,20 +849,16 @@ export class GameManager {
       this.state.speed = Number(playerShipState.speed) || 0;
       this.state.desiredSpeed = Number(playerShipState.desiredSpeed) || 0;
 
+      // 비활성화 구간 결정론적 항법 적용 (이탈 시각 기준 deactivation 로그 발행 후 즉시 해소)
       const savedAt = Number(playerShipState.updated_at) || 0;
-      if (savedAt > 0 && Math.abs(this.state.speed) > 0.001) {
+      if (savedAt > 0 && this.state.speed > 0) {
         const elapsed = (Date.now() - savedAt) / 1000;
         if (elapsed > 0) {
-          const { mode, capMinutes } = this.navDeadReckonSettings;
-          const result = mode === "infinite"
-            ? this.extrapolateShipMovement(this.state.speed, this.state.desiredSpeed, elapsed)
-            : this.extrapolateShipMovementFixed(this.state.speed, capMinutes * 60, elapsed);
-          if (Math.abs(result.distance) > 0.001) {
-            this.ship.getWorldDirection(this.vectors.forward).normalize();
-            this.ship.position.addScaledVector(this.vectors.forward, result.distance);
+          this._commitDeactivationNavLog(savedAt);
+          this._resolveDeactivationNavLog();
+          if (this.state.autopilotPhase === null) {
+            this.state.desiredSpeed = 0;
           }
-          this.state.speed = result.finalSpeed;
-          if (mode !== "infinite") this.state.desiredSpeed = result.finalSpeed;
         }
       }
     }
@@ -733,6 +867,7 @@ export class GameManager {
       this.state.autopilotPeakSpeed = 0;
       this.navTarget = null;
       this.activeNavLogId = null;
+      this.activeNavLog = null;
       this.targetMarker.visible = false;
     }
 
@@ -768,8 +903,8 @@ export class GameManager {
   }
 
   addShipModel(model) {
-    const shipId = SHIP_VISUAL_IDS.playerShip;
-    const shipVisualDefinition = getShipVisualDefinition(shipId);
+    const shipId = this.selectedShipId;
+    const shipVisualDefinition = getShipDefinition(shipId).visual;
     model.name = shipId;
     model.rotation.y = Math.PI;
     this.ship.add(model);
@@ -795,7 +930,7 @@ export class GameManager {
     this.renderPipeline?.markTargetsDirty();
   }
 
-  applyShipReflection(model, shipVisualDefinition = getShipVisualDefinition(SHIP_VISUAL_IDS.playerShip)) {
+  applyShipReflection(model, shipVisualDefinition = getShipDefinition(DEFAULT_SHIP_ID).visual) {
     if (!this.shipReflectionTexture) return;
     const reflectionIntensity = shipVisualDefinition?.materials?.reflectionIntensity ?? this.shipReflectionIntensity;
 
@@ -1013,6 +1148,36 @@ export class GameManager {
     this.ui.showToast("cam: follow");
   }
 
+  enterFollowCameraDirectly() {
+    this.updateShipCenter();
+    this.ship.getWorldDirection(this.vectors.forward).normalize();
+    this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion).normalize();
+
+    this.stopTouchDpad();
+    this.state.cameraFxAmount = 0;
+    this.vectors.cameraActionOffset.set(0, 0, 0);
+    this.vectors.cameraActionTarget.set(0, 0, 0);
+    this.cameraControl.dragging = false;
+    this.cameraControl.pointerId = null;
+    this.cameraControl.pointers.clear();
+    this.cameraControl.pinching = false;
+    this.cameraControl.pinchDistance = 0;
+    this.cameraControl.followShip = true;
+    this.cameraControl.returningToFollow = false;
+
+    // Immediately position camera at follow position — no lerp animation
+    this.vectors.desiredCameraPosition.copy(this.vectors.shipCenter)
+      .addScaledVector(this.vectors.forward, -this.cameraControl.distance)
+      .addScaledVector(this.vectors.up, this.config.cameraFollowHeight);
+    this.camera.position.copy(this.vectors.desiredCameraPosition);
+    this.vectors.cameraUp.copy(this.vectors.up);
+    this.camera.up.copy(this.vectors.cameraUp);
+    this.camera.lookAt(this.vectors.shipCenter);
+
+    this.ui.setCameraOrbitActive(false);
+    this.ui.showToast("cam: follow");
+  }
+
   enterOrbitCameraMode() {
     this.stopTouchDpad();
     const modeChanged = this.cameraControl.followShip || this.cameraControl.returningToFollow;
@@ -1084,6 +1249,11 @@ export class GameManager {
   }
 
   applyCameraZoomDelta(delta) {
+    if (this.cameraContext === "target") {
+      this.applyTargetCamZoomDelta(delta);
+      return;
+    }
+
     if (!this.cameraControl.followShip && !this.cameraControl.returningToFollow) {
       this.cameraControl.orbitDistance = Math.max(
         0.5,
@@ -1101,6 +1271,35 @@ export class GameManager {
     this.cameraControl.distance = nextDistance;
   }
 
+  applyTargetCamZoomDelta(delta) {
+    const minDist = this.selectedWorldObject
+      ? Math.max(0.5, this.selectedWorldObject.savedRadius * 1.2)
+      : 0.5;
+    this.targetCamControl.orbitDistance = Math.max(minDist, this.targetCamControl.orbitDistance + delta);
+  }
+
+  getTargetCamPointerDistance() {
+    const pointers = Array.from(this.targetCamControl.pointers.values());
+    if (pointers.length < 2) return 0;
+    return Math.hypot(pointers[0].x - pointers[1].x, pointers[0].y - pointers[1].y);
+  }
+
+  stopTargetCamDrag(event) {
+    this.targetCamControl.pointers.delete(event.pointerId);
+    if (this.targetCamControl.pointers.size < 2) {
+      this.targetCamControl.pinching = false;
+      this.targetCamControl.pinchDistance = 0;
+    }
+    if (this.targetCamControl.pointerId === event.pointerId) {
+      this.targetCamControl.dragging = false;
+      this.targetCamControl.pointerId = null;
+    }
+    if (this.renderer.domElement.hasPointerCapture(event.pointerId)) {
+      this.renderer.domElement.releasePointerCapture(event.pointerId);
+    }
+    if (event.type === "pointercancel") this.resetSelectionPointer(event.pointerId);
+  }
+
   getCameraPointerDistance() {
     const pointers = Array.from(this.cameraControl.pointers.values());
     if (pointers.length < 2) return 0;
@@ -1109,7 +1308,7 @@ export class GameManager {
   }
 
   setSpeed(value) {
-    const nextSpeed = THREE.MathUtils.clamp(value, this.config.minSpeed, this.config.maxSpeed);
+    const nextSpeed = THREE.MathUtils.clamp(value, this.shipStats.minSpeed, this.shipStats.maxSpeed);
     const changed = nextSpeed !== this.state.desiredSpeed;
     this.state.desiredSpeed = nextSpeed;
     return changed;
@@ -1128,6 +1327,7 @@ export class GameManager {
 
   setTarget({ x, y, z }) {
     this.navTarget = new THREE.Vector3(x, y, z);
+    this.activeNavLog = null;
     this.state.autopilotPhase = "stopping";
     this.state.autopilotPeakSpeed = 0;
     this.targetMarker.visible = true;
@@ -1151,6 +1351,7 @@ export class GameManager {
     this.state.autopilotPhase = null;
     this.state.autopilotPeakSpeed = 0;
     this.navTarget = null;
+    this.activeNavLog = null;
     this.targetMarker.visible = false;
     if (message) this.ui.showToast(message);
     this.savePlayerShipState({ force: true });
@@ -1165,11 +1366,12 @@ export class GameManager {
     this.state.autopilotPhase = null;
     this.state.autopilotPeakSpeed = 0;
     this.navTarget = null;
+    this.activeNavLog = null;
     this.targetMarker.visible = false;
   }
 
   computeAutopilotPeakSpeed(distance) {
-    const { maxSpeed, accelerationRate, decelerationRate } = this.config;
+    const { maxSpeed, accelerationRate, decelerationRate } = this.shipStats;
     const accelDist = 0.5 * maxSpeed * maxSpeed / accelerationRate;
     const decelDist = 0.5 * maxSpeed * maxSpeed / decelerationRate;
     if (distance >= accelDist + decelDist) return maxSpeed;
@@ -1180,7 +1382,7 @@ export class GameManager {
   computeAutopilotEta() {
     if (!this.navTarget) return null;
     const distance = this.navTarget.distanceTo(this.ship.position);
-    const { maxSpeed, accelerationRate, decelerationRate } = this.config;
+    const { maxSpeed, accelerationRate, decelerationRate } = this.shipStats;
     const accelDist = 0.5 * maxSpeed * maxSpeed / accelerationRate;
     const decelDist = 0.5 * maxSpeed * maxSpeed / decelerationRate;
     let flightTime;
@@ -1196,7 +1398,7 @@ export class GameManager {
 
   computeFlightDuration(effectiveDist, peakSpeed) {
     if (peakSpeed <= 0 || effectiveDist <= 0) return 0;
-    const { accelerationRate, decelerationRate } = this.config;
+    const { accelerationRate, decelerationRate } = this.shipStats;
     const accelDist = 0.5 * peakSpeed * peakSpeed / accelerationRate;
     const decelDist = 0.5 * peakSpeed * peakSpeed / decelerationRate;
     const cruiseDist = Math.max(0, effectiveDist - accelDist - decelDist);
@@ -1208,11 +1410,11 @@ export class GameManager {
     const target = new THREE.Vector3(navLog.target.x, navLog.target.y, navLog.target.z);
     const dir = target.clone().sub(from);
     const totalDist = dir.length();
-    const effectiveDist = Math.max(0, totalDist - this.config.arrivalRadius);
+    const effectiveDist = Math.max(0, totalDist - this.shipStats.arrivalRadius);
     if (effectiveDist <= 0) return target.clone();
     dir.normalize();
 
-    const { accelerationRate, decelerationRate } = this.config;
+    const { accelerationRate, decelerationRate } = this.shipStats;
     const peak = navLog.peak_speed;
     const accelTime = peak / accelerationRate;
     const accelDist = 0.5 * peak * peak / accelerationRate;
@@ -1237,7 +1439,7 @@ export class GameManager {
   computeNavSpeedAtTime(navLog, tSec) {
     const peak = navLog.peak_speed;
     if (peak <= 0) return 0;
-    const { accelerationRate, decelerationRate } = this.config;
+    const { accelerationRate, decelerationRate } = this.shipStats;
     const accelTime = peak / accelerationRate;
     const decelTime = peak / decelerationRate;
     const cruiseTime = Math.max(0, navLog.flight_duration - accelTime - decelTime);
@@ -1248,41 +1450,196 @@ export class GameManager {
     return Math.max(0, peak - decelerationRate * decelT);
   }
 
-  extrapolateShipMovement(v0, vd, elapsed) {
-    const { accelerationRate, decelerationRate } = this.config;
-    const diff = vd - v0;
-    if (Math.abs(diff) < 0.001) {
-      return { distance: v0 * elapsed, finalSpeed: v0 };
-    }
-    const rate = diff > 0 ? accelerationRate : decelerationRate;
-    const tReach = Math.abs(diff) / rate;
-    const dir = Math.sign(diff);
-    if (elapsed <= tReach) {
-      return {
-        distance: v0 * elapsed + 0.5 * dir * rate * elapsed * elapsed,
-        finalSpeed: v0 + dir * rate * elapsed
-      };
-    }
-    const d1 = v0 * tReach + 0.5 * dir * rate * tReach * tReach;
-    return { distance: d1 + vd * (elapsed - tReach), finalSpeed: vd };
+  computeGlidePositionAtTime(navLog, tSec) {
+    const from = new THREE.Vector3(navLog.from_position.x, navLog.from_position.y, navLog.from_position.z);
+    const dir = new THREE.Vector3(navLog.target.x, navLog.target.y, navLog.target.z).sub(from);
+    if (dir.lengthSq() < 0.0001) return from.clone();
+    dir.normalize();
+    const v0 = navLog.peak_speed;
+    const t = Math.min(tSec, navLog.flight_duration);
+    const dist = Math.max(0, v0 * t - 0.5 * this.shipStats.decelerationRate * t * t);
+    return from.clone().addScaledVector(dir, dist);
   }
 
-  extrapolateShipMovementFixed(v0, capSeconds, elapsed) {
-    if (v0 <= 0.001) return { distance: 0, finalSpeed: 0 };
-    const { decelerationRate } = this.config;
-    const decelTime = v0 / decelerationRate;
-    const decelDist = 0.5 * v0 * v0 / decelerationRate;
-    if (elapsed <= capSeconds) {
-      return { distance: v0 * elapsed, finalSpeed: v0 };
+  computeGlideSpeedAtTime(navLog, tSec) {
+    const t = Math.min(tSec, navLog.flight_duration);
+    return Math.max(0, navLog.peak_speed - this.shipStats.decelerationRate * t);
+  }
+
+  _deactivationKinematics(v0, vd, ar, dr, coastDuration, tSec) {
+    let dist = 0, speed = v0, t = 0;
+
+    if (Math.abs(speed - vd) > 0.001) {
+      const accelerating = vd > speed;
+      const rate = accelerating ? ar : dr;
+      const phase1End = Math.min(Math.abs(vd - speed) / rate, coastDuration, tSec);
+      dist += speed * phase1End + (accelerating ? 1 : -1) * 0.5 * rate * phase1End * phase1End;
+      speed = accelerating ? Math.min(speed + rate * phase1End, vd) : Math.max(speed - rate * phase1End, vd);
+      t = phase1End;
     }
-    const decelElapsed = elapsed - capSeconds;
-    if (decelElapsed >= decelTime) {
-      return { distance: v0 * capSeconds + decelDist, finalSpeed: 0 };
+
+    if (t >= tSec || speed === 0) return { dist, speed };
+
+    if (t < coastDuration) {
+      const phase2End = Math.min(coastDuration, tSec);
+      dist += speed * (phase2End - t);
+      t = phase2End;
     }
-    return {
-      distance: v0 * capSeconds + v0 * decelElapsed - 0.5 * decelerationRate * decelElapsed * decelElapsed,
-      finalSpeed: v0 - decelerationRate * decelElapsed
+
+    if (t >= tSec || speed === 0) return { dist, speed };
+
+    // Phase 3: 속도 부호에 따라 감속률 결정 (음수 → accelerationRate로 0에 접근)
+    const stopRate = speed > 0 ? dr : ar;
+    const decelTime = Math.min(tSec - t, Math.abs(speed) / stopRate);
+    dist += speed * decelTime + (speed < 0 ? 0.5 : -0.5) * stopRate * decelTime * decelTime;
+    speed = speed > 0
+      ? Math.max(0, speed - stopRate * decelTime)
+      : Math.min(0, speed + stopRate * decelTime);
+    return { dist, speed };
+  }
+
+  computeDeactivationPositionAtTime(log, tSec) {
+    const { accelerationRate, decelerationRate } = this.shipStats;
+    const from = new THREE.Vector3(log.from_position.x, log.from_position.y, log.from_position.z);
+    // heading 필드 우선 사용 — totalDist가 음수일 때 target-from 방향이 반전되는 문제 방지
+    const dir = log.heading
+      ? new THREE.Vector3(log.heading.x, log.heading.y, log.heading.z)
+      : new THREE.Vector3(log.target.x, log.target.y, log.target.z).sub(from).normalize();
+    if (dir.lengthSq() < 0.0001) return from.clone();
+    const { dist } = this._deactivationKinematics(
+      log.peak_speed, log.desired_speed ?? 0, accelerationRate, decelerationRate,
+      log.coast_duration ?? this.shipStats.deactivationCoastDuration,
+      Math.min(tSec, log.flight_duration)
+    );
+    return from.clone().addScaledVector(dir, dist);
+  }
+
+  computeDeactivationSpeedAtTime(log, tSec) {
+    const { accelerationRate, decelerationRate } = this.shipStats;
+    const { speed } = this._deactivationKinematics(
+      log.peak_speed, log.desired_speed ?? 0, accelerationRate, decelerationRate,
+      log.coast_duration ?? this.shipStats.deactivationCoastDuration,
+      Math.min(tSec, log.flight_duration)
+    );
+    return speed;
+  }
+
+  _commitDeactivationNavLog(overrideStartAt = null) {
+    if (this.state.autopilotPhase !== null || this.state.speed === 0) return;
+
+    const { decelerationRate, accelerationRate, deactivationCoastDuration } = this.shipStats;
+    const v0 = this.state.speed;
+    const vd = this.state.desiredSpeed;
+
+    this.ship.getWorldDirection(this.vectors.forward).normalize();
+    const dir = this.vectors.forward.clone();
+    const from = { x: this.ship.position.x, y: this.ship.position.y, z: this.ship.position.z };
+
+    const { speed: speedAtCoastEnd } = this._deactivationKinematics(
+      v0, vd, accelerationRate, decelerationRate, deactivationCoastDuration, deactivationCoastDuration
+    );
+    const stopRate = speedAtCoastEnd > 0 ? decelerationRate : accelerationRate;
+    const flightDuration = speedAtCoastEnd === 0
+      ? (Math.abs(vd - v0) > 0.001 ? Math.abs(vd - v0) / (vd < v0 ? decelerationRate : accelerationRate) : 0)
+      : deactivationCoastDuration + Math.abs(speedAtCoastEnd) / stopRate;
+    const { dist: totalDist } = this._deactivationKinematics(
+      v0, vd, accelerationRate, decelerationRate, deactivationCoastDuration, flightDuration
+    );
+    const stopPos = this.ship.position.clone().addScaledVector(dir, totalDist);
+
+    const log = {
+      type: "deactivation",
+      from_position: from,
+      target: { x: stopPos.x, y: stopPos.y, z: stopPos.z },
+      heading: { x: dir.x, y: dir.y, z: dir.z },
+      flight_start_at: overrideStartAt ?? Date.now(),
+      peak_speed: v0,
+      desired_speed: vd,
+      coast_duration: deactivationCoastDuration,
+      flight_duration: flightDuration,
+      status: "active"
     };
+
+    const id = this.worldDataManager.createNavLog(log);
+    this._deactivationLog = { ...log, id };
+  }
+
+  _resolveDeactivationNavLog() {
+    const log = this._deactivationLog;
+    if (!log) return;
+    this._deactivationLog = null;
+    this._lastDeactivationResolvedAt = Date.now();
+
+    const { accelerationRate, decelerationRate } = this.shipStats;
+    const tSec = (Date.now() - log.flight_start_at) / 1000;
+
+    if (tSec >= log.flight_duration) {
+      this.ship.position.set(log.target.x, log.target.y, log.target.z);
+      this.state.speed = 0;
+      this.state.desiredSpeed = 0;
+      void this.worldDataManager.updateNavLog(log.id, { status: "completed", completed_at: Date.now() });
+      return;
+    }
+
+    const from = new THREE.Vector3(log.from_position.x, log.from_position.y, log.from_position.z);
+    const dir = log.heading
+      ? new THREE.Vector3(log.heading.x, log.heading.y, log.heading.z)
+      : new THREE.Vector3(log.target.x, log.target.y, log.target.z).sub(from).normalize();
+
+    const { dist, speed } = this._deactivationKinematics(
+      log.peak_speed, log.desired_speed ?? 0, accelerationRate, decelerationRate,
+      log.coast_duration ?? this.shipStats.deactivationCoastDuration, tSec
+    );
+
+    this.ship.position.copy(from).addScaledVector(dir, dist);
+    this.state.speed = speed;
+    this.state.desiredSpeed = speed;
+
+    if (dir.lengthSq() > 0.0001) {
+      this.lookMatrix.lookAt(dir, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+      this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
+    }
+
+    void this.worldDataManager.updateNavLog(log.id, { status: "cancelled", cancelled_at: Date.now() });
+  }
+
+  _snapToActiveNavLog() {
+    const log = this.activeNavLog;
+    if (!log?.flight_start_at || !this.navTarget) return;
+
+    const tSec = (Date.now() - log.flight_start_at) / 1000;
+
+    if (tSec >= log.flight_duration) {
+      this.ship.position.set(log.target.x, log.target.y, log.target.z);
+      this.state.speed = 0;
+      this.state.desiredSpeed = 0;
+      this.clearTarget("arrived", true);
+      return;
+    }
+
+    const computedPos = this.computeNavPositionAtTime(log, tSec);
+    const computedSpeed = this.computeNavSpeedAtTime(log, tSec);
+    this.ship.position.copy(computedPos);
+    this.state.speed = computedSpeed;
+
+    const toTarget = this.navTarget.clone().sub(computedPos);
+    const remaining = toTarget.length() - this.shipStats.arrivalRadius;
+    if (toTarget.lengthSq() > 0.0001) {
+      this.lookMatrix.lookAt(toTarget.clone().normalize(), new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+      this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
+    }
+
+    const decelDist = computedSpeed > 0
+      ? 0.5 * computedSpeed * computedSpeed / this.shipStats.decelerationRate
+      : 0;
+
+    if (remaining <= decelDist) {
+      this.state.autopilotPhase = "decelerating";
+      this.state.desiredSpeed = 0;
+    } else {
+      this.state.autopilotPhase = "cruising";
+      this.state.desiredSpeed = log.peak_speed;
+    }
   }
 
   updateThrottleTarget(dt) {
@@ -1292,11 +1649,11 @@ export class GameManager {
     const decelerating = this.activeActions.has("throttleDown");
     if (accelerating === decelerating) return;
 
-    const target = accelerating ? this.config.maxSpeed : this.config.minSpeed;
+    const target = accelerating ? this.shipStats.maxSpeed : this.shipStats.minSpeed;
     const nextSpeed = this.moveToward(
       this.state.desiredSpeed,
       target,
-      this.config.throttleAdjustRate * dt
+      this.shipStats.throttleAdjustRate * dt
     );
     this.setSpeed(nextSpeed);
   }
@@ -1304,14 +1661,14 @@ export class GameManager {
   updateSpeed(dt) {
     const previousSpeed = this.state.speed;
     const rate = this.state.desiredSpeed >= this.state.speed
-      ? this.config.accelerationRate
-      : this.config.decelerationRate;
+      ? this.shipStats.accelerationRate
+      : this.shipStats.decelerationRate;
     this.state.speed = this.moveToward(this.state.speed, this.state.desiredSpeed, rate * dt);
     this.state.speedTrend = this.state.speed - previousSpeed;
   }
 
   getShipEngineOutputPercent() {
-    const maxSpeed = Number(this.config.maxSpeed);
+    const maxSpeed = Number(this.shipStats.maxSpeed);
     if (!Number.isFinite(maxSpeed) || maxSpeed <= 0) return 0;
     return THREE.MathUtils.clamp(Math.max(0, this.state.speed) / maxSpeed, 0, 1) * 100;
   }
@@ -1337,12 +1694,12 @@ export class GameManager {
     const yawLeft = this.getControlActionAmount("yawLeft");
     const yawRight = this.getControlActionAmount("yawRight");
 
-    if (pitchUp > 0) pitch += this.config.pitchRate * dt * pitchDirection * pitchUp;
-    if (pitchDown > 0) pitch -= this.config.pitchRate * dt * pitchDirection * pitchDown;
-    if (yawLeft > 0) yaw += this.config.yawRate * dt * yawLeft;
-    if (yawRight > 0) yaw -= this.config.yawRate * dt * yawRight;
-    if (this.activeActions.has("rollLeft")) roll -= this.config.rollRate * dt;
-    if (this.activeActions.has("rollRight")) roll += this.config.rollRate * dt;
+    if (pitchUp > 0) pitch += this.shipStats.pitchRate * dt * pitchDirection * pitchUp;
+    if (pitchDown > 0) pitch -= this.shipStats.pitchRate * dt * pitchDirection * pitchDown;
+    if (yawLeft > 0) yaw += this.shipStats.yawRate * dt * yawLeft;
+    if (yawRight > 0) yaw -= this.shipStats.yawRate * dt * yawRight;
+    if (this.activeActions.has("rollLeft")) roll -= this.shipStats.rollRate * dt;
+    if (this.activeActions.has("rollRight")) roll += this.shipStats.rollRate * dt;
 
     if (pitch === 0 && yaw === 0 && roll === 0) return;
 
@@ -1370,7 +1727,7 @@ export class GameManager {
     this.vectors.targetVec.copy(this.navTarget).sub(this.ship.position);
     const distance = this.vectors.targetVec.length();
 
-    if (distance <= this.config.arrivalRadius) {
+    if (distance <= this.shipStats.arrivalRadius) {
       this.clearTarget("arrived", true);
       this.setSpeed(0);
       return;
@@ -1390,18 +1747,28 @@ export class GameManager {
       this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion);
       this.lookMatrix.lookAt(direction, new THREE.Vector3(0, 0, 0), this.vectors.up);
       this.quaternions.desired.setFromRotationMatrix(this.lookMatrix);
-      this.ship.quaternion.slerp(this.quaternions.desired, Math.min(1, this.config.autopilotTurnRate * dt)).normalize();
+      this.ship.quaternion.slerp(this.quaternions.desired, Math.min(1, Math.min(this.shipStats.pitchRate, this.shipStats.yawRate) * dt)).normalize();
       this.ship.getWorldDirection(this.vectors.forward);
       if (this.vectors.forward.dot(direction) > 0.99999) {
-        const effectiveDist = distance - this.config.arrivalRadius;
+        const effectiveDist = distance - this.shipStats.arrivalRadius;
         const peakSpeed = this.computeAutopilotPeakSpeed(effectiveDist);
         const flightDuration = this.computeFlightDuration(effectiveDist, peakSpeed);
         this.state.autopilotPeakSpeed = peakSpeed;
         this.state.autopilotPhase = "accelerating";
+        const flightStartAt = Date.now();
+        const flightFrom = { x: this.ship.position.x, y: this.ship.position.y, z: this.ship.position.z };
+        this.activeNavLog = {
+          type: "standard",
+          from_position: flightFrom,
+          target: { x: this.navTarget.x, y: this.navTarget.y, z: this.navTarget.z },
+          flight_start_at: flightStartAt,
+          peak_speed: peakSpeed,
+          flight_duration: flightDuration
+        };
         if (this.activeNavLogId) {
           this.worldDataManager.updateNavLog(this.activeNavLogId, {
-            from_position: { x: this.ship.position.x, y: this.ship.position.y, z: this.ship.position.z },
-            flight_start_at: Date.now(),
+            from_position: flightFrom,
+            flight_start_at: flightStartAt,
             peak_speed: peakSpeed,
             flight_duration: flightDuration
           });
@@ -1411,8 +1778,8 @@ export class GameManager {
     } else if (phase === "accelerating") {
       this.setSpeed(this.state.autopilotPeakSpeed);
       this._autopilotCourseCorrect(dt);
-      const decelDist = 0.5 * this.state.speed * this.state.speed / this.config.decelerationRate;
-      const remaining = distance - this.config.arrivalRadius;
+      const decelDist = 0.5 * this.state.speed * this.state.speed / this.shipStats.decelerationRate;
+      const remaining = distance - this.shipStats.arrivalRadius;
       if (remaining <= decelDist) {
         this.state.autopilotPhase = "decelerating";
       } else if (this.state.speed >= this.state.autopilotPeakSpeed - 0.1) {
@@ -1422,15 +1789,15 @@ export class GameManager {
     } else if (phase === "cruising") {
       this.setSpeed(this.state.autopilotPeakSpeed);
       this._autopilotCourseCorrect(dt);
-      const decelDist = 0.5 * this.state.speed * this.state.speed / this.config.decelerationRate;
-      if (distance - this.config.arrivalRadius <= decelDist) {
+      const decelDist = 0.5 * this.state.speed * this.state.speed / this.shipStats.decelerationRate;
+      if (distance - this.shipStats.arrivalRadius <= decelDist) {
         this.state.autopilotPhase = "decelerating";
       }
 
     } else if (phase === "decelerating") {
       this.setSpeed(0);
       this._autopilotCourseCorrect(dt);
-      if (Math.abs(this.state.speed) < 0.5 && distance > this.config.arrivalRadius * 2) {
+      if (Math.abs(this.state.speed) < 0.5 && distance > this.shipStats.arrivalRadius * 2) {
         this.state.autopilotPhase = "stopping";
       }
     }
@@ -1441,13 +1808,13 @@ export class GameManager {
     this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion);
     this.lookMatrix.lookAt(courseDir, new THREE.Vector3(0, 0, 0), this.vectors.up);
     this.quaternions.desired.setFromRotationMatrix(this.lookMatrix);
-    this.ship.quaternion.slerp(this.quaternions.desired, Math.min(1, this.config.autopilotTurnRate * 0.4 * dt)).normalize();
+    this.ship.quaternion.slerp(this.quaternions.desired, Math.min(1, Math.min(this.shipStats.pitchRate, this.shipStats.yawRate) * 0.4 * dt)).normalize();
   }
 
   updateAutopilotRollOnly(dt) {
     let roll = 0;
-    if (this.activeActions.has("rollLeft")) roll -= this.config.rollRate * dt;
-    if (this.activeActions.has("rollRight")) roll += this.config.rollRate * dt;
+    if (this.activeActions.has("rollLeft")) roll -= this.shipStats.rollRate * dt;
+    if (this.activeActions.has("rollRight")) roll += this.shipStats.rollRate * dt;
     if (roll === 0) return;
     this.quaternions.localRotation.setFromAxisAngle(this.axes.z, roll);
     this.ship.quaternion.multiply(this.quaternions.localRotation);
@@ -1463,16 +1830,21 @@ export class GameManager {
     this.vectors.movement.addScaledVector(this.vectors.forward, this.state.speed * dt);
 
     if (this.state.autopilotPhase === null) {
-      if (this.activeActions.has("strafeLeft")) this.vectors.movement.addScaledVector(this.vectors.right, this.config.strafeRate * dt);
-      if (this.activeActions.has("strafeRight")) this.vectors.movement.addScaledVector(this.vectors.right, -this.config.strafeRate * dt);
-      if (this.activeActions.has("ascend")) this.vectors.movement.addScaledVector(this.vectors.up, this.config.verticalRate * dt);
-      if (this.activeActions.has("descend")) this.vectors.movement.addScaledVector(this.vectors.up, -this.config.verticalRate * dt);
+      if (this.activeActions.has("strafeLeft")) this.vectors.movement.addScaledVector(this.vectors.right, this.shipStats.strafeRate * dt);
+      if (this.activeActions.has("strafeRight")) this.vectors.movement.addScaledVector(this.vectors.right, -this.shipStats.strafeRate * dt);
+      if (this.activeActions.has("ascend")) this.vectors.movement.addScaledVector(this.vectors.up, this.shipStats.verticalRate * dt);
+      if (this.activeActions.has("descend")) this.vectors.movement.addScaledVector(this.vectors.up, -this.shipStats.verticalRate * dt);
     }
 
     this.ship.position.add(this.vectors.movement);
   }
 
   updateCamera(dt) {
+    if (this.cameraContext === "target") {
+      this.updateTargetCamera(dt);
+      return;
+    }
+
     this.updateShipCenter();
     this.ship.getWorldDirection(this.vectors.forward).normalize();
     this.vectors.right.set(1, 0, 0).applyQuaternion(this.ship.quaternion).normalize();
@@ -1614,6 +1986,31 @@ export class GameManager {
     this.camera.up.copy(this.vectors.cameraUp);
   }
 
+  updateTargetCamera() {
+    if (!this.targetCamObject) {
+      this.exitTargetCameraMode();
+      return;
+    }
+
+    const visibleObject = this.findVisibleWorldObject(this.targetCamObject.kind, this.targetCamObject.id);
+    if (!visibleObject) {
+      this.exitTargetCameraMode();
+      return;
+    }
+
+    const bounds = this.getObjectSelectionBounds(visibleObject);
+    this.vectors.targetCamPivot.copy(bounds.center);
+
+    this.quaternions.targetCamOrbit.copy(this.quaternions.targetCamOrbitTarget);
+    this.vectors.targetCamLocalOffset.set(0, 0, this.targetCamControl.orbitDistance)
+      .applyQuaternion(this.quaternions.targetCamOrbit);
+
+    this.camera.position.copy(this.vectors.targetCamPivot).add(this.vectors.targetCamLocalOffset);
+    this.camera.quaternion.copy(this.quaternions.targetCamOrbit);
+    this.vectors.targetCamUp.set(0, 1, 0).applyQuaternion(this.quaternions.targetCamOrbit).normalize();
+    this.camera.up.copy(this.vectors.targetCamUp);
+  }
+
   updateStars() {
     for (const layer of this.starLayers) {
       const radius = layer.userData.radius;
@@ -1744,6 +2141,7 @@ export class GameManager {
   }
 
   update(dt) {
+    void this.updateBetaVoidLifecycle();
     this.updateAutopilot(dt);
     this.updateThrottleTarget(dt);
     this.updateSpeed(dt);
@@ -1930,6 +2328,7 @@ export class GameManager {
     }
 
     try {
+      await this.worldDataManager.processBetaVoidLifecycle();
       const snapshot = await this.worldDataManager.getWorldSnapshot();
       this.worldMapManager.renderWorld(snapshot);
       await this.restorePlayerShipState();
@@ -2000,21 +2399,27 @@ export class GameManager {
 
   getWorldObjectList() {
     const snapshot = this.worldMapManager?.snapshot || this.worldDataManager.snapshot;
-    if (!snapshot) return { buildings: [], resources: [] };
+    if (!snapshot) return { buildings: [], resources: [], betaVoids: [] };
 
     const sectorsById = new Map(snapshot.sectors.map((sector) => [sector.sector_id, sector]));
     const playerPosition = this.getPlayerDataPosition();
     const toListItem = (object, kind) => {
-      const id = object.building_instance_id || object.resource_instance_id;
-      const type = object.building_id || object.resource_id || object.type || "unknown";
+      const id = object.building_instance_id || object.resource_instance_id || object.id;
+      const type = kind === "betaVoid"
+        ? "beta_void"
+        : object.building_id || object.resource_id || object.type || "unknown";
       const definition = kind === "building"
         ? BUILDING_DEFINITIONS[object.building_id]
-        : RESOURCE_DEFINITIONS[object.resource_id || object.type];
+        : kind === "resource"
+          ? RESOURCE_DEFINITIONS[object.resource_id || object.type]
+          : null;
       const producedItem = kind === "resource"
         ? ITEM_DEFINITIONS[definition?.produces_item_id]
         : null;
       const labelDefinition = kind === "building" ? definition : producedItem || definition;
-      const label = this.i18n.resolveDefinitionText(labelDefinition, "name", type);
+      const label = kind === "betaVoid"
+        ? this.i18n.t("betaVoid.name", {}, "Beta Void")
+        : this.i18n.resolveDefinitionText(labelDefinition, "name", type);
       const position = { ...object.position };
       const relativePosition = object.chunk_center_relative_position
         ? { ...object.chunk_center_relative_position }
@@ -2038,6 +2443,7 @@ export class GameManager {
           ? `${Math.round(object.current_amount)} / ${Math.round(object.total_capacity)}`
           : "unavailable",
         statusLabel: object.status || "unknown",
+        status: object.status || null,
         hpLabel: object.hp != null ? String(object.hp) : "unavailable",
         sectorName: sectorDefinition
           ? this.i18n.resolveDefinitionText(sectorDefinition, "name", sectorDefinition.name || sectorDefinition.sector_id)
@@ -2054,13 +2460,59 @@ export class GameManager {
 
     return {
       buildings: snapshot.buildings.map((building) => toListItem(building, "building")),
-      resources: snapshot.resourceNodes.map((resourceNode) => toListItem(resourceNode, "resource"))
+      resources: snapshot.resourceNodes.map((resourceNode) => toListItem(resourceNode, "resource")),
+      betaVoids: (snapshot.betaVoids || [])
+        .filter((betaVoid) => betaVoid.status === "active")
+        .map((betaVoid) => toListItem(betaVoid, "betaVoid"))
     };
   }
 
   navigateToWorldObject(object) {
     if (!object?.target) return;
     this.setTarget(object.target);
+  }
+
+  async processBetaVoidFromUi(object) {
+    if (!object?.id || object.kind !== "betaVoid") return;
+    if (!this.worldDataManager.db) {
+      this.ui.showErrorToast("world database unavailable");
+      return;
+    }
+
+    try {
+      await this.worldDataManager.processBetaVoid(object.id);
+      const snapshot = await this.worldDataManager.getWorldSnapshot();
+      this.worldMapManager.renderWorld(snapshot, this.getPlayerDataPosition());
+      if (this.selectedWorldObject?.kind === "betaVoid" && this.selectedWorldObject.id === object.id) {
+        this.clearWorldSelection();
+      }
+      this.ui.showToast(this.i18n.t("betaVoid.processed", {}, "Beta Void processed"));
+    } catch (error) {
+      this.ui.showErrorToast(error instanceof Error ? error.message : this.i18n.t("betaVoid.processFailed", {}, "Beta Void process failed"));
+    }
+  }
+
+  async updateBetaVoidLifecycle({ force = false } = {}) {
+    if (!this.worldDataManager.db || this.betaVoidLifecyclePending) return;
+
+    const now = performance.now();
+    if (!force && now - this.betaVoidLifecycleLastCheckedAt < this.betaVoidLifecycleInterval) return;
+    this.betaVoidLifecycleLastCheckedAt = now;
+    this.betaVoidLifecyclePending = true;
+
+    try {
+      const result = await this.worldDataManager.processBetaVoidLifecycle();
+      if (!result?.changed) return;
+
+      const snapshot = await this.worldDataManager.getWorldSnapshot();
+      this.worldMapManager.renderWorld(snapshot, this.getPlayerDataPosition());
+      this.syncWorldRuntimeWithPlayer({ force: true });
+      this.updateTargetingOverlay();
+    } catch (error) {
+      console.error("Beta Void lifecycle failed:", error);
+    } finally {
+      this.betaVoidLifecyclePending = false;
+    }
   }
 
   getDataDistance(a, b) {
@@ -2087,6 +2539,25 @@ export class GameManager {
 
   animate() {
     if (this.disposed) return;
+
+    const nowMs = Date.now();
+    const frameGapMs = this._lastFrameTimestamp ? nowMs - this._lastFrameTimestamp : 0;
+    this._lastFrameTimestamp = nowMs;
+
+    const gapStartAt = nowMs - frameGapMs;
+    if (
+      this.state.phase === "running" &&
+      this.state.autopilotPhase === null &&
+      this.state.speed > 0 &&
+      frameGapMs > this.config.gapDetectionThresholdMs &&
+      !this._deactivationLog &&
+      gapStartAt > this._lastDeactivationResolvedAt
+    ) {
+      this.activeActions.clear();
+      this._commitDeactivationNavLog(nowMs - frameGapMs);
+      this._resolveDeactivationNavLog();
+    }
+
     const dt = Math.min(this.clock.getDelta(), 0.05);
 
     if (this.state.phase === "running") {
@@ -2111,6 +2582,26 @@ export class GameManager {
     if (this.state.phase !== "running") return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
+
+    if (this.cameraContext === "target") {
+      this.startSelectionPointer(event, this.targetCamControl.pointers.size === 0);
+      this.targetCamControl.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      this.renderer.domElement.setPointerCapture(event.pointerId);
+      if (this.targetCamControl.pointers.size >= 2) {
+        this.cancelSelectionPointer();
+        this.targetCamControl.dragging = false;
+        this.targetCamControl.pointerId = null;
+        this.targetCamControl.pinching = true;
+        this.targetCamControl.pinchDistance = this.getTargetCamPointerDistance();
+      } else {
+        this.targetCamControl.dragging = true;
+        this.targetCamControl.pointerId = event.pointerId;
+        this.targetCamControl.lastX = event.clientX;
+        this.targetCamControl.lastY = event.clientY;
+      }
+      return;
+    }
+
     this.startSelectionPointer(event, this.cameraControl.pointers.size === 0);
     this.cameraControl.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     this.renderer.domElement.setPointerCapture(event.pointerId);
@@ -2149,6 +2640,50 @@ export class GameManager {
 
   onPointerMove(event) {
     this.updateSelectionPointer(event);
+
+    if (this.cameraContext === "target") {
+      if (this.targetCamControl.pointers.has(event.pointerId)) {
+        this.targetCamControl.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      }
+
+      if (this.targetCamControl.pinching) {
+        if (this.targetCamControl.pointers.size < 2) return;
+        event.preventDefault();
+        const nextDistance = this.getTargetCamPointerDistance();
+        if (nextDistance <= 0 || this.targetCamControl.pinchDistance <= 0) {
+          this.targetCamControl.pinchDistance = nextDistance;
+          return;
+        }
+        const pinchDelta = (this.targetCamControl.pinchDistance - nextDistance) * this.config.cameraZoomSensitivity;
+        this.applyTargetCamZoomDelta(pinchDelta);
+        this.targetCamControl.pinchDistance = nextDistance;
+        return;
+      }
+
+      if (!this.targetCamControl.dragging || this.targetCamControl.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      const dx = event.clientX - this.targetCamControl.lastX;
+      const dy = event.clientY - this.targetCamControl.lastY;
+      this.targetCamControl.lastX = event.clientX;
+      this.targetCamControl.lastY = event.clientY;
+      if (dx === 0 && dy === 0) return;
+
+      this.quaternions.targetCamOrbitYawDelta.setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        -dx * this.config.cameraOrbitSensitivity
+      );
+      this.quaternions.targetCamOrbitTarget.premultiply(this.quaternions.targetCamOrbitYawDelta).normalize();
+
+      this.vectors.targetCamLocalOffset.set(1, 0, 0)
+        .applyQuaternion(this.quaternions.targetCamOrbitTarget)
+        .normalize();
+      this.quaternions.targetCamOrbitPitchDelta.setFromAxisAngle(
+        this.vectors.targetCamLocalOffset,
+        -dy * this.config.cameraOrbitSensitivity
+      );
+      this.quaternions.targetCamOrbitTarget.premultiply(this.quaternions.targetCamOrbitPitchDelta).normalize();
+      return;
+    }
 
     if (this.cameraControl.pointers.has(event.pointerId)) {
       this.cameraControl.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -2205,6 +2740,15 @@ export class GameManager {
   }
 
   onPointerUp(event) {
+    if (this.cameraContext === "target") {
+      const shouldSelect = this.shouldSelectFromPointer(event);
+      this.stopTargetCamDrag(event);
+      // Selection updates independently of target cam tracking
+      if (shouldSelect) this.selectWorldObjectFromPointer(event.clientX, event.clientY);
+      this.resetSelectionPointer(event.pointerId);
+      return;
+    }
+
     const shouldSelect = this.shouldSelectFromPointer(event);
     this.stopCameraDrag(event);
     if (shouldSelect) this.selectWorldObjectFromPointer(event.clientX, event.clientY);
@@ -2297,8 +2841,12 @@ export class GameManager {
     this.updateTargetingOverlay();
   }
 
+  isSelectableWorldKind(kind) {
+    return kind === "resource" || kind === "building" || kind === "betaVoid";
+  }
+
   selectWorldObjectFromListItem(object) {
-    if (!object?.id || (object.kind !== "resource" && object.kind !== "building")) return;
+    if (!object?.id || !this.isSelectableWorldKind(object.kind)) return;
 
     const visibleObject = this.findVisibleWorldObject(object.kind, object.id);
     const selection = visibleObject
@@ -2315,7 +2863,7 @@ export class GameManager {
     const objectsGroup = this.worldMapManager?.objectsGroup;
     let cursor = object;
     while (cursor && cursor !== objectsGroup) {
-      if (cursor.userData?.kind === "resource" || cursor.userData?.kind === "building") return cursor;
+      if (this.isSelectableWorldKind(cursor.userData?.kind)) return cursor;
       cursor = cursor.parent;
     }
     return null;
@@ -2327,7 +2875,7 @@ export class GameManager {
 
     const hits = [];
     for (const object of objectsGroup.children) {
-      if (object.userData?.kind !== "resource" && object.userData?.kind !== "building") continue;
+      if (!this.isSelectableWorldKind(object.userData?.kind)) continue;
       const bounds = this.getObjectSelectionBounds(object);
       const projection = this.projectWorldSelectionCenter(bounds.center);
       if (!projection) continue;
@@ -2363,10 +2911,12 @@ export class GameManager {
     const data = object.userData || {};
     const kind = data.kind;
     const id = data.id;
-    if (!id || (kind !== "resource" && kind !== "building")) return null;
+    if (!id || !this.isSelectableWorldKind(kind)) return null;
 
     const type = kind === "building"
       ? data.building_id || data.type || "unknown"
+      : kind === "betaVoid"
+        ? "beta_void"
       : data.type || data.resource_id || "unknown";
     const bounds = this.getObjectSelectionBounds(object);
 
@@ -2462,6 +3012,8 @@ export class GameManager {
   }
 
   getWorldSelectionName(kind, type) {
+    if (kind === "betaVoid") return this.i18n.t("betaVoid.name", {}, "Beta Void");
+
     if (kind === "building") {
       const definition = BUILDING_DEFINITIONS[type];
       return this.i18n.resolveDefinitionText(definition, "name", this.formatObjectName(type));
@@ -2473,6 +3025,7 @@ export class GameManager {
   }
 
   getWorldSelectionIconUrl(kind, type) {
+    if (kind === "betaVoid") return new URL("../rss/svg/ind_void.svg", import.meta.url).href;
     if (kind !== "building") return new URL("../rss/svg/ind_loot.svg", import.meta.url).href;
 
     const size = BUILDING_DEFINITIONS[type]?.size;
@@ -2483,11 +3036,69 @@ export class GameManager {
   }
 
   getWorldSelectionFallbackRadius(kind, type) {
+    if (kind === "betaVoid") return 30;
+
     const definition = kind === "building"
       ? BUILDING_DEFINITIONS[type]
       : RESOURCE_DEFINITIONS[type];
     const visualScale = Number(definition?.visual?.scale) || 8;
     return Math.max(0.001, visualScale * 1.6);
+  }
+
+  enterTargetCameraMode() {
+    const selection = this.selectedWorldObject;
+    if (!selection) {
+      this.targetCamObject = null;
+      this.cameraContext = "ship";
+      this.enterFollowCameraDirectly();
+      return;
+    }
+
+    // Toggle off if already tracking this exact object
+    if (this.cameraContext === "target" && this.targetCamObject?.id === selection.id) {
+      this.exitTargetCameraMode();
+      return;
+    }
+
+    const visibleObject = this.findVisibleWorldObject(selection.kind, selection.id);
+    if (!visibleObject) {
+      this.ui.showToast("out of range");
+      // Requirement 2: any failed entry → ship follow cam (exit target cam if active)
+      this.targetCamObject = null;
+      this.cameraContext = "ship";
+      this.enterFollowCameraDirectly();
+      return;
+    }
+
+    const bounds = this.getObjectSelectionBounds(visibleObject);
+    this.vectors.targetCamPivot.copy(bounds.center);
+    this.targetCamControl.orbitDistance = Math.max(
+      bounds.radius * this.config.targetCamDistanceMult,
+      bounds.radius * 1.5
+    );
+
+    const direction = this.camera.position.clone().sub(this.vectors.targetCamPivot).normalize();
+    const initialPos = this.vectors.targetCamPivot.clone()
+      .addScaledVector(direction, this.targetCamControl.orbitDistance);
+    this.lookMatrix.lookAt(initialPos, this.vectors.targetCamPivot, new THREE.Vector3(0, 1, 0));
+    this.quaternions.targetCamOrbitTarget.setFromRotationMatrix(this.lookMatrix).normalize();
+
+    this.targetCamObject = { id: selection.id, kind: selection.kind };
+    this.cameraContext = "target";
+    this.ui.showToast("cam: target");
+  }
+
+  exitTargetCameraMode() {
+    if (this.cameraContext !== "target") return;
+    this.targetCamObject = null;
+    this.cameraContext = "ship";
+    this.targetCamControl.dragging = false;
+    this.targetCamControl.pointerId = null;
+    this.targetCamControl.pointers.clear();
+    this.targetCamControl.pinching = false;
+    this.targetCamControl.pinchDistance = 0;
+    // Direct snap to ship follow — no lerp (camera was positioned at target object, not ship)
+    this.enterFollowCameraDirectly();
   }
 
   clearWorldSelection() {
@@ -2504,6 +3115,12 @@ export class GameManager {
 
     const target = this.createTargetingOverlayTarget();
     this.targetingOverlay.render(target, performance.now());
+
+    // Derive button state from actual camera/tracking state — idempotent, no manual toggle needed
+    const isTrackedObject = this.cameraContext === "target" &&
+      this.targetCamObject?.id === this.selectedWorldObject.id;
+    this.ui.setFocusButtonVisible(this.selectedWorldObject.wasVisible || isTrackedObject);
+    this.ui.setTargetCamActive(isTrackedObject);
   }
 
   createTargetingOverlayTarget() {
@@ -2717,14 +3334,18 @@ export class GameManager {
       event.preventDefault();
     } else if (action === "maxSpeed") {
       event.preventDefault();
-      if (this.state.autopilotPhase === null) this.setSpeed(this.config.maxSpeed);
+      if (this.state.autopilotPhase === null) this.setSpeed(this.shipStats.maxSpeed);
     } else if (action === "stopSpeed") {
       event.preventDefault();
       if (this.state.autopilotPhase === null) this.setSpeed(0);
     } else if (action === "cameraToggle") {
       event.preventDefault();
       if (!event.repeat) {
-        this.requestCameraToggle();
+        if (this.cameraContext === "target") {
+          this.exitTargetCameraMode();
+        } else {
+          this.requestCameraToggle();
+        }
       }
     } else if (this.isManualControlAction(action)) {
       event.preventDefault();
@@ -2783,6 +3404,8 @@ export class GameManager {
       window.removeEventListener("keydown", this.boundEvents.keydown);
       window.removeEventListener("keyup", this.boundEvents.keyup);
       window.removeEventListener("resize", this.boundEvents.resize);
+      window.removeEventListener("pagehide", this.boundEvents.pagehide);
+      document.removeEventListener("visibilitychange", this.boundEvents.visibilitychange);
       this.boundEvents = null;
     }
 
