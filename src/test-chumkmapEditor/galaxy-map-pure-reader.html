@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Galaxy Map Reader — Void Zero</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #050810;
+      --sb: #060b1c;
+      --border: rgba(70, 150, 255, 0.14);
+      --border2: rgba(70, 150, 255, 0.08);
+      --text: rgba(210, 235, 255, 0.88);
+      --text-dim: rgba(130, 180, 230, 0.5);
+      --accent: #00d4ff;
+      --accent2: #00ff88;
+      --btn: rgba(12, 28, 64, 0.75);
+      --btn-h: rgba(0, 130, 200, 0.22);
+    }
+
+    html, body { width: 100%; height: 100%; background: var(--bg); overflow: hidden; }
+    #app { display: flex; width: 100%; height: 100%; }
+
+    /* ── Sidebar ─────────────────────────────── */
+    #sidebar {
+      width: 220px; flex-shrink: 0;
+      background: var(--sb);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 12px; color: var(--text);
+    }
+    #sidebar::-webkit-scrollbar { width: 4px; }
+    #sidebar::-webkit-scrollbar-thumb { background: rgba(80,150,255,0.2); border-radius: 2px; }
+
+    .sb-title {
+      padding: 13px 14px 10px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sb-title h1 { font-size: 11px; font-weight: 800; color: var(--accent); letter-spacing: 0.12em; }
+    .sb-title p  { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+    section {
+      padding: 10px 13px;
+      border-bottom: 1px solid var(--border2);
+    }
+    section h3 {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+      color: var(--text-dim); text-transform: uppercase; margin-bottom: 8px;
+    }
+
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+    .stat-item { font-size: 11px; color: var(--text-dim); }
+    .stat-item b { color: var(--text); font-weight: 600; }
+
+    /* drop zone */
+    #drop-zone {
+      border: 1px dashed rgba(0,212,255,0.3); border-radius: 6px;
+      padding: 18px 10px; text-align: center; cursor: pointer;
+      color: var(--text-dim); font-size: 11px; line-height: 1.7;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: rgba(0,212,255,0.7);
+      background: rgba(0,130,200,0.08);
+      color: var(--accent);
+    }
+
+    .file-name {
+      font-size: 11px; color: var(--accent2);
+      word-break: break-all; margin-bottom: 6px; font-weight: 600;
+    }
+
+    /* ── 3D View ─────────────────────────────── */
+    #view3d { flex: 1; position: relative; min-width: 0; }
+    #three-canvas { display: block; width: 100%; height: 100%; }
+
+    /* canvas-level drop overlay */
+    #drop-overlay {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(2, 5, 9, 0.92);
+      pointer-events: none;
+      transition: opacity 0.25s;
+    }
+    #drop-overlay.hidden { opacity: 0; }
+    #drop-overlay-inner {
+      border: 2px dashed rgba(0,212,255,0.45); border-radius: 14px;
+      padding: 44px 64px; text-align: center;
+      font-family: system-ui, sans-serif;
+    }
+    #drop-overlay-inner h2 { font-size: 18px; font-weight: 700; color: var(--accent); margin-bottom: 10px; }
+    #drop-overlay-inner p  { font-size: 12px; color: var(--text-dim); line-height: 1.7; }
+
+    /* loading */
+    #loading {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(2,5,9,0.88);
+      font-family: system-ui, sans-serif; font-size: 14px; color: var(--accent);
+      pointer-events: none; opacity: 0; transition: opacity 0.2s;
+    }
+    #loading.visible { opacity: 1; pointer-events: all; }
+
+    /* HUD */
+    #hud {
+      position: absolute; top: 10px; right: 12px;
+      font-family: system-ui, sans-serif; font-size: 10px;
+      color: rgba(140,190,230,0.5); text-align: right;
+      pointer-events: none; line-height: 1.8;
+    }
+    #cursor-info {
+      position: absolute; bottom: 10px; left: 12px;
+      font-family: system-ui, sans-serif; font-size: 10px;
+      color: rgba(140,190,230,0.55); pointer-events: none;
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ═══ Sidebar ═══ -->
+  <aside id="sidebar">
+    <div class="sb-title">
+      <h1>VOID ZERO</h1>
+      <p>Galaxy Map Reader</p>
+    </div>
+
+    <!-- File -->
+    <section>
+      <h3>File</h3>
+      <div id="drop-zone" title=".gmap 파일을 드롭하거나 클릭하세요">
+        .gmap 파일을<br>드롭하거나 클릭
+      </div>
+      <div id="file-info" style="display:none;margin-top:8px">
+        <div class="file-name" id="file-name-label">—</div>
+        <div class="stat-grid">
+          <div class="stat-item">Grid<br><b id="info-grid">—</b></div>
+          <div class="stat-item">File<br><b id="info-filesize">—</b></div>
+        </div>
+      </div>
+      <input type="file" id="file-input" accept=".gmap" style="display:none" />
+    </section>
+
+    <!-- Stats -->
+    <section>
+      <h3>Stats</h3>
+      <div class="stat-grid">
+        <div class="stat-item">Chunks<br><b id="stat-chunks">—</b></div>
+      </div>
+    </section>
+  </aside>
+
+  <!-- ═══ 3D View ═══ -->
+  <div id="view3d">
+    <canvas id="three-canvas"></canvas>
+
+    <div id="drop-overlay">
+      <div id="drop-overlay-inner">
+        <h2>Galaxy Map Reader</h2>
+        <p>.gmap 파일을 드롭하거나<br>좌측 파일 영역을 클릭하세요</p>
+      </div>
+    </div>
+
+    <div id="loading">Loading…</div>
+
+    <div id="hud">
+      Left-drag: orbit &nbsp; Scroll: zoom
+    </div>
+    <div id="cursor-info"></div>
+  </div>
+
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ═══════════════════════════════════════════════════════
+// GMAP format (mirrors editor exportGmap)
+//  0- 3  "GMAP"
+//  4- 5  gx (uint16 LE)
+//  6- 7  gy (uint16 LE)
+//  8- 9  gz (uint16 LE)
+// 10-11  reserved
+// 12+    gzip(bitset)   idx = x*gy*gz + y*gz + z
+// ═══════════════════════════════════════════════════════
+const GMAP_MAGIC       = [0x47, 0x4D, 0x41, 0x50]; // "GMAP"
+const GMAP_HEADER_SIZE = 12;
+
+async function decompress(uint8) {
+  const ds = new DecompressionStream('gzip');
+  const w  = ds.writable.getWriter();
+  w.write(uint8); w.close();
+  const parts = []; const r = ds.readable.getReader();
+  for (;;) { const { done, value } = await r.read(); if (done) break; parts.push(value); }
+  const out = new Uint8Array(parts.reduce((s, c) => s + c.length, 0));
+  let off = 0; for (const c of parts) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+async function loadGmap(arrayBuffer) {
+  if (arrayBuffer.byteLength < GMAP_HEADER_SIZE) throw new Error('파일이 너무 작습니다');
+  const dv = new DataView(arrayBuffer);
+  for (let i = 0; i < 4; i++) {
+    if (dv.getUint8(i) !== GMAP_MAGIC[i])
+      throw new Error('GMAP magic 불일치 — 올바른 .gmap 파일이 아닙니다');
+  }
+  const gx = dv.getUint16(4, true);
+  const gy = dv.getUint16(6, true);
+  const gz = dv.getUint16(8, true);
+
+  const bits  = await decompress(new Uint8Array(arrayBuffer, GMAP_HEADER_SIZE));
+  const total = gx * gy * gz;
+  const chunks = [];
+  for (let idx = 0; idx < total; idx++) {
+    if (bits[idx >> 3] & (1 << (idx & 7))) {
+      chunks.push([
+        Math.floor(idx / (gy * gz)),
+        Math.floor((idx % (gy * gz)) / gz),
+        idx % gz
+      ]);
+    }
+  }
+  return { gx, gy, gz, chunks };
+}
+
+// ═══════════════════════════════════════════════════════
+// Three.js scene
+// ═══════════════════════════════════════════════════════
+const canvas = document.getElementById('three-canvas');
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020509);
+scene.fog = new THREE.FogExp2(0x020509, 0.002);
+
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200000);
+camera.position.set(100, 80, 150);
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.minDistance   = 2;
+controls.maxDistance   = 100000;
+
+scene.add(new THREE.AmbientLight(0x3a5580, 3.5));
+const d1 = new THREE.DirectionalLight(0x88ccff, 4);
+d1.position.set(1, 2, 1.5); scene.add(d1);
+const d2 = new THREE.DirectionalLight(0xffa040, 1.5);
+d2.position.set(-1, -0.5, -1); scene.add(d2);
+
+// ── State ─────────────────────────────────────────────
+let mapData       = null;
+let instancedMesh = null;
+let instanceChunks = [];
+let boundsHelper  = null;
+const raycaster   = new THREE.Raycaster();
+
+// ── Rebuild instanced mesh ────────────────────────────
+function rebuild() {
+  if (instancedMesh) {
+    scene.remove(instancedMesh);
+    instancedMesh.geometry.dispose();
+    instancedMesh.material.dispose();
+    instancedMesh = null;
+  }
+  instanceChunks = [];
+  if (!mapData) return;
+
+  const { gy, chunks } = mapData;
+  if (chunks.length === 0) return;
+
+  const geo  = new THREE.BoxGeometry(0.86, 0.86, 0.86);
+  const mat  = new THREE.MeshPhongMaterial({ shininess: 25 });
+  const mesh = new THREE.InstancedMesh(geo, mat, chunks.length);
+
+  const dummy = new THREE.Object3D();
+  const col   = new THREE.Color();
+
+  chunks.forEach(([x, y, z], i) => {
+    instanceChunks[i] = [x, y, z];
+    dummy.position.set(x, y, z);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(i, dummy.matrix);
+
+    const t = gy > 1 ? y / (gy - 1) : 0;
+    col.setHSL(0.62 - t * 0.46, 0.82, 0.42 + t * 0.12);
+    mesh.setColorAt(i, col);
+  });
+
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  instancedMesh = mesh;
+  scene.add(mesh);
+}
+
+// ── Apply loaded data to scene + UI ──────────────────
+function applyMapData(data, filename, fileBytes) {
+  mapData = data;
+  const { gx, gy, gz, chunks } = data;
+
+  if (boundsHelper) { scene.remove(boundsHelper); boundsHelper.geometry.dispose(); }
+  const bgeo  = new THREE.BoxGeometry(gx, gy, gz);
+  const edges = new THREE.EdgesGeometry(bgeo); bgeo.dispose();
+  boundsHelper = new THREE.LineSegments(edges,
+    new THREE.LineBasicMaterial({ color: 0x0d2d5a, transparent: true, opacity: 0.55 }));
+  boundsHelper.position.set((gx-1)/2, (gy-1)/2, (gz-1)/2);
+  scene.add(boundsHelper);
+
+  const dist = Math.max(gx, gy, gz) * 1.8;
+  const cx = (gx-1)/2, cy = (gy-1)/2, cz = (gz-1)/2;
+  camera.position.set(cx + dist*0.65, cy + dist*0.5, cz + dist*0.85);
+  controls.target.set(cx, cy, cz);
+  controls.update();
+
+  document.getElementById('drop-overlay').classList.add('hidden');
+  document.getElementById('file-info').style.display    = '';
+  document.getElementById('file-name-label').textContent = filename;
+  document.getElementById('info-grid').textContent      = `${gx}×${gy}×${gz}`;
+  document.getElementById('info-filesize').textContent  = `${(fileBytes/1024).toFixed(1)} KB`;
+  document.getElementById('stat-chunks').textContent    = chunks.length.toLocaleString();
+
+  rebuild();
+}
+
+// ── Hover info ────────────────────────────────────────
+canvas.addEventListener('mousemove', e => {
+  if (!instancedMesh) return;
+  const rect = canvas.getBoundingClientRect();
+  raycaster.setFromCamera(new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width)  *  2 - 1,
+    ((e.clientY - rect.top)  / rect.height) * -2 + 1
+  ), camera);
+  const hits  = raycaster.intersectObject(instancedMesh);
+  const curEl = document.getElementById('cursor-info');
+  if (hits.length > 0) {
+    const [x, y, z] = instanceChunks[hits[0].instanceId];
+    curEl.textContent = `X${x} Y${y} Z${z}`;
+  } else {
+    curEl.textContent = '';
+  }
+});
+canvas.addEventListener('mouseleave', () => {
+  document.getElementById('cursor-info').textContent = '';
+});
+
+// ── File handling ─────────────────────────────────────
+async function handleFile(file) {
+  const loadEl = document.getElementById('loading');
+  loadEl.classList.add('visible');
+  try {
+    const buf  = await file.arrayBuffer();
+    const data = await loadGmap(buf);
+    applyMapData(data, file.name, buf.byteLength);
+  } catch (err) {
+    alert('파일 로드 실패: ' + err.message);
+  } finally {
+    loadEl.classList.remove('visible');
+  }
+}
+
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('click',     () => document.getElementById('file-input').click());
+dropZone.addEventListener('dragover',  e  => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0]; if (f) handleFile(f);
+});
+
+document.getElementById('file-input').addEventListener('change', e => {
+  const f = e.target.files[0]; if (f) handleFile(f);
+  e.target.value = '';
+});
+
+const view3d = document.getElementById('view3d');
+view3d.addEventListener('dragover', e => e.preventDefault());
+view3d.addEventListener('drop',     e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0]; if (f) handleFile(f);
+});
+
+// ── Resize ────────────────────────────────────────────
+new ResizeObserver(() => {
+  const w = view3d.clientWidth, h = view3d.clientHeight;
+  if (w < 1 || h < 1) return;
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  renderer.setSize(w, h, false);
+}).observe(view3d);
+
+requestAnimationFrame(() => {
+  const w = view3d.clientWidth, h = view3d.clientHeight;
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  renderer.setSize(w, h, false);
+});
+
+// ── Animate ───────────────────────────────────────────
+(function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>

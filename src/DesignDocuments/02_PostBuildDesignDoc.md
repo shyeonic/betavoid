@@ -295,7 +295,7 @@ Void Zero의 현재 구현 상태를 기준으로 완료된 시스템, 주요 �
 ### 7.6 NavLog
 
 - 저장 위치: `navLogs`
-- 타입: `"standard"` (자동항해) | `"glide"` (감속 항해) | `"deactivation"` (비활성화 항해)
+- 타입: `"standard"` (자동항해) | `"deactivation"` (비활성화 항해)
 - 주요 필드: `id`, `type`, `issued_at`, `from_position`, `target`, `flight_start_at`, `peak_speed`, `desired_speed`, `coast_duration`, `flight_duration`, `status`, `completed_at`, `cancelled_at`
 - 상세 스키마 및 타입별 규격: `PBDD/PBDD_Navigation.md` 참조
 

@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Warp Drive</title>
+    <style>
+        * { margin: 0; padding: 0; overflow: hidden; }
+        body { background: #000; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: rgba(180, 210, 255, 0.7);
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            pointer-events: none;
+            letter-spacing: 2px;
+        }
+        #speed {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(180, 220, 255, 0.8);
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            pointer-events: none;
+            letter-spacing: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">LEFT CLICK : WARP +1 · RIGHT CLICK : WARP -1 · SPACE : MAX WARP</div>
+    <div id="speed">WARP <span id="warp-num">0</span> · <span id="star-count-display">PARTICLES: 300</span></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        const STAR_COUNT = 300;
+        const TUNNEL_RADIUS = 280;
+        const MIN_RADIUS = 35;
+        const TUNNEL_LENGTH = 1800;
+        const MAX_WARP = 10;
+
+        let warpFactor = 0;
+        let targetWarp = 0;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x000308, 1);
+        document.body.appendChild(renderer.domElement);
+
+        const renderTarget = new THREE.WebGLRenderTarget(
+            window.innerWidth * Math.min(window.devicePixelRatio, 2),
+            window.innerHeight * Math.min(window.devicePixelRatio, 2),
+            { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat }
+        );
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000308, 0.00025);
+
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 5000);
+        camera.position.set(0, 0, 0);
+
+        const postScene = new THREE.Scene();
+        const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+        const postMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                tDiffuse: { value: null },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                uDistortion: { value: 0.0 },
+                uVignette: { value: 0.5 },
+                uTime: { value: 0.0 }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D tDiffuse;
+                uniform vec2 resolution;
+                uniform float uDistortion;
+                uniform float uVignette;
+                uniform float uTime;
+                varying vec2 vUv;
+
+                float hash(vec2 p) {
+                    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+                }
+                float noise(vec2 p) {
+                    vec2 i = floor(p);
+                    vec2 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    return mix(
+                        mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+                        mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+                        f.y
+                    );
+                }
+
+                void main() {
+                    vec2 center = vUv - 0.5;
+                    float dist = length(center);
+                    vec2 dir = normalize(center + 0.0001);
+
+                    float wave1 = sin(dist * 25.0 - uTime * 4.0) * uDistortion * 0.08;
+                    float wave2 = sin(dist * 15.0 + uTime * 2.0) * uDistortion * 0.05;
+                    vec2 waveDistort = dir * (wave1 + wave2);
+
+                    vec2 asymmetric = vec2(
+                        dir.x * uDistortion * dist * 0.25,
+                        dir.y * uDistortion * dist * 0.12
+                    );
+
+                    float swirlAngle = uDistortion * dist * dist * 2.5;
+                    mat2 rotation = mat2(cos(swirlAngle), -sin(swirlAngle), sin(swirlAngle), cos(swirlAngle));
+                    vec2 swirlDistort = rotation * center - center;
+
+                    float noiseX = noise(vUv * 8.0 + uTime * 0.5) - 0.5;
+                    float noiseY = noise(vUv * 8.0 + uTime * 0.5 + 100.0) - 0.5;
+                    vec2 noiseDistort = vec2(noiseX, noiseY) * uDistortion * 0.15;
+
+                    vec2 distortedUv = vUv + waveDistort + asymmetric + swirlDistort + noiseDistort;
+
+                    vec3 color = texture2D(tDiffuse, distortedUv).rgb;
+
+                    float vignette = 1.0 - smoothstep(0.3, 0.9, dist) * uVignette;
+                    color *= vignette;
+
+                    float grain = (fract(sin(dot(vUv * uTime, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 0.02;
+                    color += grain;
+
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        });
+
+        postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMaterial));
+
+        const starGeometry = new THREE.BufferGeometry();
+        const starPositions = new Float32Array(STAR_COUNT * 3);
+        const starSizes = new Float32Array(STAR_COUNT);
+        const starSpeeds = new Float32Array(STAR_COUNT);
+
+        function initStar(i) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = MIN_RADIUS + Math.random() * (TUNNEL_RADIUS - MIN_RADIUS);
+
+            starPositions[i * 3] = Math.cos(angle) * radius;
+            starPositions[i * 3 + 1] = Math.sin(angle) * radius;
+            starPositions[i * 3 + 2] = -Math.random() * TUNNEL_LENGTH;
+
+            starSizes[i] = 1.5 + Math.random() * 3.5;
+            starSpeeds[i] = 0.6 + Math.random() * 1.2;
+        }
+
+        for (let i = 0; i < STAR_COUNT; i++) initStar(i);
+
+        starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+        starGeometry.setAttribute('size', new THREE.BufferAttribute(starSizes, 1));
+        starGeometry.setAttribute('speed', new THREE.BufferAttribute(starSpeeds, 1));
+
+        const starMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uWarpSpeed: { value: 0.0 },
+                uPixelRatio: { value: renderer.getPixelRatio() }
+            },
+            vertexShader: `
+                attribute float size;
+                attribute float speed;
+                varying float vWarp;
+                uniform float uWarpSpeed;
+                uniform float uPixelRatio;
+
+                void main() {
+                    vWarp = uWarpSpeed;
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    float depth = -mvPosition.z;
+                    float depthFade = smoothstep(1800.0, 200.0, depth);
+                    float baseSize = size * uPixelRatio * (180.0 / max(depth, 1.0));
+
+                    gl_PointSize = baseSize * (1.0 + min(uWarpSpeed * 0.25, 1.2)) * depthFade;
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                varying float vWarp;
+                uniform float uWarpSpeed;
+
+                void main() {
+                    vec2 center = gl_PointCoord - vec2(0.5);
+
+                    float streakX = 1.0 + min(uWarpSpeed * 2.2, 18.0);
+                    float streakY = 1.0 + min(uWarpSpeed * 0.05, 0.5);
+
+                    vec2 stretched = vec2(center.x / streakX, center.y / streakY);
+                    float dist = length(stretched);
+
+                    if (dist > 0.5) discard;
+
+                    float softness = exp(-dist * dist * 10.0);
+                    float coreFalloff = exp(-abs(center.x) * (2.0 + uWarpSpeed * 0.3));
+
+                    float alpha = softness * 0.65;
+                    alpha *= coreFalloff * 0.5 + 0.5;
+
+                    float brightness = 1.0 + min(uWarpSpeed * 0.08, 0.5);
+                    vec3 finalColor = vec3(brightness);
+
+                    gl_FragColor = vec4(finalColor, alpha);
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            depthTest: false
+        });
+
+        scene.add(new THREE.Points(starGeometry, starMaterial));
+
+        const nebulaMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uWarp: { value: 0.0 },
+                uTime: { value: 0.0 }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                varying vec2 vUv;
+                uniform float uWarp;
+                uniform float uTime;
+
+                float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+                float noise(vec2 p) {
+                    vec2 i = floor(p); vec2 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+                               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+                }
+
+                void main() {
+                    vec2 uv = vUv - 0.5;
+                    float dist = length(uv);
+                    float ring = smoothstep(0.2, 0.5, dist) * smoothstep(0.9, 0.6, dist);
+                    float n = noise(uv * 3.0 + uTime * 0.02) + noise(uv * 6.0 - uTime * 0.03) * 0.5;
+                    n *= 0.5;
+                    vec3 color = mix(vec3(0.05, 0.05, 0.15), vec3(0.1, 0.05, 0.15), n);
+                    float alpha = ring * n * 0.15 * (1.0 - min(uWarp * 0.08, 0.8));
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            depthTest: false
+        });
+
+        const nebula = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), nebulaMaterial);
+        nebula.position.z = -1500;
+        scene.add(nebula);
+
+        // ─── 입력: 클릭당 1 단위 증감, 자연 감속 없음 ───────────────
+        window.addEventListener('click', (e) => {
+            targetWarp = Math.min(targetWarp + 1, MAX_WARP);
+        });
+        window.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            targetWarp = Math.max(targetWarp - 1, 0);
+        });
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                targetWarp = MAX_WARP;
+            } else if (e.code === 'ArrowUp' || e.key === '+' || e.key === '=') {
+                targetWarp = Math.min(targetWarp + 1, MAX_WARP);
+            } else if (e.code === 'ArrowDown' || e.key === '-' || e.key === '_') {
+                targetWarp = Math.max(targetWarp - 1, 0);
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            const pr = Math.min(window.devicePixelRatio, 2);
+            renderTarget.setSize(window.innerWidth * pr, window.innerHeight * pr);
+            postMaterial.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        let shakeX = 0, shakeY = 0;
+        const clock = new THREE.Clock();
+        const warpNumEl = document.getElementById('warp-num');
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = Math.min(clock.getDelta(), 0.05);
+            const time = clock.getElapsedTime();
+
+            // 자연 감속 없음 — targetWarp를 부드럽게 따라가기만 함
+            warpFactor += (targetWarp - warpFactor) * 0.05;
+            if (Math.abs(warpFactor - targetWarp) < 0.01) warpFactor = targetWarp;
+            warpNumEl.textContent = targetWarp.toFixed(0);
+
+            if (warpFactor > 1.5) {
+                const shakeAmount = Math.min(warpFactor * 0.02, 0.3);
+                shakeX += (Math.random() - 0.5) * shakeAmount - shakeX * 0.15;
+                shakeY += (Math.random() - 0.5) * shakeAmount - shakeY * 0.15;
+            } else {
+                shakeX *= 0.9; shakeY *= 0.9;
+            }
+            camera.position.x = shakeX;
+            camera.position.y = shakeY;
+
+            camera.fov = 70 + warpFactor * 1.5;
+            camera.updateProjectionMatrix();
+
+            const positions = starGeometry.attributes.position.array;
+            const speed = warpFactor * 2.2;
+
+            for (let i = 0; i < STAR_COUNT; i++) {
+                positions[i * 3 + 2] += speed * starSpeeds[i];
+
+                if (positions[i * 3 + 2] > 50) {
+                    initStar(i);
+                    positions[i * 3 + 2] = -TUNNEL_LENGTH + Math.random() * 100;
+                }
+            }
+
+            starGeometry.attributes.position.needsUpdate = true;
+
+            starMaterial.uniforms.uWarpSpeed.value = warpFactor;
+            nebulaMaterial.uniforms.uWarp.value = warpFactor;
+            nebulaMaterial.uniforms.uTime.value = time;
+
+            postMaterial.uniforms.uDistortion.value = Math.min(warpFactor * 0.02, 1.0);
+            postMaterial.uniforms.uVignette.value = 0.5 + warpFactor * 0.04;
+            postMaterial.uniforms.uTime.value = time;
+
+            renderer.setRenderTarget(renderTarget);
+            renderer.render(scene, camera);
+
+            renderer.setRenderTarget(null);
+            postMaterial.uniforms.tDiffuse.value = renderTarget.texture;
+            renderer.render(postScene, postCamera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

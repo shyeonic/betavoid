@@ -66,6 +66,7 @@ export class GameManager {
     this.activeNavLog = null;
     this._deactivationLog = null;
     this._lastDeactivationResolvedAt = 0;
+    this._preflightSnapshot = null;
 
     this.activeActions = new Set();
     this.clock = new THREE.Clock();
@@ -650,8 +651,10 @@ export class GameManager {
       visibilitychange: () => {
         if (this.state.phase !== "running") return;
         if (document.visibilityState === "hidden") {
+          this._commitPreflightSnapshot();
           this._commitDeactivationNavLog();
         } else if (document.visibilityState === "visible") {
+          this._resolvePreflightSnapshot();
           this._resolveDeactivationNavLog();
           this._snapToActiveNavLog();
         }
@@ -744,26 +747,7 @@ export class GameManager {
     if (activeLog?.flight_start_at != null && activeLog?.from_position != null) {
       const tSec = (Date.now() - activeLog.flight_start_at) / 1000;
 
-      if (activeLog.type === "glide") {
-        if (tSec >= activeLog.flight_duration) {
-          this.ship.position.set(activeLog.target.x, activeLog.target.y, activeLog.target.z);
-          this.state.speed = 0;
-          this.state.desiredSpeed = 0;
-          void this.worldDataManager.updateNavLog(activeLog.id, { status: "completed", completed_at: Date.now() });
-        } else {
-          const computedPos = this.computeGlidePositionAtTime(activeLog, tSec);
-          const computedSpeed = this.computeGlideSpeedAtTime(activeLog, tSec);
-          this.ship.position.copy(computedPos);
-          this.state.speed = computedSpeed;
-          this.state.desiredSpeed = 0;
-          const glideDir = new THREE.Vector3(activeLog.target.x, activeLog.target.y, activeLog.target.z).sub(computedPos);
-          if (glideDir.lengthSq() > 0.0001) {
-            this.lookMatrix.lookAt(glideDir.normalize(), new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
-            this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
-          }
-        }
-        usedNavLog = true;
-      } else if (activeLog.type === "deactivation") {
+      if (activeLog.type === "deactivation") {
         if (tSec >= activeLog.flight_duration) {
           this.ship.position.set(activeLog.target.x, activeLog.target.y, activeLog.target.z);
           this.state.speed = 0;
@@ -784,11 +768,24 @@ export class GameManager {
         }
         usedNavLog = true;
       } else {
-        if (tSec >= activeLog.flight_duration) {
+        if (tSec < 0) {
+          // Pre-flight: navLog is complete but flight_start_at is in the future
+          // Restore position/speed from playerShipState, then advance pre-flight
+          const navTargetVec = new THREE.Vector3(activeLog.target.x, activeLog.target.y, activeLog.target.z);
+          this.navTarget = navTargetVec;
+          this.activeNavLogId = activeLog.id;
+          this.activeNavLog = activeLog;
+          this.state.autopilotPeakSpeed = activeLog.peak_speed ?? 0;
+          this.targetMarker.visible = true;
+          this.targetMarker.position.copy(navTargetVec);
+          this.state.autopilotPhase = "stopping";
+          // usedNavLog = false → position/speed from playerShipState, then preflight advancement
+        } else if (tSec >= activeLog.flight_duration) {
           this.ship.position.set(activeLog.target.x, activeLog.target.y, activeLog.target.z);
           this.state.speed = 0;
           this.state.desiredSpeed = 0;
           void this.worldDataManager.updateNavLog(activeLog.id, { status: "completed", completed_at: Date.now() });
+          usedNavLog = true;
         } else {
           const computedPos = this.computeNavPositionAtTime(activeLog, tSec);
           const computedSpeed = this.computeNavSpeedAtTime(activeLog, tSec);
@@ -823,11 +820,11 @@ export class GameManager {
             this.state.autopilotPhase = "cruising";
             this.state.desiredSpeed = activeLog.peak_speed;
           }
+          usedNavLog = true;
         }
-        usedNavLog = true;
       }
     } else if (activeLog) {
-      // flight_start_at 없는 활성 log: 취소하지 않고 autopilot 재개
+      // flight_start_at 없는 활성 log (구버전 호환): stopping에서 재개
       const navTargetVec = new THREE.Vector3(activeLog.target.x, activeLog.target.y, activeLog.target.z);
       this.navTarget = navTargetVec;
       this.activeNavLogId = activeLog.id;
@@ -849,9 +846,25 @@ export class GameManager {
       this.state.speed = Number(playerShipState.speed) || 0;
       this.state.desiredSpeed = Number(playerShipState.desiredSpeed) || 0;
 
-      // 비활성화 구간 결정론적 항법 적용 (이탈 시각 기준 deactivation 로그 발행 후 즉시 해소)
       const savedAt = Number(playerShipState.updated_at) || 0;
-      if (savedAt > 0 && this.state.speed > 0) {
+      if (savedAt > 0 && this.state.autopilotPhase === "stopping") {
+        // 자동항해 pre-flight 중 페이지 저장 → 경과 시간 기반으로 결정론적 전진
+        const fwd = new THREE.Vector3();
+        this.ship.getWorldDirection(fwd);
+        this._preflightSnapshot = {
+          savedAt,
+          phase: "stopping",
+          position: { x: this.ship.position.x, y: this.ship.position.y, z: this.ship.position.z },
+          speed: this.state.speed,
+          heading: { x: fwd.x, y: fwd.y, z: fwd.z },
+          qx: this.ship.quaternion.x, qy: this.ship.quaternion.y,
+          qz: this.ship.quaternion.z, qw: this.ship.quaternion.w,
+          targetPos: { x: this.navTarget.x, y: this.navTarget.y, z: this.navTarget.z },
+          navLogId: this.activeNavLogId
+        };
+        this._resolvePreflightSnapshot();
+      } else if (savedAt > 0 && this.state.speed > 0) {
+        // 수동 비행 중 비활성화 구간 결정론적 항법 적용
         const elapsed = (Date.now() - savedAt) / 1000;
         if (elapsed > 0) {
           this._commitDeactivationNavLog(savedAt);
@@ -870,6 +883,9 @@ export class GameManager {
       this.activeNavLog = null;
       this.targetMarker.visible = false;
     }
+
+    // pre-flight가 비행 단계까지 전진된 경우 결정론적 위치로 점프
+    this._snapToActiveNavLog();
 
     this.resetInitialCamera();
   }
@@ -1326,16 +1342,61 @@ export class GameManager {
   }
 
   setTarget({ x, y, z }) {
+    const { decelerationRate, accelerationRate, pitchRate, yawRate, arrivalRadius } = this.shipStats;
+
+    // Stopping phase: deterministic kinematics
+    const v0 = this.state.speed;
+    const stopRate = v0 > 0 ? decelerationRate : v0 < 0 ? accelerationRate : 0;
+    const stopDuration = stopRate > 0 ? Math.abs(v0) / stopRate : 0;
+    this.ship.getWorldDirection(this.vectors.forward);
+    const heading = this.vectors.forward.clone();
+    const sign = v0 > 0 ? 1 : -1;
+    const stopDist = stopDuration > 0
+      ? v0 * stopDuration - sign * 0.5 * stopRate * stopDuration * stopDuration
+      : 0;
+    const fromPos = this.ship.position.clone().addScaledVector(heading, stopDist);
+
+    // Aligning phase: exponential decay model (slerp rate = pitchRate, threshold dot > 0.99999 ≈ 0.00447 rad)
+    const toTarget = new THREE.Vector3(x, y, z).sub(fromPos);
+    const targetDir = toTarget.clone().normalize();
+    const dotVal = Math.max(-1, Math.min(1, heading.dot(targetDir)));
+    const angle = Math.acos(dotVal);
+    const alignRate = Math.min(pitchRate, yawRate);
+    const alignDuration = angle > 0.00447 ? Math.log(angle / 0.00447) / alignRate : 0;
+
+    // Flight phase
+    const effectiveDist = Math.max(0, toTarget.length() - arrivalRadius);
+    const peakSpeed = this.computeAutopilotPeakSpeed(effectiveDist);
+    const flightDuration = this.computeFlightDuration(effectiveDist, peakSpeed);
+    const flightStartAt = Date.now() + Math.round((stopDuration + alignDuration) * 1000);
+
     this.navTarget = new THREE.Vector3(x, y, z);
-    this.activeNavLog = null;
-    this.state.autopilotPhase = "stopping";
-    this.state.autopilotPeakSpeed = 0;
+    this.state.autopilotPhase = stopDuration > 0 ? "stopping" : "aligning";
+    this.state.autopilotPeakSpeed = peakSpeed;
     this.targetMarker.visible = true;
     this.targetMarker.position.copy(this.navTarget);
-    const eta = this.computeAutopilotEta();
-    const etaText = eta !== null ? ` (~${Math.round(eta)}s)` : "";
-    this.ui.showToast(`navigation engaged${etaText}`);
-    this.activeNavLogId = this.worldDataManager.createNavLog({ target: { x, y, z } });
+
+    const eta = stopDuration + alignDuration + flightDuration;
+    this.ui.showToast(`navigation engaged (~${Math.round(eta)}s)`);
+
+    const from = { x: fromPos.x, y: fromPos.y, z: fromPos.z };
+    this.activeNavLog = {
+      type: "standard",
+      from_position: from,
+      target: { x, y, z },
+      flight_start_at: flightStartAt,
+      peak_speed: peakSpeed,
+      flight_duration: flightDuration
+    };
+
+    this.activeNavLogId = this.worldDataManager.createNavLog({
+      target: { x, y, z },
+      from_position: from,
+      flight_start_at: flightStartAt,
+      peak_speed: peakSpeed,
+      flight_duration: flightDuration
+    });
+
     this.savePlayerShipState({ force: true });
   }
 
@@ -1377,23 +1438,6 @@ export class GameManager {
     if (distance >= accelDist + decelDist) return maxSpeed;
     const peak = Math.sqrt(2 * distance * accelerationRate * decelerationRate / (accelerationRate + decelerationRate));
     return Math.max(0, peak);
-  }
-
-  computeAutopilotEta() {
-    if (!this.navTarget) return null;
-    const distance = this.navTarget.distanceTo(this.ship.position);
-    const { maxSpeed, accelerationRate, decelerationRate } = this.shipStats;
-    const accelDist = 0.5 * maxSpeed * maxSpeed / accelerationRate;
-    const decelDist = 0.5 * maxSpeed * maxSpeed / decelerationRate;
-    let flightTime;
-    if (distance >= accelDist + decelDist) {
-      flightTime = maxSpeed / accelerationRate + (distance - accelDist - decelDist) / maxSpeed + maxSpeed / decelerationRate;
-    } else {
-      const peakSpeed = Math.sqrt(2 * distance * accelerationRate * decelerationRate / (accelerationRate + decelerationRate));
-      flightTime = peakSpeed > 0 ? peakSpeed / accelerationRate + peakSpeed / decelerationRate : 0;
-    }
-    const stopTime = Math.abs(this.state.speed) / (this.state.speed >= 0 ? decelerationRate : accelerationRate);
-    return stopTime + 2 + flightTime;
   }
 
   computeFlightDuration(effectiveDist, peakSpeed) {
@@ -1448,22 +1492,6 @@ export class GameManager {
     if (t <= accelTime + cruiseTime) return peak;
     const decelT = t - accelTime - cruiseTime;
     return Math.max(0, peak - decelerationRate * decelT);
-  }
-
-  computeGlidePositionAtTime(navLog, tSec) {
-    const from = new THREE.Vector3(navLog.from_position.x, navLog.from_position.y, navLog.from_position.z);
-    const dir = new THREE.Vector3(navLog.target.x, navLog.target.y, navLog.target.z).sub(from);
-    if (dir.lengthSq() < 0.0001) return from.clone();
-    dir.normalize();
-    const v0 = navLog.peak_speed;
-    const t = Math.min(tSec, navLog.flight_duration);
-    const dist = Math.max(0, v0 * t - 0.5 * this.shipStats.decelerationRate * t * t);
-    return from.clone().addScaledVector(dir, dist);
-  }
-
-  computeGlideSpeedAtTime(navLog, tSec) {
-    const t = Math.min(tSec, navLog.flight_duration);
-    return Math.max(0, navLog.peak_speed - this.shipStats.decelerationRate * t);
   }
 
   _deactivationKinematics(v0, vd, ar, dr, coastDuration, tSec) {
@@ -1522,6 +1550,133 @@ export class GameManager {
       Math.min(tSec, log.flight_duration)
     );
     return speed;
+  }
+
+  _commitPreflightSnapshot() {
+    if (this.state.autopilotPhase !== "stopping" && this.state.autopilotPhase !== "aligning") return;
+    if (!this.navTarget) return;
+
+    this.ship.getWorldDirection(this.vectors.forward);
+    this._preflightSnapshot = {
+      savedAt: Date.now(),
+      phase: this.state.autopilotPhase,
+      position: { x: this.ship.position.x, y: this.ship.position.y, z: this.ship.position.z },
+      speed: this.state.speed,
+      heading: { x: this.vectors.forward.x, y: this.vectors.forward.y, z: this.vectors.forward.z },
+      qx: this.ship.quaternion.x,
+      qy: this.ship.quaternion.y,
+      qz: this.ship.quaternion.z,
+      qw: this.ship.quaternion.w,
+      targetPos: { x: this.navTarget.x, y: this.navTarget.y, z: this.navTarget.z },
+      navLogId: this.activeNavLogId
+    };
+  }
+
+  _resolvePreflightSnapshot() {
+    const snap = this._preflightSnapshot;
+    if (!snap) return;
+    this._preflightSnapshot = null;
+
+    const { decelerationRate, accelerationRate, pitchRate, yawRate } = this.shipStats;
+    let remainingElapsed = (Date.now() - snap.savedAt) / 1000;
+
+    const pos = new THREE.Vector3(snap.position.x, snap.position.y, snap.position.z);
+    const targetPos = new THREE.Vector3(snap.targetPos.x, snap.targetPos.y, snap.targetPos.z);
+    let currentSpeed = snap.speed;
+
+    this.ship.quaternion.set(snap.qx, snap.qy, snap.qz, snap.qw).normalize();
+
+    // Phase 1: Stopping
+    if (snap.phase === "stopping" && Math.abs(currentSpeed) > 0.001) {
+      const stopRate = currentSpeed > 0 ? decelerationRate : accelerationRate;
+      const stopDuration = Math.abs(currentSpeed) / stopRate;
+      const stopElapsed = Math.min(stopDuration, remainingElapsed);
+      const heading = new THREE.Vector3(snap.heading.x, snap.heading.y, snap.heading.z);
+      const sign = currentSpeed > 0 ? 1 : -1;
+      const stopDist = currentSpeed * stopElapsed - sign * 0.5 * stopRate * stopElapsed * stopElapsed;
+      pos.addScaledVector(heading, stopDist);
+      currentSpeed = sign * Math.max(0, Math.abs(currentSpeed) - stopRate * stopElapsed);
+      remainingElapsed -= stopElapsed;
+
+      this.ship.position.copy(pos);
+      this.state.speed = currentSpeed;
+      this.state.desiredSpeed = currentSpeed;
+
+      if (remainingElapsed <= 0) return;
+
+      currentSpeed = 0;
+      this.state.speed = 0;
+      this.state.desiredSpeed = 0;
+      this.state.autopilotPhase = "aligning";
+    }
+
+    // Phase 2: Aligning
+    const toTarget = targetPos.clone().sub(pos);
+    if (toTarget.length() <= this.shipStats.arrivalRadius) {
+      this.ship.position.copy(pos);
+      this.clearTarget("arrived", true);
+      return;
+    }
+    const targetDir = toTarget.clone().normalize();
+
+    const currentForward = new THREE.Vector3();
+    this.ship.getWorldDirection(currentForward);
+    const dot = Math.max(-1, Math.min(1, currentForward.dot(targetDir)));
+    const angle = Math.acos(dot);
+
+    // Exponential decay model: remaining_angle(t) = angle * e^(-alignRate * t)
+    // Completion threshold: dot > 0.99999 → remaining ≈ 0.00447 rad
+    const alignRate = Math.min(pitchRate, yawRate);
+    const alignThreshold = 0.00447;
+    const alignDuration = angle > alignThreshold
+      ? Math.log(angle / alignThreshold) / alignRate
+      : 0;
+
+    if (remainingElapsed < alignDuration) {
+      this.lookMatrix.lookAt(targetDir, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+      this.quaternions.desired.setFromRotationMatrix(this.lookMatrix);
+      const movedFraction = 1 - Math.exp(-alignRate * remainingElapsed);
+      this.ship.quaternion.slerp(this.quaternions.desired, movedFraction).normalize();
+      this.state.autopilotPhase = "aligning";
+      return;
+    }
+
+    // Alignment complete — snap quaternion and begin flight
+    remainingElapsed -= alignDuration;
+    this.lookMatrix.lookAt(targetDir, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+    this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
+    this.ship.position.copy(pos);
+
+    const effectiveDist = toTarget.length() - this.shipStats.arrivalRadius;
+    if (effectiveDist <= 0) {
+      this.clearTarget("arrived", true);
+      return;
+    }
+
+    const peakSpeed = this.computeAutopilotPeakSpeed(effectiveDist);
+    const flightDuration = this.computeFlightDuration(effectiveDist, peakSpeed);
+    const flightStartAt = Date.now() - Math.round(remainingElapsed * 1000);
+
+    this.state.autopilotPeakSpeed = peakSpeed;
+    this.state.autopilotPhase = "accelerating";
+    this.activeNavLog = {
+      type: "standard",
+      from_position: { x: pos.x, y: pos.y, z: pos.z },
+      target: { x: targetPos.x, y: targetPos.y, z: targetPos.z },
+      flight_start_at: flightStartAt,
+      peak_speed: peakSpeed,
+      flight_duration: flightDuration
+    };
+
+    if (snap.navLogId) {
+      void this.worldDataManager.updateNavLog(snap.navLogId, {
+        from_position: { x: pos.x, y: pos.y, z: pos.z },
+        flight_start_at: flightStartAt,
+        peak_speed: peakSpeed,
+        flight_duration: flightDuration
+      });
+    }
+    // _snapToActiveNavLog() runs after this and advances position/phase based on flightStartAt
   }
 
   _commitDeactivationNavLog(overrideStartAt = null) {
@@ -1608,6 +1763,8 @@ export class GameManager {
     if (!log?.flight_start_at || !this.navTarget) return;
 
     const tSec = (Date.now() - log.flight_start_at) / 1000;
+
+    if (tSec < 0) return; // pre-flight: flight hasn't started yet, real-time simulation handles it
 
     if (tSec >= log.flight_duration) {
       this.ship.position.set(log.target.x, log.target.y, log.target.z);
@@ -1750,29 +1907,7 @@ export class GameManager {
       this.ship.quaternion.slerp(this.quaternions.desired, Math.min(1, Math.min(this.shipStats.pitchRate, this.shipStats.yawRate) * dt)).normalize();
       this.ship.getWorldDirection(this.vectors.forward);
       if (this.vectors.forward.dot(direction) > 0.99999) {
-        const effectiveDist = distance - this.shipStats.arrivalRadius;
-        const peakSpeed = this.computeAutopilotPeakSpeed(effectiveDist);
-        const flightDuration = this.computeFlightDuration(effectiveDist, peakSpeed);
-        this.state.autopilotPeakSpeed = peakSpeed;
         this.state.autopilotPhase = "accelerating";
-        const flightStartAt = Date.now();
-        const flightFrom = { x: this.ship.position.x, y: this.ship.position.y, z: this.ship.position.z };
-        this.activeNavLog = {
-          type: "standard",
-          from_position: flightFrom,
-          target: { x: this.navTarget.x, y: this.navTarget.y, z: this.navTarget.z },
-          flight_start_at: flightStartAt,
-          peak_speed: peakSpeed,
-          flight_duration: flightDuration
-        };
-        if (this.activeNavLogId) {
-          this.worldDataManager.updateNavLog(this.activeNavLogId, {
-            from_position: flightFrom,
-            flight_start_at: flightStartAt,
-            peak_speed: peakSpeed,
-            flight_duration: flightDuration
-          });
-        }
       }
 
     } else if (phase === "accelerating") {

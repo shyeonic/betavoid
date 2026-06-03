@@ -13,7 +13,15 @@
       "Bash(Select-Object -First 30 FullName)",
       "Bash(node --input-type=module --experimental-vm-modules -)",
       "Bash(git config *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(node -e *)",
+      "Bash(Get-Item \"c:\\\\inf_workspace_local\\\\Void Zero\\\\src\\\\js\\\\definitions\\\\galaxyMapDefinition.js\")",
+      "Bash(Select-Object CreationTime, LastWriteTime)",
+      "Bash(Test-Path \"c:\\\\inf_workspace_local\\\\Void Zero\\\\src\\\\test-chumkmapEditor\\\\galaxy-map-pure-reader.html\")",
+      "Bash(xargs grep -l \"createNavLog\\\\|navLog\")",
+      "Bash(cd \"c:\\\\inf_workspace_local\\\\Void Zero\" && cat .gitignore)",
+      "Read(//c/inf_workspace_local/Void Zero/**)"
     ]
   }
 }

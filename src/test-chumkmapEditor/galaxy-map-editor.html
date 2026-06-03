@@ -1,0 +1,1490 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Galaxy Map Editor — Void Zero</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #050810;
+      --sb: #060b1c;
+      --border: rgba(70, 150, 255, 0.14);
+      --border2: rgba(70, 150, 255, 0.08);
+      --text: rgba(210, 235, 255, 0.88);
+      --text-dim: rgba(130, 180, 230, 0.5);
+      --accent: #00d4ff;
+      --accent2: #00ff88;
+      --danger: #ff4466;
+      --btn: rgba(12, 28, 64, 0.75);
+      --btn-h: rgba(0, 130, 200, 0.22);
+    }
+
+    html, body { width: 100%; height: 100%; background: var(--bg); overflow: hidden; }
+
+    #app { display: flex; width: 100%; height: 100%; }
+
+    /* ── Sidebar ─────────────────────────────── */
+    #sidebar {
+      width: 252px;
+      flex-shrink: 0;
+      background: var(--sb);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    #sidebar::-webkit-scrollbar { width: 4px; }
+    #sidebar::-webkit-scrollbar-thumb { background: rgba(80,150,255,0.2); border-radius: 2px; }
+
+    .sb-title {
+      padding: 13px 14px 10px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sb-title h1 { font-size: 11px; font-weight: 800; color: var(--accent); letter-spacing: 0.12em; }
+    .sb-title p { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+    section {
+      padding: 10px 13px;
+      border-bottom: 1px solid var(--border2);
+    }
+
+    section h3 {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+      color: var(--text-dim); text-transform: uppercase; margin-bottom: 8px;
+    }
+
+    .row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+
+    .param {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 6px;
+    }
+    .param label { color: var(--text-dim); min-width: 62px; font-size: 11px; }
+    .param .val { color: var(--accent); font-size: 11px; min-width: 30px; text-align: right; }
+
+    input[type="number"] {
+      background: rgba(0, 14, 40, 0.8);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      padding: 3px 6px;
+      font-size: 12px;
+      outline: none;
+      width: 52px;
+      text-align: center;
+    }
+    input[type="number"]:focus { border-color: rgba(0,180,255,0.4); }
+
+    input[type="range"] {
+      flex: 1;
+      accent-color: var(--accent);
+      cursor: pointer;
+      min-width: 0;
+    }
+
+    button {
+      background: var(--btn);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      padding: 4px 9px;
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.12s, border-color 0.12s;
+      line-height: 1.4;
+    }
+    button:hover { background: var(--btn-h); border-color: rgba(0,190,255,0.35); }
+    button.active { background: rgba(0,160,240,0.22); border-color: var(--accent); color: var(--accent); }
+    button.danger { border-color: rgba(255,60,80,0.3); }
+    button.danger:hover { background: rgba(255,40,70,0.15); border-color: var(--danger); color: var(--danger); }
+
+    .btn-row { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
+
+    /* stats */
+    .stat-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 4px 10px;
+    }
+    .stat-item { font-size: 11px; color: var(--text-dim); }
+    .stat-item b { color: var(--text); font-weight: 600; }
+
+    /* Y display */
+    #y-display { color: var(--accent); font-weight: 700; min-width: 26px; text-align: center; }
+
+    /* ── 3D View ─────────────────────────────── */
+    #view3d {
+      flex: 1;
+      position: relative;
+      min-width: 0;
+    }
+
+    #three-canvas { display: block; width: 100%; height: 100%; }
+
+    #hud {
+      position: absolute; top: 10px; right: 12px;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 10px;
+      color: rgba(140,190,230,0.5);
+      text-align: right;
+      pointer-events: none;
+      line-height: 1.8;
+    }
+
+    #hud .mode-label {
+      font-size: 12px; font-weight: 700;
+      color: rgba(0,212,255,0.85);
+      margin-bottom: 2px;
+    }
+
+    #cursor-info {
+      position: absolute; bottom: 10px; left: 12px;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 10px;
+      color: rgba(140,190,230,0.55);
+      pointer-events: none;
+    }
+
+    /* cluster list */
+    #cluster-list {
+      max-height: 180px;
+      overflow-y: auto;
+      margin-top: 6px;
+    }
+    #cluster-list::-webkit-scrollbar { width: 3px; }
+    #cluster-list::-webkit-scrollbar-thumb { background: rgba(80,150,255,0.2); border-radius: 2px; }
+
+    .cluster-row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 0;
+      transition: opacity 0.15s;
+    }
+    .cluster-swatch {
+      width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0;
+    }
+    .cluster-name { flex: 1; font-size: 11px; color: var(--text); }
+    .cluster-count { font-size: 10px; color: var(--text-dim); min-width: 36px; text-align: right; }
+    .cluster-toggle {
+      padding: 2px 6px; font-size: 11px; min-width: 26px; text-align: center;
+      flex-shrink: 0;
+    }
+    .cluster-ctrl-row {
+      display: flex; gap: 4px; margin-bottom: 2px;
+    }
+
+    #hud-cluster-name {
+      position: absolute; bottom: 10px; right: 12px;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 11px; font-weight: 600;
+      color: rgba(0,212,255,0.8);
+      pointer-events: none;
+      letter-spacing: 0.04em;
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ═══ Sidebar ═══ -->
+  <aside id="sidebar">
+    <div class="sb-title">
+      <h1>VOID ZERO</h1>
+      <p>Galaxy Map Editor</p>
+    </div>
+
+    <!-- Grid -->
+    <section>
+      <h3>Grid (Inner)</h3>
+      <div class="row" style="margin-bottom:5px">
+        <span style="color:var(--text-dim);font-size:11px">X</span>
+        <input type="number" id="inp-gx" value="100" min="4" max="512" />
+        <span style="color:var(--text-dim);font-size:11px">Y</span>
+        <input type="number" id="inp-gy" value="100" min="4" max="512" />
+        <span style="color:var(--text-dim);font-size:11px">Z</span>
+        <input type="number" id="inp-gz" value="100" min="4" max="512" />
+      </div>
+      <div class="param" style="margin-bottom:7px">
+        <label>Border n</label>
+        <input type="number" id="inp-border" value="10" min="0" max="30" style="width:45px" />
+        <span style="color:var(--text-dim);font-size:10px" id="lbl-total-size">Total: 64×32×64</span>
+      </div>
+      <button id="btn-apply" style="width:100%">Apply</button>
+    </section>
+
+    <!-- Noise generator -->
+    <section>
+      <h3>Noise Generator</h3>
+      <div class="param">
+        <label>Seed</label>
+        <input type="number" id="inp-seed" value="9999" style="width:62px" />
+        <button id="btn-rand-seed" style="padding:3px 7px">⟳</button>
+      </div>
+      <div class="param">
+        <label>Threshold</label>
+        <input type="range" id="inp-threshold" min="0" max="1" step="0.01" value="0.75" />
+        <span class="val" id="val-threshold">0.75</span>
+      </div>
+      <div class="param">
+        <label>Scale</label>
+        <input type="range" id="inp-scale" min="0.02" max="0.6" step="0.01" value="0.05" />
+        <span class="val" id="val-scale">0.05</span>
+      </div>
+      <div class="param">
+        <label>Octaves</label>
+        <input type="range" id="inp-octaves" min="1" max="6" step="1" value="1" />
+        <span class="val" id="val-octaves">1</span>
+      </div>
+      <div class="btn-row">
+        <button id="btn-generate" style="flex:1">Generate</button>
+        <button id="btn-mix" style="flex:1" title="현재 데이터에 노이즈 추가">Mix In</button>
+      </div>
+      <div class="btn-row" style="margin-top:5px;align-items:center">
+        <button id="btn-trim" style="flex:1" title="Border 영역을 유기적으로 페이드 아웃 처리">Trim Border</button>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--text-dim);font-size:11px;white-space:nowrap">
+          <input type="checkbox" id="chk-auto-trim" checked style="accent-color:var(--accent);cursor:pointer" />
+          Auto
+        </label>
+      </div>
+    </section>
+
+    <!-- 3D Edit -->
+    <section>
+      <h3>3D Edit</h3>
+      <div class="row" style="margin-bottom:8px">
+        <button class="mode-btn active" data-mode="add" style="flex:1">+ Add</button>
+        <button class="mode-btn" data-mode="remove" style="flex:1">− Remove</button>
+      </div>
+      <div class="param" style="margin-bottom:6px">
+        <label>Brush</label>
+        <div class="row">
+          <button class="brush-btn active" data-size="0">1</button>
+          <button class="brush-btn" data-size="1">3</button>
+          <button class="brush-btn" data-size="2">5</button>
+          <button class="brush-btn" data-size="3">9</button>
+        </div>
+      </div>
+      <div class="param">
+        <label>Y Plane</label>
+        <button id="btn-y-prev" style="padding:3px 7px">◄</button>
+        <span id="y-display">0</span>
+        <button id="btn-y-next" style="padding:3px 7px">►</button>
+      </div>
+      <div class="param" style="margin-bottom:0">
+        <label></label>
+        <input type="range" id="y-slider" min="0" max="119" value="0" />
+      </div>
+    </section>
+
+    <!-- Display -->
+    <section>
+      <h3>Display</h3>
+      <div class="row">
+        <button class="color-btn" data-mode="depth" style="flex:1">Depth</button>
+        <button class="color-btn active" data-mode="cluster" style="flex:1">Cluster</button>
+      </div>
+    </section>
+
+    <!-- Stats -->
+    <section>
+      <h3>Stats</h3>
+      <div class="stat-grid">
+        <div class="stat-item">Inner<br><b id="stat-inner">0</b></div>
+        <div class="stat-item">Border<br><b id="stat-border">0</b></div>
+        <div class="stat-item">Total<br><b id="stat-chunks">0</b></div>
+        <div class="stat-item">Clusters<br><b id="stat-clusters">0</b></div>
+      </div>
+    </section>
+
+    <!-- Clusters -->
+    <section id="cluster-section" style="display:none">
+      <h3>Clusters</h3>
+      <div class="cluster-ctrl-row">
+        <button id="btn-clusters-all"  style="flex:1;font-size:10px">All On</button>
+        <button id="btn-clusters-none" style="flex:1;font-size:10px">All Off</button>
+        <button id="btn-clusters-remove" class="danger" style="flex:1;font-size:10px">Remove Off</button>
+      </div>
+      <div id="cluster-list"></div>
+    </section>
+
+    <!-- Actions -->
+    <section>
+      <div class="btn-row" style="margin-bottom:5px">
+        <button id="btn-fill-all" style="flex:1">Fill All</button>
+        <button id="btn-clear-all" class="danger" style="flex:1">Clear All</button>
+      </div>
+      <div class="btn-row" style="margin-bottom:5px">
+        <button id="btn-export-gmap" style="flex:1;border-color:rgba(0,255,136,0.4);color:var(--accent2)" title="게임용 순수 공간 좌표 에셋 — 에디터 메타데이터 제외">Export .gmap</button>
+      </div>
+      <div class="btn-row" style="margin-bottom:5px">
+        <button id="btn-export-gmz" style="flex:1;border-color:rgba(0,212,255,0.35);color:var(--accent)">Export .gmz</button>
+        <button id="btn-import-gmz" style="flex:1;border-color:rgba(0,212,255,0.35);color:var(--accent)">Import .gmz</button>
+      </div>
+      <div class="btn-row">
+        <button id="btn-export" style="flex:1;opacity:0.6">JSON</button>
+        <button id="btn-import" style="flex:1;opacity:0.6">Import JSON</button>
+      </div>
+      <input type="file" id="file-input" accept=".json" style="display:none" />
+      <input type="file" id="file-input-gmz" accept=".gmz" style="display:none" />
+    </section>
+  </aside>
+
+  <!-- ═══ 3D View ═══ -->
+  <div id="view3d">
+    <canvas id="three-canvas"></canvas>
+    <div id="hud">
+      <div class="mode-label" id="hud-mode">MODE: ADD</div>
+      Y Plane: <span id="hud-y">0</span><br>
+      LMB: add on face / Y-plane<br>
+      RMB: remove chunk<br>
+      Left-drag: orbit &nbsp; Scroll: zoom
+    </div>
+    <div id="cursor-info"></div>
+    <div id="hud-cluster-name"></div>
+  </div>
+
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ═══════════════════════════════════════════════════════
+// 3D Value Noise (FBM)
+// ═══════════════════════════════════════════════════════
+function hash3(xi, yi, zi, seed) {
+  let h = (xi * 1374761393 ^ yi * 1073741789 ^ zi * 668265261 ^ seed * 374761393) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 1274126177) >>> 0;
+  h ^= h >>> 16;
+  return (h >>> 0) / 0x100000000;
+}
+
+function valueNoise3(x, y, z, seed) {
+  const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
+  const fx = x - ix, fy = y - iy, fz = z - iz;
+  const ux = fx*fx*(3 - 2*fx), uy = fy*fy*(3 - 2*fy), uz = fz*fz*(3 - 2*fz);
+  const L = (a, b, t) => a + (b - a) * t;
+  return L(
+    L(L(hash3(ix, iy, iz, seed),   hash3(ix+1, iy, iz, seed),   ux),
+      L(hash3(ix, iy+1, iz, seed), hash3(ix+1, iy+1, iz, seed), ux), uy),
+    L(L(hash3(ix, iy, iz+1, seed),   hash3(ix+1, iy, iz+1, seed),   ux),
+      L(hash3(ix, iy+1, iz+1, seed), hash3(ix+1, iy+1, iz+1, seed), ux), uy),
+    uz
+  );
+}
+
+function fbm3(x, y, z, octaves, freq, seed) {
+  let val = 0, amp = 0.5, norm = 0;
+  for (let i = 0; i < octaves; i++) {
+    val  += valueNoise3(x * freq, y * freq, z * freq, (seed * 31 + i * 7919) >>> 0) * amp;
+    norm += amp;
+    freq *= 2; amp *= 0.5;
+  }
+  return val / norm;
+}
+
+// ═══════════════════════════════════════════════════════
+// ChunkGrid — sparse 3D, inner/border regions, cluster analysis
+// ═══════════════════════════════════════════════════════
+class ChunkGrid {
+  // innerGx/Gy/Gz = noise target dimensions
+  // n = border width on each of the 6 sides
+  // total grid = (innerGx+2n) × (innerGy+2n) × (innerGz+2n)
+  constructor(innerGx, innerGy, innerGz, n = 0) {
+    this.n = n;
+    this.innerGx = innerGx; this.innerGy = innerGy; this.innerGz = innerGz;
+    this.gx = innerGx + 2*n;
+    this.gy = innerGy + 2*n;
+    this.gz = innerGz + 2*n;
+    // inner region bounds in full-grid coordinates
+    this.inner = { x0: n, y0: n, z0: n, x1: n+innerGx, y1: n+innerGy, z1: n+innerGz };
+    this.active = new Set();
+  }
+
+  key(x, y, z) { return `${x}:${y}:${z}`; }
+  has(x, y, z)  { return this.active.has(this.key(x, y, z)); }
+
+  _inInner(x, y, z) {
+    const { x0, y0, z0, x1, y1, z1 } = this.inner;
+    return x >= x0 && x < x1 && y >= y0 && y < y1 && z >= z0 && z < z1;
+  }
+
+  set(x, y, z, on) {
+    if (x < 0 || x >= this.gx || y < 0 || y >= this.gy || z < 0 || z >= this.gz) return;
+    if (on) this.active.add(this.key(x, y, z));
+    else    this.active.delete(this.key(x, y, z));
+  }
+
+  paintSphere(cx, cy, cz, radius, on) {
+    for (let dx = -radius; dx <= radius; dx++)
+      for (let dy = -radius; dy <= radius; dy++)
+        for (let dz = -radius; dz <= radius; dz++)
+          if (dx*dx + dy*dy + dz*dz <= radius*radius + 0.01)
+            this.set(cx+dx, cy+dy, cz+dz, on);
+  }
+
+  // Noise fills only the inner region; border zone is untouched
+  generate(seed, threshold, scale, octaves, mix = false) {
+    if (!mix) this._clearInner();
+    const s = seed | 0;
+    const { x0, y0, z0, x1, y1, z1 } = this.inner;
+    for (let X = x0; X < x1; X++)
+      for (let Y = y0; Y < y1; Y++)
+        for (let Z = z0; Z < z1; Z++) {
+          // use local coordinates (0-based) for noise so result is scale-independent of n
+          const noise = fbm3(X - x0, Y - y0, Z - z0, octaves, scale, s);
+          if (noise > threshold) this.active.add(this.key(X, Y, Z));
+        }
+  }
+
+  // Border trim: samples the SAME noise function as generate() at border
+  // coordinates (which are a natural extension of inner space), but raises
+  // the threshold from its original value to 1.0 as distance increases.
+  // Result: same cluster patterns continue into the border zone, then thin
+  // out and disappear before reaching the outer edge.
+  applyBorderTrim(seed, threshold, scale, octaves) {
+    if (this.n === 0) return;
+    this._clearBorder();
+
+    const { gx, gy, gz, n } = this;
+    const { x0, y0, z0, x1, y1, z1 } = this.inner;
+    const s = seed | 0;
+
+    for (let X = 0; X < gx; X++) {
+      for (let Y = 0; Y < gy; Y++) {
+        for (let Z = 0; Z < gz; Z++) {
+          if (this._inInner(X, Y, Z)) continue;
+
+          // Local coordinates in the same noise space as generate()
+          // (border positions extend beyond [0, innerGx-1] naturally)
+          const lx = X - x0;
+          const ly = Y - y0;
+          const lz = Z - z0;
+
+          // Sample same noise function — continuous pattern across the boundary
+          const noise = fbm3(lx, ly, lz, octaves, scale, s);
+
+          // Euclidean distance from inner region surface
+          const dx = X < x0 ? x0 - X : (X >= x1 ? X - x1 + 1 : 0);
+          const dy = Y < y0 ? y0 - Y : (Y >= y1 ? Y - y1 + 1 : 0);
+          const dz = Z < z0 ? z0 - Z : (Z >= z1 ? Z - z1 + 1 : 0);
+          const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+          // t: 0 at inner boundary → 1 at outer edge
+          const t = Math.min(1, dist / n);
+          // smoothstep for organic transition curve
+          const st = t * t * (3 - 2 * t);
+          // threshold rises from original to 1.0 → same clusters thin out
+          const effectiveThreshold = threshold + st * (1 - threshold);
+
+          if (noise > effectiveThreshold) {
+            this.active.add(this.key(X, Y, Z));
+          }
+        }
+      }
+    }
+  }
+
+  _clearInner() {
+    for (const k of [...this.active]) {
+      const [x, y, z] = k.split(':').map(Number);
+      if (this._inInner(x, y, z)) this.active.delete(k);
+    }
+  }
+
+  _clearBorder() {
+    for (const k of [...this.active]) {
+      const [x, y, z] = k.split(':').map(Number);
+      if (!this._inInner(x, y, z)) this.active.delete(k);
+    }
+  }
+
+  // Count inner vs border chunks
+  countByZone() {
+    let inner = 0, border = 0;
+    for (const k of this.active) {
+      const [x, y, z] = k.split(':').map(Number);
+      if (this._inInner(x, y, z)) inner++; else border++;
+    }
+    return { inner, border, total: this.active.size };
+  }
+
+  fillAll() {
+    for (let x = 0; x < this.gx; x++)
+      for (let y = 0; y < this.gy; y++)
+        for (let z = 0; z < this.gz; z++)
+          this.active.add(this.key(x, y, z));
+  }
+
+  clear() { this.active.clear(); }
+
+  // 6-connected flood fill
+  buildClusterMap() {
+    const visited = new Set();
+    const k2c = new Map();
+    const dirs = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+    let id = 0;
+    for (const k of this.active) {
+      if (visited.has(k)) continue;
+      const stack = [k]; visited.add(k);
+      while (stack.length) {
+        const cur = stack.pop();
+        k2c.set(cur, id);
+        const [x, y, z] = cur.split(':').map(Number);
+        for (const [dx, dy, dz] of dirs) {
+          const nk = this.key(x+dx, y+dy, z+dz);
+          if (this.active.has(nk) && !visited.has(nk)) {
+            visited.add(nk); stack.push(nk);
+          }
+        }
+      }
+      id++;
+    }
+    return { k2c, count: id };
+  }
+
+  toJSON() {
+    const chunks = [];
+    for (const k of this.active) {
+      const [x, y, z] = k.split(':').map(Number);
+      chunks.push({ x, y, z });
+    }
+    const { count } = this.buildClusterMap();
+    return {
+      format: 'void-zero-galaxy-map-v1',
+      grid: { x: this.gx, y: this.gy, z: this.gz },
+      inner: { x: this.innerGx, y: this.innerGy, z: this.innerGz, n: this.n },
+      generated: new Date().toISOString().slice(0, 10),
+      chunks,
+      stats: { chunkCount: chunks.length, clusterCount: count }
+    };
+  }
+
+  fromJSON(data) {
+    if (data.format !== 'void-zero-galaxy-map-v1') throw new Error('Unknown format');
+    const borderN = data.inner?.n ?? 0;
+    const igx = data.inner?.x ?? data.grid.x;
+    const igy = data.inner?.y ?? data.grid.y;
+    const igz = data.inner?.z ?? data.grid.z;
+    // Re-init with correct inner/border dimensions
+    this.n = borderN;
+    this.innerGx = igx; this.innerGy = igy; this.innerGz = igz;
+    this.gx = data.grid.x; this.gy = data.grid.y; this.gz = data.grid.z;
+    this.inner = { x0: borderN, y0: borderN, z0: borderN,
+                   x1: borderN+igx, y1: borderN+igy, z1: borderN+igz };
+    this.active.clear();
+    for (const { x, y, z } of data.chunks) this.active.add(this.key(x, y, z));
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// Cluster color helpers
+// ═══════════════════════════════════════════════════════
+const HUES = [188, 55, 300, 28, 130, 210, 340, 90, 265, 0, 170, 320];
+function clusterColor(id) {
+  return new THREE.Color().setHSL(HUES[id % HUES.length] / 360, 0.88, 0.56);
+}
+
+// ═══════════════════════════════════════════════════════
+// GalaxyView3D — Three.js scene + editing
+// ═══════════════════════════════════════════════════════
+class GalaxyView3D {
+  constructor(canvas) {
+    this.canvas    = canvas;
+    this.grid      = null;
+    this.colorMode = 'cluster';
+    this.editMode  = 'add';
+    this.brushRadius = 0;
+    this.currentY  = 0;
+    this.k2c            = new Map();
+    this.disabledClusters = new Set();
+    this.instanceChunks = []; // instanceId → [x,y,z]
+
+    this.onChange = null;
+
+    // Scene
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x020509);
+    this.scene.fog = new THREE.FogExp2(0x020509, 0.002);
+
+    // Camera
+    this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200000);
+
+    // Renderer
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+    // Controls
+    this.controls = new OrbitControls(this.camera, canvas);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.07;
+    this.controls.minDistance = 2;
+    this.controls.maxDistance = 100000;
+
+    // Lights
+    this.scene.add(new THREE.AmbientLight(0x3a5580, 3.5));
+    const d1 = new THREE.DirectionalLight(0x88ccff, 4);
+    d1.position.set(1, 2, 1.5); this.scene.add(d1);
+    const d2 = new THREE.DirectionalLight(0xffa040, 1.5);
+    d2.position.set(-1, -0.5, -1); this.scene.add(d2);
+
+    // Persistent scene objects
+    this.boundsHelper = null;
+    this.innerBoundsHelper = null;
+    this.instancedMesh = null;
+    this.slicePlane   = null;
+    this.sliceWire    = null;
+    this.ghostMesh    = null; // hover preview
+
+    // Ghost (add preview)
+    this._initGhost();
+
+    // Raycasting
+    this.raycaster = new THREE.Raycaster();
+    this._mouseDownData = null;
+    this._bindEdit();
+
+    this._animate();
+  }
+
+  _initGhost() {
+    const geo = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x00ff88, transparent: true, opacity: 0.4,
+      depthWrite: false
+    });
+    this.ghostMesh = new THREE.Mesh(geo, mat);
+    this.ghostMesh.visible = false;
+    this.scene.add(this.ghostMesh);
+  }
+
+  // ── Scene helpers ──────────────────────────────────
+  _initBounds() {
+    if (this.boundsHelper) { this.scene.remove(this.boundsHelper); this.boundsHelper.geometry.dispose(); }
+    if (this.innerBoundsHelper) { this.scene.remove(this.innerBoundsHelper); this.innerBoundsHelper.geometry.dispose(); }
+
+    const { gx, gy, gz } = this.grid;
+
+    // Outer bounds (full grid including border)
+    const geo = new THREE.BoxGeometry(gx, gy, gz);
+    const edges = new THREE.EdgesGeometry(geo); geo.dispose();
+    const mat = new THREE.LineBasicMaterial({ color: 0x0d2d5a, transparent: true, opacity: 0.55 });
+    this.boundsHelper = new THREE.LineSegments(edges, mat);
+    this.boundsHelper.position.set((gx-1)/2, (gy-1)/2, (gz-1)/2);
+    this.scene.add(this.boundsHelper);
+
+    // Inner bounds (noise-target region) — only shown when n > 0
+    const { n, innerGx, innerGy, innerGz, inner } = this.grid;
+    if (n > 0) {
+      const igeo = new THREE.BoxGeometry(innerGx, innerGy, innerGz);
+      const iedges = new THREE.EdgesGeometry(igeo); igeo.dispose();
+      const imat = new THREE.LineBasicMaterial({ color: 0x2a5090, transparent: true, opacity: 0.7 });
+      this.innerBoundsHelper = new THREE.LineSegments(iedges, imat);
+      this.innerBoundsHelper.position.set(
+        inner.x0 + (innerGx-1)/2,
+        inner.y0 + (innerGy-1)/2,
+        inner.z0 + (innerGz-1)/2
+      );
+      this.scene.add(this.innerBoundsHelper);
+    }
+  }
+
+  _initSlicePlane() {
+    if (this.slicePlane) { this.scene.remove(this.slicePlane); this.slicePlane.geometry.dispose(); }
+    if (this.sliceWire)  { this.scene.remove(this.sliceWire);  this.sliceWire.geometry.dispose(); }
+
+    const { gx, gz } = this.grid;
+    const geo  = new THREE.PlaneGeometry(gx, gz);
+    const geo2 = geo.clone();
+    geo.rotateX(-Math.PI / 2); geo2.rotateX(-Math.PI / 2);
+
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x00ff88, transparent: true, opacity: 0.07,
+      side: THREE.DoubleSide, depthWrite: false
+    });
+    this.slicePlane = new THREE.Mesh(geo, mat);
+
+    const wmat = new THREE.LineBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.4 });
+    this.sliceWire = new THREE.LineSegments(new THREE.EdgesGeometry(geo2), wmat);
+
+    const px = (gx-1)/2, pz = (gz-1)/2, py = this.currentY;
+    this.slicePlane.position.set(px, py, pz);
+    this.sliceWire.position.set(px, py, pz);
+
+    this.scene.add(this.slicePlane, this.sliceWire);
+  }
+
+  _resetCamera() {
+    const { gx, gy, gz } = this.grid;
+    const cx = (gx-1)/2, cy = (gy-1)/2, cz = (gz-1)/2;
+    const dist = Math.max(gx, gy, gz) * 1.8;
+    this.camera.position.set(cx + dist*0.65, cy + dist*0.5, cz + dist*0.85);
+    this.controls.target.set(cx, cy, cz);
+    this.controls.update();
+  }
+
+  // ── InstancedMesh rebuild ──────────────────────────
+  rebuild() {
+    if (this.instancedMesh) {
+      this.scene.remove(this.instancedMesh);
+      this.instancedMesh.geometry.dispose();
+      this.instancedMesh.material.dispose();
+      this.instancedMesh = null;
+    }
+    this.instanceChunks = [];
+
+    // visible = active minus disabled clusters
+    const visible = [];
+    for (const k of this.grid.active) {
+      const cid = this.k2c.get(k);
+      if (cid !== undefined && this.disabledClusters.has(cid)) continue;
+      visible.push(k);
+    }
+
+    const count = visible.length;
+    if (count === 0) return;
+
+    const geo  = new THREE.BoxGeometry(0.86, 0.86, 0.86);
+    const mat  = new THREE.MeshPhongMaterial({ shininess: 25 });
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+
+    const dummy = new THREE.Object3D();
+    const col   = new THREE.Color();
+    let i = 0;
+
+    for (const k of visible) {
+      const [x, y, z] = k.split(':').map(Number);
+      this.instanceChunks[i] = [x, y, z];
+      dummy.position.set(x, y, z);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      mesh.setColorAt(i, this._chunkColor(k, x, y, z, col));
+      i++;
+    }
+
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    this.instancedMesh = mesh;
+    this.scene.add(mesh);
+  }
+
+  _chunkColor(k, x, y, z, col) {
+    if (this.colorMode === 'cluster') {
+      const cid = this.k2c.get(k);
+      return col.copy(cid !== undefined ? clusterColor(cid) : new THREE.Color(0x00d4ff));
+    }
+    const t = this.grid.gy > 1 ? y / (this.grid.gy - 1) : 0;
+    if (y === this.currentY) return col.setHSL(0.42, 1.0, 0.74);
+    return col.setHSL(0.62 - t * 0.46, 0.82, 0.42 + t * 0.12);
+  }
+
+  // ── Edit via raycasting ────────────────────────────
+  _bindEdit() {
+    const canvas = this.canvas;
+
+    canvas.addEventListener('mousemove', e => this._onHover(e));
+    canvas.addEventListener('mouseleave', () => {
+      this.ghostMesh.visible = false;
+      document.getElementById('hud-cluster-name').textContent = '';
+    });
+
+    canvas.addEventListener('mousedown', e => {
+      this._mouseDownData = { x: e.clientX, y: e.clientY, t: Date.now(), btn: e.button };
+    });
+
+    canvas.addEventListener('mouseup', e => {
+      if (!this._mouseDownData) return;
+      const dd = this._mouseDownData;
+      this._mouseDownData = null;
+      const dx = e.clientX - dd.x, dy = e.clientY - dd.y;
+      const moved = Math.sqrt(dx*dx + dy*dy);
+      const elapsed = Date.now() - dd.t;
+      if (moved < 6 && elapsed < 350) {
+        this._onClick(e, dd.btn);
+      }
+    });
+  }
+
+  _getMouseNDC(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    return new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width)  *  2 - 1,
+      ((e.clientY - rect.top)  / rect.height) * -2 + 1
+    );
+  }
+
+  _castRay(e) {
+    this.raycaster.setFromCamera(this._getMouseNDC(e), this.camera);
+
+    // 1. Hit existing chunks?
+    const meshHits = this.instancedMesh
+      ? this.raycaster.intersectObject(this.instancedMesh)
+      : [];
+
+    // 2. Hit Y-plane?
+    const planeHits = this.slicePlane
+      ? this.raycaster.intersectObject(this.slicePlane)
+      : [];
+
+    return { meshHits, planeHits };
+  }
+
+  _adjFromFace(instanceId, faceNormal) {
+    const [cx, cy, cz] = this.instanceChunks[instanceId];
+    // Dominant axis of face normal
+    const ax = Math.abs(faceNormal.x), ay = Math.abs(faceNormal.y), az = Math.abs(faceNormal.z);
+    let dx = 0, dy = 0, dz = 0;
+    if (ax >= ay && ax >= az) dx = Math.sign(faceNormal.x);
+    else if (ay >= ax && ay >= az) dy = Math.sign(faceNormal.y);
+    else dz = Math.sign(faceNormal.z);
+    return [cx+dx, cy+dy, cz+dz];
+  }
+
+  _onHover(e) {
+    const { meshHits, planeHits } = this._castRay(e);
+    let pos = null;
+    let hoveredKey = null; // 실제로 마우스가 올라간 청크 키 (클러스터명용)
+
+    if (meshHits.length > 0) {
+      const hit = meshHits[0];
+      const [hx, hy, hz] = this.instanceChunks[hit.instanceId];
+      hoveredKey = this.grid.key(hx, hy, hz);
+      pos = this.editMode === 'add'
+        ? this._adjFromFace(hit.instanceId, hit.face.normal)
+        : [hx, hy, hz];
+    } else if (planeHits.length > 0 && this.editMode === 'add') {
+      const p = planeHits[0].point;
+      pos = [Math.round(p.x), this.currentY, Math.round(p.z)];
+    }
+
+    // 클러스터명 표시 (실제 호버된 청크 기준)
+    const clusterEl = document.getElementById('hud-cluster-name');
+    if (hoveredKey !== null && this.k2c.has(hoveredKey)) {
+      clusterEl.textContent = `cluster_${this.k2c.get(hoveredKey) + 1}`;
+    } else {
+      clusterEl.textContent = '';
+    }
+
+    if (pos) {
+      const [x, y, z] = pos;
+      const valid = x >= 0 && x < this.grid.gx && y >= 0 && y < this.grid.gy && z >= 0 && z < this.grid.gz;
+      if (valid) {
+        this.ghostMesh.position.set(x, y, z);
+        this.ghostMesh.material.color.setHex(this.editMode === 'remove' ? 0xff3355 : 0x00ff88);
+        this.ghostMesh.visible = true;
+        document.getElementById('cursor-info').textContent = `X${x} Y${y} Z${z}`;
+        return;
+      }
+    }
+
+    this.ghostMesh.visible = false;
+    document.getElementById('cursor-info').textContent = '';
+  }
+
+  _onClick(e, button) {
+    const { meshHits, planeHits } = this._castRay(e);
+    const isRemove = button === 2 || this.editMode === 'remove';
+
+    if (meshHits.length > 0) {
+      const hit = meshHits[0];
+      if (isRemove) {
+        const [x, y, z] = this.instanceChunks[hit.instanceId];
+        this.grid.paintSphere(x, y, z, this.brushRadius, false);
+      } else {
+        // Add adjacent to face
+        const [x, y, z] = this._adjFromFace(hit.instanceId, hit.face.normal);
+        this.grid.paintSphere(x, y, z, this.brushRadius, true);
+      }
+      this.ghostMesh.visible = false;
+      if (this.onChange) this.onChange();
+      return;
+    }
+
+    if (planeHits.length > 0 && !isRemove) {
+      const p = planeHits[0].point;
+      const x = Math.round(p.x), y = this.currentY, z = Math.round(p.z);
+      this.grid.paintSphere(x, y, z, this.brushRadius, true);
+      this.ghostMesh.visible = false;
+      if (this.onChange) this.onChange();
+    }
+  }
+
+  // ── Public API ─────────────────────────────────────
+  init(grid) {
+    this.grid = grid;
+    this._initBounds();
+    this._initSlicePlane();
+    this._resetCamera();
+  }
+
+  resetGrid() {
+    this._initBounds();
+    this._initSlicePlane();
+    this._resetCamera();
+    this.rebuild();
+  }
+
+  setY(y) {
+    this.currentY = y;
+    const px = (this.grid.gx-1)/2, pz = (this.grid.gz-1)/2;
+    if (this.slicePlane) { this.slicePlane.position.y = y; this.sliceWire.position.y = y; }
+    if (this.instancedMesh && this.colorMode === 'depth') this.rebuild();
+    document.getElementById('hud-y').textContent = y;
+  }
+
+  setColorMode(mode) {
+    this.colorMode = mode;
+    this.rebuild();
+  }
+
+  setEditMode(mode) {
+    this.editMode = mode;
+    document.getElementById('hud-mode').textContent = `MODE: ${mode.toUpperCase()}`;
+  }
+
+  setClusterData(k2c) {
+    this.k2c = k2c;
+    if (this.colorMode === 'cluster') this.rebuild();
+  }
+
+  resize(w, h) {
+    if (w < 1 || h < 1) return;
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(w, h, false);
+  }
+
+  _animate() {
+    requestAnimationFrame(() => this._animate());
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// App wiring
+// ═══════════════════════════════════════════════════════
+let grid = new ChunkGrid(100, 100, 100, 10);
+let currentY = 0;
+let k2c = new Map();
+let clusterCount = 0;
+
+const view = new GalaxyView3D(document.getElementById('three-canvas'));
+view.init(grid);
+
+// ── Sync helpers ──────────────────────────────────────
+function syncClusters() {
+  const r = grid.buildClusterMap();
+  k2c = r.k2c; clusterCount = r.count;
+  view.setClusterData(k2c);
+}
+
+function updateStats() {
+  const { inner, border, total } = grid.countByZone();
+  document.getElementById('stat-inner').textContent    = inner.toLocaleString();
+  document.getElementById('stat-border').textContent   = border.toLocaleString();
+  document.getElementById('stat-chunks').textContent   = total.toLocaleString();
+  document.getElementById('stat-clusters').textContent = clusterCount;
+}
+
+function updateTotalSizeLabel() {
+  const gx = clamp(+document.getElementById('inp-gx').value || 64, 4, 512);
+  const gy = clamp(+document.getElementById('inp-gy').value || 32, 4, 256);
+  const gz = clamp(+document.getElementById('inp-gz').value || 64, 4, 512);
+  const n  = clamp(+document.getElementById('inp-border').value || 0, 0, 30);
+  document.getElementById('lbl-total-size').textContent =
+    `Total: ${gx+2*n}×${gy+2*n}×${gz+2*n}`;
+}
+
+function onGridChanged() {
+  syncClusters();
+  view.rebuild();
+  updateStats();
+  buildClusterListUI();
+}
+
+view.onChange = onGridChanged;
+
+// ── Grid size ─────────────────────────────────────────
+document.getElementById('btn-apply').addEventListener('click', () => {
+  const igx = clamp(+document.getElementById('inp-gx').value || 64, 4, 512);
+  const igy = clamp(+document.getElementById('inp-gy').value || 32, 4, 256);
+  const igz = clamp(+document.getElementById('inp-gz').value || 64, 4, 512);
+  const n   = clamp(+document.getElementById('inp-border').value || 0, 0, 30);
+  const tgx = igx + 2*n, tgy = igy + 2*n, tgz = igz + 2*n;
+  if (grid.active.size > 0 && !confirm(
+    `그리드를 Inner ${igx}×${igy}×${igz} + Border ${n} (Total ${tgx}×${tgy}×${tgz})로\n변경하면 현재 데이터가 초기화됩니다. 계속할까요?`
+  )) return;
+  grid = new ChunkGrid(igx, igy, igz, n);
+  view.grid = grid;
+  view.onChange = onGridChanged;
+  document.getElementById('y-slider').max = grid.gy - 1;
+  setY(0);
+  view.resetGrid();
+  onGridChanged();
+  updateTotalSizeLabel();
+});
+
+// Live total-size label update
+['inp-gx','inp-gy','inp-gz','inp-border'].forEach(id =>
+  document.getElementById(id).addEventListener('input', updateTotalSizeLabel)
+);
+
+// ── Noise generation ──────────────────────────────────
+function readNoiseParams() {
+  return {
+    seed:      +document.getElementById('inp-seed').value | 0,
+    threshold: +document.getElementById('inp-threshold').value,
+    scale:     +document.getElementById('inp-scale').value,
+    octaves:   +document.getElementById('inp-octaves').value | 0,
+  };
+}
+
+function autoTrim(params) {
+  if (grid.n > 0 && document.getElementById('chk-auto-trim').checked) {
+    grid.applyBorderTrim(params.seed, params.threshold, params.scale, params.octaves);
+  }
+}
+
+document.getElementById('btn-generate').addEventListener('click', () => {
+  const p = readNoiseParams();
+  grid.generate(p.seed, p.threshold, p.scale, p.octaves, false);
+  autoTrim(p);
+  onGridChanged();
+});
+
+document.getElementById('btn-mix').addEventListener('click', () => {
+  const p = readNoiseParams();
+  grid.generate(p.seed, p.threshold, p.scale, p.octaves, true);
+  autoTrim(p);
+  onGridChanged();
+});
+
+document.getElementById('btn-trim').addEventListener('click', () => {
+  if (grid.n === 0) {
+    alert('Border n = 0입니다. Apply에서 n을 1 이상으로 설정하세요.');
+    return;
+  }
+  const { seed, threshold, scale, octaves } = readNoiseParams();
+  grid.applyBorderTrim(seed, threshold, scale, octaves);
+  onGridChanged();
+});
+
+document.getElementById('btn-rand-seed').addEventListener('click', () => {
+  const seed = Math.floor(Math.random() * 99999);
+  document.getElementById('inp-seed').value = seed;
+  const p = { ...readNoiseParams(), seed };
+  grid.generate(p.seed, p.threshold, p.scale, p.octaves, false);
+  autoTrim(p);
+  onGridChanged();
+});
+
+// Slider display sync
+['threshold','scale','octaves'].forEach(id => {
+  const inp = document.getElementById(`inp-${id}`);
+  const out = document.getElementById(`val-${id}`);
+  inp.addEventListener('input', () => {
+    out.textContent = id === 'octaves' ? inp.value : parseFloat(inp.value).toFixed(2);
+  });
+});
+
+// ── Edit mode ─────────────────────────────────────────
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    view.setEditMode(btn.dataset.mode);
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// ── Brush ─────────────────────────────────────────────
+document.querySelectorAll('.brush-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    view.brushRadius = +btn.dataset.size;
+    document.querySelectorAll('.brush-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// ── Y controls ────────────────────────────────────────
+function setY(y) {
+  currentY = Math.max(0, Math.min(grid.gy - 1, y));
+  view.setY(currentY);
+  document.getElementById('y-display').textContent = currentY;
+  document.getElementById('y-slider').value = currentY;
+}
+
+document.getElementById('btn-y-prev').addEventListener('click', () => setY(currentY - 1));
+document.getElementById('btn-y-next').addEventListener('click', () => setY(currentY + 1));
+document.getElementById('y-slider').addEventListener('input', e => setY(+e.target.value));
+
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowUp')   { e.preventDefault(); setY(currentY + 1); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); setY(currentY - 1); }
+});
+
+// ── Color mode ────────────────────────────────────────
+document.querySelectorAll('.color-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    view.setColorMode(btn.dataset.mode);
+    document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// ── Bulk ops ──────────────────────────────────────────
+document.getElementById('btn-fill-all').addEventListener('click', () => {
+  if (!confirm('그리드 전체를 채울까요?')) return;
+  grid.fillAll(); onGridChanged();
+});
+
+document.getElementById('btn-clear-all').addEventListener('click', () => {
+  if (grid.active.size > 0 && !confirm('모든 청크를 초기화할까요?')) return;
+  grid.clear(); onGridChanged();
+});
+
+// ═══════════════════════════════════════════════════════
+// GMZ — Binary bitset + gzip format
+// Header: 24 bytes  |  Payload: gzip(bitset)
+//
+//  0- 3  magic "GMZ1"
+//  4- 5  gx   (uint16 LE)
+//  6- 7  gy   (uint16 LE)
+//  8- 9  gz   (uint16 LE)
+// 10-11  innerGx (uint16 LE)
+// 12-13  innerGy (uint16 LE)
+// 14-15  innerGz (uint16 LE)
+// 16     n    (uint8)
+// 17-23  reserved (zeros)
+// ═══════════════════════════════════════════════════════
+const GMZ_MAGIC = [0x47, 0x4D, 0x5A, 0x31]; // "GMZ1"
+const GMZ_HEADER_SIZE = 24;
+
+async function gmzCompress(uint8) {
+  const cs = new CompressionStream('gzip');
+  const w  = cs.writable.getWriter();
+  w.write(uint8); w.close();
+  const chunks = []; const r = cs.readable.getReader();
+  for (;;) { const { done, value } = await r.read(); if (done) break; chunks.push(value); }
+  const out = new Uint8Array(chunks.reduce((s, c) => s + c.length, 0));
+  let off = 0; for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+async function gmzDecompress(uint8) {
+  const ds = new DecompressionStream('gzip');
+  const w  = ds.writable.getWriter();
+  w.write(uint8); w.close();
+  const chunks = []; const r = ds.readable.getReader();
+  for (;;) { const { done, value } = await r.read(); if (done) break; chunks.push(value); }
+  const out = new Uint8Array(chunks.reduce((s, c) => s + c.length, 0));
+  let off = 0; for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+function gridToBitset(g) {
+  const { gx, gy, gz } = g;
+  const bits = new Uint8Array(Math.ceil(gx * gy * gz / 8));
+  for (const k of g.active) {
+    const [x, y, z] = k.split(':').map(Number);
+    const idx = x * gy * gz + y * gz + z;
+    bits[idx >> 3] |= 1 << (idx & 7);
+  }
+  return bits;
+}
+
+function bitsetToGrid(bits, gx, gy, gz, innerGx, innerGy, innerGz, n) {
+  const g = new ChunkGrid(innerGx, innerGy, innerGz, n);
+  const total = gx * gy * gz;
+  for (let idx = 0; idx < total; idx++) {
+    if (bits[idx >> 3] & (1 << (idx & 7))) {
+      const x = Math.floor(idx / (gy * gz));
+      const y = Math.floor((idx % (gy * gz)) / gz);
+      const z = idx % gz;
+      g.active.add(g.key(x, y, z));
+    }
+  }
+  return g;
+}
+
+async function exportGmz(g) {
+  const { gx, gy, gz, innerGx, innerGy, innerGz, n } = g;
+  const bits = gridToBitset(g);
+  const payload = await gmzCompress(bits);
+
+  const header = new Uint8Array(GMZ_HEADER_SIZE);
+  const dv = new DataView(header.buffer);
+  GMZ_MAGIC.forEach((b, i) => dv.setUint8(i, b));
+  dv.setUint16(4,  gx,      true);
+  dv.setUint16(6,  gy,      true);
+  dv.setUint16(8,  gz,      true);
+  dv.setUint16(10, innerGx, true);
+  dv.setUint16(12, innerGy, true);
+  dv.setUint16(14, innerGz, true);
+  dv.setUint8(16,  n);
+
+  const blob = new Blob([header, payload], { type: 'application/octet-stream' });
+  const url  = URL.createObjectURL(blob);
+  const date = new Date().toISOString().slice(0, 10);
+  Object.assign(document.createElement('a'), {
+    href: url, download: `galaxy-map-${date}.gmz`
+  }).click();
+  URL.revokeObjectURL(url);
+
+  // Show size in console for reference
+  const kb = ((header.length + payload.length) / 1024).toFixed(1);
+  console.log(`[GMZ] exported ${kb} KB  (bitset ${(bits.length/1024).toFixed(1)} KB → gzip ${(payload.length/1024).toFixed(1)} KB)`);
+}
+
+async function importGmz(arrayBuffer) {
+  if (arrayBuffer.byteLength < GMZ_HEADER_SIZE) throw new Error('.gmz 파일이 너무 작습니다');
+  const dv = new DataView(arrayBuffer);
+  for (let i = 0; i < 4; i++) {
+    if (dv.getUint8(i) !== GMZ_MAGIC[i]) throw new Error('GMZ1 magic bytes 불일치 — 올바른 .gmz 파일이 아닙니다');
+  }
+  const gx      = dv.getUint16(4,  true);
+  const gy      = dv.getUint16(6,  true);
+  const gz      = dv.getUint16(8,  true);
+  const innerGx = dv.getUint16(10, true);
+  const innerGy = dv.getUint16(12, true);
+  const innerGz = dv.getUint16(14, true);
+  const n       = dv.getUint8(16);
+
+  const payload = new Uint8Array(arrayBuffer, GMZ_HEADER_SIZE);
+  const bits    = await gmzDecompress(payload);
+
+  return bitsetToGrid(bits, gx, gy, gz, innerGx, innerGy, innerGz, n);
+}
+
+// ═══════════════════════════════════════════════════════
+// GMAP — Game-ready pure spatial export (no editor metadata)
+// Header: 12 bytes  |  Payload: gzip(bitset)
+//  0- 3  magic "GMAP"
+//  4- 5  gx   (uint16 LE)
+//  6- 7  gy   (uint16 LE)
+//  8- 9  gz   (uint16 LE)
+// 10-11  reserved (zeros)
+// ═══════════════════════════════════════════════════════
+const GMAP_MAGIC = [0x47, 0x4D, 0x41, 0x50]; // "GMAP"
+const GMAP_HEADER_SIZE = 12;
+
+async function exportGmap(g, k2cMap, disabledSet) {
+  const { gx, gy, gz } = g;
+
+  // Build bitset with only currently-visible chunks (disabled clusters excluded)
+  const bits = new Uint8Array(Math.ceil(gx * gy * gz / 8));
+  let count = 0;
+  for (const k of g.active) {
+    const cid = k2cMap.get(k);
+    if (cid !== undefined && disabledSet.has(cid)) continue;
+    const [x, y, z] = k.split(':').map(Number);
+    const idx = x * gy * gz + y * gz + z;
+    bits[idx >> 3] |= 1 << (idx & 7);
+    count++;
+  }
+
+  const payload = await gmzCompress(bits);
+
+  const header = new Uint8Array(GMAP_HEADER_SIZE);
+  const dv     = new DataView(header.buffer);
+  GMAP_MAGIC.forEach((b, i) => dv.setUint8(i, b));
+  dv.setUint16(4, gx, true);
+  dv.setUint16(6, gy, true);
+  dv.setUint16(8, gz, true);
+
+  const blob = new Blob([header, payload], { type: 'application/octet-stream' });
+  const url  = URL.createObjectURL(blob);
+  const date = new Date().toISOString().slice(0, 10);
+  Object.assign(document.createElement('a'), {
+    href: url, download: `galaxy-map-${date}.gmap`
+  }).click();
+  URL.revokeObjectURL(url);
+  console.log(`[GMAP] exported ${((header.length + payload.length)/1024).toFixed(1)} KB  (${count} visible chunks of ${g.active.size} total)`);
+}
+
+// ── Export / Import ───────────────────────────────────
+// .gmap export
+document.getElementById('btn-export-gmap').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-export-gmap');
+  btn.textContent = 'Exporting…'; btn.disabled = true;
+  try { await exportGmap(grid, k2c, disabledClusters); }
+  catch (err) { alert('GMAP 내보내기 실패: ' + err.message); }
+  finally { btn.textContent = 'Export .gmap'; btn.disabled = false; }
+});
+
+// .gmz export
+document.getElementById('btn-export-gmz').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-export-gmz');
+  btn.textContent = 'Exporting…'; btn.disabled = true;
+  try { await exportGmz(grid); }
+  catch (err) { alert('GMZ 내보내기 실패: ' + err.message); }
+  finally { btn.textContent = 'Export .gmz'; btn.disabled = false; }
+});
+
+// .gmz import
+document.getElementById('btn-import-gmz').addEventListener('click', () =>
+  document.getElementById('file-input-gmz').click()
+);
+
+document.getElementById('file-input-gmz').addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    const buf = await file.arrayBuffer();
+    const imported = await importGmz(buf);
+    grid = imported;
+    document.getElementById('inp-gx').value     = grid.innerGx;
+    document.getElementById('inp-gy').value     = grid.innerGy;
+    document.getElementById('inp-gz').value     = grid.innerGz;
+    document.getElementById('inp-border').value = grid.n;
+    document.getElementById('y-slider').max     = grid.gy - 1;
+    view.grid = grid;
+    view.onChange = onGridChanged;
+    setY(0);
+    view.resetGrid();
+    onGridChanged();
+    updateTotalSizeLabel();
+  } catch (err) { alert('GMZ 가져오기 실패: ' + err.message); }
+  e.target.value = '';
+});
+
+document.getElementById('btn-export').addEventListener('click', () => {
+  const data = grid.toJSON();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  Object.assign(document.createElement('a'), {
+    href: url, download: `galaxy-map-${data.generated}.json`
+  }).click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('btn-import').addEventListener('click', () =>
+  document.getElementById('file-input').click()
+);
+
+document.getElementById('file-input').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      grid.fromJSON(data);
+      document.getElementById('inp-gx').value     = grid.innerGx;
+      document.getElementById('inp-gy').value     = grid.innerGy;
+      document.getElementById('inp-gz').value     = grid.innerGz;
+      document.getElementById('inp-border').value = grid.n;
+      document.getElementById('y-slider').max = grid.gy - 1;
+      view.grid = grid;
+      view.onChange = onGridChanged;
+      setY(0);
+      view.resetGrid();
+      onGridChanged();
+      updateTotalSizeLabel();
+    } catch (err) { alert('가져오기 실패: ' + err.message); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+// ── Resize ────────────────────────────────────────────
+const viewPanel = document.getElementById('view3d');
+new ResizeObserver(() => {
+  const w = viewPanel.clientWidth, h = viewPanel.clientHeight;
+  view.resize(w, h);
+}).observe(viewPanel);
+
+requestAnimationFrame(() => {
+  const w = viewPanel.clientWidth, h = viewPanel.clientHeight;
+  view.resize(w, h);
+});
+
+// ── Cluster panel ─────────────────────────────────────
+const disabledClusters = new Set();
+view.disabledClusters  = disabledClusters;
+
+function buildClusterListUI() {
+  const section = document.getElementById('cluster-section');
+  const list    = document.getElementById('cluster-list');
+
+  if (clusterCount === 0) { section.style.display = 'none'; return; }
+  section.style.display = '';
+
+  // chunk count per cluster
+  const sizes = new Map();
+  for (const [, cid] of k2c) sizes.set(cid, (sizes.get(cid) ?? 0) + 1);
+
+  // sort by size desc
+  const sorted = [...sizes.entries()].sort((a, b) => b[1] - a[1]);
+
+  list.innerHTML = '';
+  for (const [cid, cnt] of sorted) {
+    const on  = !disabledClusters.has(cid);
+    const hue = HUES[cid % HUES.length];
+    const row = document.createElement('div');
+    row.className = 'cluster-row';
+    row.style.opacity = on ? '1' : '0.38';
+    row.innerHTML =
+      `<span class="cluster-swatch" style="background:hsl(${hue},88%,56%)"></span>` +
+      `<span class="cluster-name">cluster_${cid + 1}</span>` +
+      `<span class="cluster-count">${cnt.toLocaleString()}</span>` +
+      `<button class="cluster-toggle${on ? ' active' : ''}" data-cid="${cid}">${on ? '●' : '○'}</button>`;
+    list.appendChild(row);
+  }
+}
+
+document.getElementById('cluster-list').addEventListener('click', e => {
+  const btn = e.target.closest('.cluster-toggle');
+  if (!btn) return;
+  const cid = +btn.dataset.cid;
+  if (disabledClusters.has(cid)) disabledClusters.delete(cid);
+  else                            disabledClusters.add(cid);
+  buildClusterListUI();
+  view.rebuild();
+});
+
+document.getElementById('btn-clusters-all').addEventListener('click', () => {
+  disabledClusters.clear();
+  buildClusterListUI();
+  view.rebuild();
+});
+
+document.getElementById('btn-clusters-none').addEventListener('click', () => {
+  for (let i = 0; i < clusterCount; i++) disabledClusters.add(i);
+  buildClusterListUI();
+  view.rebuild();
+});
+
+document.getElementById('btn-clusters-remove').addEventListener('click', () => {
+  if (disabledClusters.size === 0) return;
+  if (!confirm(`Off 상태인 클러스터 ${disabledClusters.size}개를 영구 삭제할까요?`)) return;
+  for (const [key, cid] of k2c) {
+    if (disabledClusters.has(cid)) grid.active.delete(key);
+  }
+  disabledClusters.clear();
+  onGridChanged();
+});
+
+// ── Util ──────────────────────────────────────────────
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+updateStats();
+updateTotalSizeLabel();
+</script>
+</body>
+</html>
