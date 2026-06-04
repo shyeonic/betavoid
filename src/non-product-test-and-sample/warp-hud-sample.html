@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SVG Donut Gauge - Fixed Current Arc</title>
+
+  <style>
+    :root {
+      --bg: #05070b;
+      --text: #eaf6ff;
+      --muted: #7f96a8;
+
+      --track: rgba(125, 160, 180, .20);
+      --fill-outer: #20d6ff;
+      --fill-inner: #0d8fb3;
+      --fill-inner-current: var(--fill-inner);
+
+      --blue-fill-opacity: 1;
+    }
+
+    html[data-theme="light"] {
+      --bg: #eef4f8;
+      --text: #102030;
+      --muted: #667888;
+
+      --track: rgba(50, 80, 100, .15);
+      --fill-outer: #0077ff;
+      --fill-inner: #68b7ff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    .hud {
+      position: relative;
+      width: 12vh;
+      height: 40vh;
+    }
+
+    .gauge {
+      position: absolute;
+      left: 50%;
+      top: 45%;
+      width: 82%;
+      aspect-ratio: 1;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+    }
+
+    .gauge-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .segment {
+      shape-rendering: geometricPrecision;
+      pointer-events: none;
+    }
+
+    .segment.track {
+      fill: var(--track);
+    }
+
+    .segment.fill {
+      fill: url(#blueGradient);
+      opacity: var(--blue-fill-opacity);
+    }
+
+    .current-ring__arc {
+      fill: none;
+      stroke: var(--fill-inner-current);
+      stroke-width: 1.45;
+      stroke-linecap: round;
+      opacity: 0;
+      vector-effect: non-scaling-stroke;
+      pointer-events: none;
+      transition: opacity .2s linear;
+    }
+
+    .current-ring__dot {
+      fill: var(--fill-inner-current);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s linear;
+    }
+
+    .inner {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 100%;
+      height: 100%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      place-items: center;
+      text-align: center;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .value-line {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    .value {
+      font-size: 1.4vh;
+      font-weight: 800;
+      letter-spacing: -.05em;
+    }
+
+    .controls {
+      position: absolute;
+      left: 50%;
+      bottom: 5%;
+      width: 82%;
+      transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: 18% 1fr 18%;
+      gap: 3%;
+      align-items: center;
+    }
+
+    .control-label {
+      font-size: 12%;
+      letter-spacing: .12em;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--fill-inner-current);
+    }
+
+    input[type="number"] {
+      width: 100%;
+      border: 0;
+      border-bottom: 1px solid color-mix(in srgb, var(--muted) 55%, transparent);
+      padding: 6% 0;
+      color: var(--text);
+      background: transparent;
+      text-align: right;
+      font: inherit;
+      font-size: 24%;
+      outline: none;
+    }
+
+    .theme {
+      position: absolute;
+      right: 9%;
+      top: 5%;
+      border: 1px solid color-mix(in srgb, var(--muted) 45%, transparent);
+      border-radius: 999px;
+      padding: 1.8% 3.2%;
+      color: var(--text);
+      background: transparent;
+      font: inherit;
+      font-size: 14%;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="hud">
+    <button class="theme" id="themeBtn" type="button">Light</button>
+
+    <section class="gauge" id="gauge" aria-label="도넛형 블럭 게이지">
+      <svg class="gauge-svg" id="gaugeSvg" viewBox="0 0 100 100" aria-hidden="true">
+        <defs>
+          <radialGradient id="blueGradient" gradientUnits="userSpaceOnUse" cx="50" cy="50" r="50">
+            <stop offset="55%" stop-color="var(--fill-inner-current)" />
+            <stop offset="100%" stop-color="var(--fill-outer)" />
+          </radialGradient>
+        </defs>
+
+        <g id="trackSegments"></g>
+        <g id="fillSegments"></g>
+
+        <!--
+          CURRENT 게이지는 circle + stroke-dashoffset을 쓰지 않는다.
+          dashoffset 방식은 닫힌 원에서 긴 막대가 반대편부터 나타나는 문제가 생길 수 있다.
+          대신 path의 d를 매번 실제 arc 모양으로 다시 계산한다.
+        -->
+        <path class="current-ring__arc" id="currentArc" />
+        <circle class="current-ring__dot" id="currentDot" cx="50" cy="4" r="0.725" />
+      </svg>
+
+      <div class="inner">
+        <div>
+          <div class="value-line">
+            <span class="value" id="valueText">68</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="controls">
+      <span class="control-label">BLUE</span>
+      <input id="blueRange" type="range" min="0" max="100" step="1" value="68" />
+      <input id="blueNumber" type="number" min="0" max="100" step="1" value="68" />
+
+      <span class="control-label">CURRENT</span>
+      <input id="currentRange" type="range" min="0" max="100" step="1" value="0" />
+      <input id="currentNumber" type="number" min="0" max="100" step="1" value="0" />
+    </div>
+  </main>
+
+  <script>
+    const SVG_NS = "http://www.w3.org/2000/svg";
+
+    /*
+      =========================
+      조절 포인트
+      =========================
+    */
+
+    // 블럭 개수. 적을수록 블럭이 큼직해짐.
+    const BLOCK_COUNT = 72;
+
+    // 기본 모드 블럭 사이 간격. 키울수록 블럭 사이가 더 벌어짐.
+    const BASE_GAP_ANGLE = 1.15;
+
+    // 변형 완료 시 간격. 0이면 하나의 매끈한 링처럼 합쳐짐.
+    const MERGED_GAP_ANGLE = 0;
+
+    // 변형 속도.
+    const MORPH_DURATION = 1000;
+
+    // 기본 도넛의 바깥 반지름.
+    const BASE_OUTER_R = 32;
+
+    // 도넛 두께. 이 값은 변형 중에도 유지됨.
+    const RING_THICKNESS = 12;
+
+    // 변형 시 도넛 전체가 중심 쪽으로 들어가는 거리.
+    // 두께는 유지되고 outerR / innerR가 같이 줄어듦.
+    const MORPH_INSET = -8;
+
+    // 내부 current 게이지 기본 반지름.
+    const CURRENT_BASE_R = 34;
+
+    // 2차 변형 시 내부 current 게이지 반지름.
+    // 값을 낮추면 중심에 더 가까워짐. 두께는 stroke-width가 유지함.
+    const CURRENT_MORPH_R = 34;
+
+    // 0값 dot의 반지름.
+    // current arc의 stroke-width가 1.45라서 절반인 0.725를 기본값으로 둠.
+    const CURRENT_DOT_R = 0.725;
+
+    /*
+      =========================
+      DOM
+      =========================
+    */
+
+    const gauge = document.querySelector("#gauge");
+    const trackSegments = document.querySelector("#trackSegments");
+    const fillSegments = document.querySelector("#fillSegments");
+
+    const blueRange = document.querySelector("#blueRange");
+    const blueNumber = document.querySelector("#blueNumber");
+    const currentRange = document.querySelector("#currentRange");
+    const currentNumber = document.querySelector("#currentNumber");
+
+    const valueText = document.querySelector("#valueText");
+    const themeBtn = document.querySelector("#themeBtn");
+    const currentArc = document.querySelector("#currentArc");
+    const currentDot = document.querySelector("#currentDot");
+
+    /*
+      =========================
+      상태값
+      =========================
+    */
+
+    let blueValue = 68;
+    let currentValue = 0;
+
+    let morph = 0;
+    let morphTarget = 0;
+    let rafId = null;
+    let lastTs = null;
+
+    /*
+      =========================
+      유틸
+      =========================
+    */
+
+    const clamp01 = (x) => Math.max(0, Math.min(1, x));
+    const clamp100 = (x) => Math.max(0, Math.min(100, Number(x) || 0));
+    const lerp = (a, b, t) => a + (b - a) * t;
+
+    const easeInOut = (t) => (
+      t < 0.5
+        ? 2 * t * t
+        : 1 - Math.pow(-2 * t + 2, 2) / 2
+    );
+
+    function clearChildren(element) {
+      while (element.firstChild) {
+        element.removeChild(element.firstChild);
+      }
+    }
+
+    // angleDeg 0 = 12시 방향, 90 = 3시 방향, 180 = 6시 방향.
+    // 즉 양수 방향이 시계방향이다.
+    function polarToCartesian(cx, cy, radius, angleDeg) {
+      const angleRad = (angleDeg - 90) * Math.PI / 180;
+
+      return {
+        x: cx + radius * Math.cos(angleRad),
+        y: cy + radius * Math.sin(angleRad)
+      };
+    }
+
+    function describeDonutSegment(startAngle, endAngle, outerR, innerR) {
+      const cx = 50;
+      const cy = 50;
+      const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+
+      const outerStart = polarToCartesian(cx, cy, outerR, startAngle);
+      const outerEnd = polarToCartesian(cx, cy, outerR, endAngle);
+      const innerEnd = polarToCartesian(cx, cy, innerR, endAngle);
+      const innerStart = polarToCartesian(cx, cy, innerR, startAngle);
+
+      return [
+        `M ${outerStart.x.toFixed(3)} ${outerStart.y.toFixed(3)}`,
+        `A ${outerR.toFixed(3)} ${outerR.toFixed(3)} 0 ${largeArcFlag} 1 ${outerEnd.x.toFixed(3)} ${outerEnd.y.toFixed(3)}`,
+        `L ${innerEnd.x.toFixed(3)} ${innerEnd.y.toFixed(3)}`,
+        `A ${innerR.toFixed(3)} ${innerR.toFixed(3)} 0 ${largeArcFlag} 0 ${innerStart.x.toFixed(3)} ${innerStart.y.toFixed(3)}`,
+        "Z"
+      ].join(" ");
+    }
+
+    function createSegment(className, startAngle, endAngle, outerR, innerR) {
+      const path = document.createElementNS(SVG_NS, "path");
+
+      path.setAttribute("class", `segment ${className}`);
+      path.setAttribute("d", describeDonutSegment(startAngle, endAngle, outerR, innerR));
+
+      return path;
+    }
+
+    // CURRENT 게이지 전용 실제 arc path.
+    // circle dash 방식이 아니라, 12시 방향에서 시작해서 시계방향으로 sweep만큼만 그린다.
+    function describeCurrentArc(radius, sweepAngle) {
+      const cx = 50;
+      const cy = 50;
+      const sweep = Math.max(0, Math.min(360, sweepAngle));
+
+      if (sweep <= 0) {
+        return "";
+      }
+
+      // SVG arc는 시작점과 끝점이 완전히 같으면 full circle을 그리지 못하므로
+      // 100%일 때는 두 개의 180도 arc로 나누어 그린다.
+      if (sweep >= 359.999) {
+        const p0 = polarToCartesian(cx, cy, radius, 0);
+        const p180 = polarToCartesian(cx, cy, radius, 180);
+        const p360 = polarToCartesian(cx, cy, radius, 359.999);
+
+        return [
+          `M ${p0.x.toFixed(3)} ${p0.y.toFixed(3)}`,
+          `A ${radius.toFixed(3)} ${radius.toFixed(3)} 0 0 1 ${p180.x.toFixed(3)} ${p180.y.toFixed(3)}`,
+          `A ${radius.toFixed(3)} ${radius.toFixed(3)} 0 0 1 ${p360.x.toFixed(3)} ${p360.y.toFixed(3)}`
+        ].join(" ");
+      }
+
+      const start = polarToCartesian(cx, cy, radius, 0);
+      const end = polarToCartesian(cx, cy, radius, sweep);
+      const largeArcFlag = sweep > 180 ? 1 : 0;
+
+      return [
+        `M ${start.x.toFixed(3)} ${start.y.toFixed(3)}`,
+        `A ${radius.toFixed(3)} ${radius.toFixed(3)} 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`
+      ].join(" ");
+    }
+
+    /*
+      =========================
+      렌더링
+      =========================
+    */
+
+    function renderGauge() {
+      const mergeT = easeInOut(clamp01(morph / 0.55));
+      const currentFade = clamp01((morph - 0.25) / 0.2);
+
+      const slotAngle = 360 / BLOCK_COUNT;
+      const gap = lerp(BASE_GAP_ANGLE, MERGED_GAP_ANGLE, mergeT);
+      const blockAngle = Math.max(0.001, slotAngle - gap);
+
+      /*
+        두께 유지 핵심:
+        outerR와 innerR를 같이 줄이면 중심으로부터의 거리는 줄어들지만,
+        outerR - innerR 값은 계속 동일하게 유지된다.
+      */
+      const outerR = lerp(BASE_OUTER_R, BASE_OUTER_R - MORPH_INSET, mergeT);
+      const innerR = outerR - RING_THICKNESS;
+
+      const fillAngle = clamp100(blueValue) * 3.6;
+
+      clearChildren(trackSegments);
+      clearChildren(fillSegments);
+
+      for (let i = 0; i < BLOCK_COUNT; i += 1) {
+        const startAngle = i * slotAngle + gap / 2;
+        const endAngle = startAngle + blockAngle;
+
+        const trackPath = createSegment(
+          "track",
+          startAngle,
+          endAngle,
+          outerR,
+          innerR
+        );
+
+        trackSegments.appendChild(trackPath);
+
+        if (startAngle < fillAngle) {
+          const clippedEndAngle = Math.min(endAngle, fillAngle);
+
+          if (clippedEndAngle > startAngle) {
+            const fillPath = createSegment(
+              "fill",
+              startAngle,
+              clippedEndAngle,
+              outerR,
+              innerR
+            );
+
+            fillSegments.appendChild(fillPath);
+          }
+        }
+      }
+
+      /*
+        2차 CURRENT 게이지:
+        currentValue = 0이면 dot만 표시.
+        currentValue > 0이면 12시 방향부터 시계방향으로 실제 arc path를 생성.
+        stroke-dashoffset을 쓰지 않으므로 좌측에서 긴 막대가 생기는 문제가 없다.
+      */
+      const currentRadius = lerp(CURRENT_BASE_R, CURRENT_MORPH_R, currentFade);
+      const hasCurrentValue = currentValue > 0;
+      const currentSweepAngle = hasCurrentValue ? currentValue * 3.6 : 0;
+
+      currentArc.setAttribute("d", describeCurrentArc(currentRadius, currentSweepAngle));
+      currentArc.style.opacity = hasCurrentValue ? currentFade.toFixed(3) : "0";
+
+      const dotPoint = polarToCartesian(50, 50, currentRadius, 0);
+      currentDot.setAttribute("cx", dotPoint.x.toFixed(3));
+      currentDot.setAttribute("cy", dotPoint.y.toFixed(3));
+      currentDot.setAttribute("r", CURRENT_DOT_R.toFixed(3));
+      currentDot.style.opacity = hasCurrentValue ? "0" : currentFade.toFixed(3);
+
+      gauge.style.setProperty(
+        "--fill-inner-current",
+        mergeT > 0.001 ? "var(--fill-outer)" : "var(--fill-inner)"
+      );
+
+      gauge.style.setProperty(
+        "--blue-fill-opacity",
+        mergeT > 0.001 ? "0.2" : "1"
+      );
+    }
+
+    /*
+      =========================
+      애니메이션
+      =========================
+    */
+
+    function animate(timestamp) {
+      if (lastTs == null) {
+        lastTs = timestamp;
+      }
+
+      const delta = timestamp - lastTs;
+      lastTs = timestamp;
+
+      if (morph === morphTarget) {
+        rafId = null;
+        lastTs = null;
+        renderGauge();
+        return;
+      }
+
+      const direction = morphTarget > morph ? 1 : -1;
+
+      morph += (delta / MORPH_DURATION) * direction;
+
+      if (
+        (direction > 0 && morph >= morphTarget) ||
+        (direction < 0 && morph <= morphTarget)
+      ) {
+        morph = morphTarget;
+        rafId = null;
+        lastTs = null;
+        renderGauge();
+        return;
+      }
+
+      renderGauge();
+      rafId = requestAnimationFrame(animate);
+    }
+
+    function startMorph() {
+      if (rafId != null) return;
+
+      lastTs = null;
+      rafId = requestAnimationFrame(animate);
+    }
+
+    /*
+      =========================
+      값 업데이트
+      =========================
+    */
+
+    function setBlueGauge(value) {
+      blueValue = clamp100(value);
+
+      valueText.textContent = Math.round(blueValue);
+      blueRange.value = blueValue;
+      blueNumber.value = blueValue;
+
+      morphTarget = blueValue >= 100 ? 1 : 0;
+
+      renderGauge();
+
+      if (morph !== morphTarget) {
+        startMorph();
+      }
+    }
+
+    function setCurrentGauge(value) {
+      currentValue = clamp100(value);
+
+      currentRange.value = currentValue;
+      currentNumber.value = currentValue;
+
+      renderGauge();
+    }
+
+    /*
+      =========================
+      이벤트
+      =========================
+    */
+
+    blueRange.addEventListener("input", (event) => {
+      setBlueGauge(event.target.value);
+    });
+
+    blueNumber.addEventListener("input", (event) => {
+      setBlueGauge(event.target.value);
+    });
+
+    currentRange.addEventListener("input", (event) => {
+      setCurrentGauge(event.target.value);
+    });
+
+    currentNumber.addEventListener("input", (event) => {
+      setCurrentGauge(event.target.value);
+    });
+
+    themeBtn.addEventListener("click", () => {
+      const html = document.documentElement;
+      const isDark = html.dataset.theme === "dark";
+
+      html.dataset.theme = isDark ? "light" : "dark";
+      themeBtn.textContent = isDark ? "Dark" : "Light";
+    });
+
+    /*
+      =========================
+      초기화
+      =========================
+    */
+
+    setBlueGauge(68);
+    setCurrentGauge(0);
+  </script>
+</body>
+
+</html>

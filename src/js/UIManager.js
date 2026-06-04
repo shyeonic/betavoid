@@ -1,3 +1,17 @@
+const WARP_HUD_SVG_NS = "http://www.w3.org/2000/svg";
+const WARP_HUD_BLOCK_COUNT = 72;
+const WARP_HUD_BASE_GAP_ANGLE = 1.15;
+const WARP_HUD_MERGED_GAP_ANGLE = 0;
+const WARP_HUD_MORPH_DURATION = 1000;
+const WARP_HUD_BASE_OUTER_R = 32;
+const WARP_HUD_RING_THICKNESS = 12;
+const WARP_HUD_MORPH_INSET = -8;
+const WARP_HUD_CURRENT_BASE_R = 34;
+const WARP_HUD_CURRENT_MORPH_R = 34;
+const WARP_HUD_CURRENT_DOT_R = 0.725;
+const WARP_HUD_COMPLETE_DURATION = 1000;
+const WARP_HUD_DAY_SECONDS = 86400;
+
 export class UIManager {
   constructor({ config, shipStats, i18n, keyBindings, keyBindingGroups, defaultKeyBindings }) {
     this.config = config;
@@ -128,9 +142,13 @@ export class UIManager {
       targetZ: this.getElement("#targetZ"),
       navToggle: this.getElement("#navToggle"),
       warpToggle: this.getElement("#warpToggle"),
-      warpCooldownGauge: this.getElement("#warpCooldownGauge"),
-      warpCooldownBar: this.getElement("#warpCooldownBar"),
-      warpCooldownLabel: this.getElement("#warpCooldownLabel"),
+      warpHud: this.getElement("#warpHud"),
+      warpHudGauge: this.getElement("#warpHudGauge"),
+      warpHudTrackSegments: this.getElement("#warpHudTrackSegments"),
+      warpHudFillSegments: this.getElement("#warpHudFillSegments"),
+      warpHudCurrentArc: this.getElement("#warpHudCurrentArc"),
+      warpHudCurrentDot: this.getElement("#warpHudCurrentDot"),
+      warpHudValue: this.getElement("#warpHudValue"),
       bottomNavMenuButton: this.getElement("#bottomNavMenuButton"),
       bottomNavMenuStack: this.getElement("#bottomNavMenuStack"),
       bottomNavScanButton: this.getElement("#bottomNavScanButton"),
@@ -149,7 +167,17 @@ export class UIManager {
     this.navActive = false;
     this.warpPending = false;
     this.warpActive = false;
-    this._warpCooldownOutTimer = null;
+    this._warpHudMode = null;
+    this._warpHudCompleteTimer = null;
+    this._warpHudMorph = 0;
+    this._warpHudMorphTarget = 0;
+    this._warpHudMorphFrameId = 0;
+    this._warpHudMorphLastTs = null;
+    this._warpHudOuterValue = 0;
+    this._warpHudCurrentValue = 0;
+    this._warpHudRenderSignature = "";
+    this._warpHudCompleteToken = 0;
+    this._warpHudCompleteCleanup = null;
     this.settingsTab = "data";
     this.environmentMode = "light";
     this.performanceSettings = {
@@ -166,6 +194,7 @@ export class UIManager {
     document.documentElement.lang = this.i18n.locale || document.documentElement.lang;
     this.elements.speedGauge.setAttribute("aria-valuemin", String(this.shipStats.minSpeed));
     this.elements.speedGauge.setAttribute("aria-valuemax", String(this.shipStats.maxSpeed));
+    this.initWarpHud();
     this.renderStaticText();
     this.renderLanguageSettings();
     this.setStartButtonText("Start");
@@ -2227,40 +2256,379 @@ export class UIManager {
       this.elements.warpToggle.title = this.t("ui.nav.hyperdriveHint", "Engage hyperdrive");
     }
 
-    this.updateCooldownGauge(snapshot.hyperdrivePhase, snapshot.cooldownStartAt, snapshot.jumpStartAt);
+    this.updateWarpHud({
+      phase: snapshot.hyperdrivePhase,
+      cooldownStartAt: snapshot.cooldownStartAt,
+      jumpStartAt: snapshot.jumpStartAt,
+      elapsed: snapshot.hyperdriveElapsed,
+      duration: snapshot.hyperdriveDuration
+    });
   }
 
-  updateCooldownGauge(phase, cooldownStartAt, jumpStartAt) {
-    const gauge = this.elements.warpCooldownGauge;
-    const bar = this.elements.warpCooldownBar;
-    const label = this.elements.warpCooldownLabel;
-    const CIRCUMFERENCE = 251.33;
+  initWarpHud() {
+    this._warpHudOuterValue = 0;
+    this._warpHudCurrentValue = 0;
+    this.applyWarpHudMorph(0);
+    this.setWarpHudOuterValue(0, { text: "0", instant: true });
+    this.setWarpHudCurrentValue(0);
+  }
 
-    if (phase === "cooldown" && cooldownStartAt && jumpStartAt) {
-      const total = (jumpStartAt - cooldownStartAt) / 1000;
-      const elapsed = (Date.now() - cooldownStartAt) / 1000;
-      const progress = Math.min(1, Math.max(0, elapsed / total));
-      const remaining = Math.max(0, total - elapsed);
+  updateWarpHud({ phase, cooldownStartAt, jumpStartAt, elapsed, duration }) {
+    const cooldownActive = phase === "cooldown" && cooldownStartAt && jumpStartAt;
+    const warpActive = phase === "warping" &&
+      Number.isFinite(elapsed) &&
+      Number.isFinite(duration) &&
+      duration > 0;
+    const previousMode = this._warpHudMode;
 
-      bar.style.strokeDashoffset = ((1 - progress) * CIRCUMFERENCE).toFixed(2);
-      label.textContent = remaining.toFixed(1);
+    if (cooldownActive) {
+      const total = Math.max(0.001, (jumpStartAt - cooldownStartAt) / 1000);
+      const cooldownElapsed = (Date.now() - cooldownStartAt) / 1000;
+      const progress = this.clamp01(cooldownElapsed / total);
+      const remaining = Math.max(0, total - cooldownElapsed);
+      const text = this.formatWarpHudRemaining(remaining);
 
-      if (this._warpCooldownOutTimer) {
-        clearTimeout(this._warpCooldownOutTimer);
-        this._warpCooldownOutTimer = null;
-      }
-      gauge.classList.add("visible");
+      this.showWarpHud();
+      this._warpHudMode = "cooldown";
+      this.setWarpHudOuterValue(progress * 100, { text });
+      this.setWarpHudCurrentValue(0);
+      this.elements.warpHud.setAttribute("aria-label", `Hyperdrive cooldown: ${this.formatWarpHudRemainingLabel(remaining)}`);
       return;
     }
 
-    if (gauge.classList.contains("visible") && !this._warpCooldownOutTimer) {
-      bar.style.strokeDashoffset = "0";
-      label.textContent = "0.0";
-      this._warpCooldownOutTimer = setTimeout(() => {
-        gauge.classList.remove("visible");
-        this._warpCooldownOutTimer = null;
-      }, 480);
+    if (warpActive) {
+      const progress = this.clamp01(elapsed / duration);
+      const remaining = Math.max(0, duration - elapsed);
+      const text = this.formatWarpHudRemaining(remaining);
+
+      this.showWarpHud();
+      this._warpHudMode = "warping";
+      this.setWarpHudOuterValue(100, { text });
+      this.setWarpHudCurrentValue(progress * 100);
+      this.elements.warpHud.setAttribute("aria-label", `Hyperdrive: ${this.formatWarpHudRemainingLabel(remaining)}`);
+      return;
     }
+
+    if (this._warpHudCompleteTimer || this._warpHudCompleteCleanup) {
+      this._warpHudMode = null;
+      return;
+    }
+
+    this._warpHudMode = null;
+    if (previousMode === "warping") {
+      this.completeWarpHud();
+    } else {
+      this.hideWarpHud(previousMode == null);
+    }
+  }
+
+  showWarpHud() {
+    this.cancelWarpHudCompletion();
+
+    const hud = this.elements.warpHud;
+    hud.classList.remove("completing");
+    hud.setAttribute("aria-hidden", "false");
+    hud.classList.add("visible");
+  }
+
+  hideWarpHud(instant = false) {
+    this.cancelWarpHudCompletion();
+
+    const hud = this.elements.warpHud;
+    hud.classList.remove("visible", "completing");
+    hud.setAttribute("aria-hidden", "true");
+    hud.setAttribute("aria-label", "Hyperdrive status");
+
+    if (instant) {
+      this.setWarpHudOuterValue(0, { text: "0", instant: true });
+      this.setWarpHudCurrentValue(0);
+    }
+  }
+
+  completeWarpHud() {
+    const hud = this.elements.warpHud;
+    this.cancelWarpHudCompletion();
+    const completeToken = ++this._warpHudCompleteToken;
+
+    this.setWarpHudOuterValue(100, { text: "0", instant: true });
+    this.setWarpHudCurrentValue(100);
+    hud.setAttribute("aria-hidden", "true");
+    hud.setAttribute("aria-label", "Hyperdrive complete");
+    hud.classList.add("visible");
+    hud.classList.remove("completing");
+    void hud.offsetWidth;
+    hud.classList.add("completing");
+
+    const finishCompletion = () => {
+      if (completeToken !== this._warpHudCompleteToken) return;
+      if (this._warpHudCompleteTimer) {
+        window.clearTimeout(this._warpHudCompleteTimer);
+        this._warpHudCompleteTimer = null;
+      }
+      if (this._warpHudCompleteCleanup) {
+        this._warpHudCompleteCleanup();
+        this._warpHudCompleteCleanup = null;
+      }
+      hud.classList.remove("visible", "completing");
+      hud.setAttribute("aria-label", "Hyperdrive status");
+      this.setWarpHudOuterValue(0, { text: "0", instant: true });
+      this.setWarpHudCurrentValue(0);
+    };
+
+    const onAnimationEnd = (event) => {
+      if (event.animationName !== "warp-hud-complete") return;
+      finishCompletion();
+    };
+
+    hud.addEventListener("animationend", onAnimationEnd);
+    this._warpHudCompleteCleanup = () => hud.removeEventListener("animationend", onAnimationEnd);
+    this._warpHudCompleteTimer = window.setTimeout(finishCompletion, WARP_HUD_COMPLETE_DURATION + 120);
+  }
+
+  cancelWarpHudCompletion() {
+    this._warpHudCompleteToken += 1;
+    if (this._warpHudCompleteTimer) {
+      window.clearTimeout(this._warpHudCompleteTimer);
+      this._warpHudCompleteTimer = null;
+    }
+    if (this._warpHudCompleteCleanup) {
+      this._warpHudCompleteCleanup();
+      this._warpHudCompleteCleanup = null;
+    }
+  }
+
+  setWarpHudOuterValue(value, { text = null, instant = false } = {}) {
+    const blueValue = this.clamp100(value);
+    this._warpHudOuterValue = blueValue;
+    if (text !== null) this.elements.warpHudValue.textContent = text;
+    this.renderWarpHudGauge();
+    this.setWarpHudMorphTarget(blueValue >= 100 ? 1 : 0, instant);
+  }
+
+  setWarpHudCurrentValue(value) {
+    this._warpHudCurrentValue = this.clamp100(value);
+    this.renderWarpHudGauge();
+  }
+
+  setWarpHudMorphTarget(target, instant = false) {
+    const nextTarget = this.clamp01(target);
+    this._warpHudMorphTarget = nextTarget;
+
+    if (instant) {
+      if (this._warpHudMorphFrameId) {
+        window.cancelAnimationFrame(this._warpHudMorphFrameId);
+        this._warpHudMorphFrameId = 0;
+      }
+      this._warpHudMorph = nextTarget;
+      this._warpHudMorphLastTs = null;
+      this.applyWarpHudMorph(this._warpHudMorph);
+      return;
+    }
+
+    this.renderWarpHudGauge();
+    this.startWarpHudMorph();
+  }
+
+  startWarpHudMorph() {
+    if (this._warpHudMorphFrameId || this._warpHudMorph === this._warpHudMorphTarget) return;
+
+    this._warpHudMorphLastTs = null;
+    this._warpHudMorphFrameId = window.requestAnimationFrame((timestamp) => this.animateWarpHudMorph(timestamp));
+  }
+
+  animateWarpHudMorph(timestamp) {
+    if (this._warpHudMorphLastTs == null) this._warpHudMorphLastTs = timestamp;
+
+    const delta = timestamp - this._warpHudMorphLastTs;
+    const direction = this._warpHudMorphTarget > this._warpHudMorph ? 1 : -1;
+    this._warpHudMorphLastTs = timestamp;
+    this._warpHudMorph += (delta / WARP_HUD_MORPH_DURATION) * direction;
+
+    if (
+      (direction > 0 && this._warpHudMorph >= this._warpHudMorphTarget) ||
+      (direction < 0 && this._warpHudMorph <= this._warpHudMorphTarget)
+    ) {
+      this._warpHudMorph = this._warpHudMorphTarget;
+      this.applyWarpHudMorph(this._warpHudMorph);
+      this._warpHudMorphFrameId = 0;
+      this._warpHudMorphLastTs = null;
+      return;
+    }
+
+    this.applyWarpHudMorph(this._warpHudMorph);
+    this._warpHudMorphFrameId = window.requestAnimationFrame((nextTimestamp) => this.animateWarpHudMorph(nextTimestamp));
+  }
+
+  applyWarpHudMorph(value) {
+    const mergeT = this.easeInOut(this.clamp01(value / 0.55));
+    const gauge = this.elements.warpHudGauge;
+
+    gauge.style.setProperty("--warp-hud-value-size", mergeT > 0.001 ? "1.35vh" : "1.45vh");
+    gauge.style.setProperty(
+      "--warp-hud-fill-inner-current",
+      mergeT > 0.001 ? "var(--warp-hud-fill-outer)" : "var(--warp-hud-fill-inner)"
+    );
+    gauge.style.setProperty(
+      "--warp-hud-blue-fill-opacity",
+      mergeT > 0.001 ? "0.2" : "1"
+    );
+
+    this.renderWarpHudGauge();
+  }
+
+  renderWarpHudGauge() {
+    const renderSignature = [
+      this._warpHudOuterValue.toFixed(3),
+      this._warpHudCurrentValue.toFixed(3),
+      this._warpHudMorph.toFixed(3)
+    ].join("|");
+    if (renderSignature === this._warpHudRenderSignature) return;
+    this._warpHudRenderSignature = renderSignature;
+
+    const mergeT = this.easeInOut(this.clamp01(this._warpHudMorph / 0.55));
+    const currentFade = this.clamp01((this._warpHudMorph - 0.25) / 0.2);
+    const slotAngle = 360 / WARP_HUD_BLOCK_COUNT;
+    const gap = this.lerp(WARP_HUD_BASE_GAP_ANGLE, WARP_HUD_MERGED_GAP_ANGLE, mergeT);
+    const blockAngle = Math.max(0.001, slotAngle - gap);
+    const outerR = this.lerp(WARP_HUD_BASE_OUTER_R, WARP_HUD_BASE_OUTER_R - WARP_HUD_MORPH_INSET, mergeT);
+    const innerR = outerR - WARP_HUD_RING_THICKNESS;
+    const fillAngle = this.clamp100(this._warpHudOuterValue) * 3.6;
+    const { warpHudTrackSegments, warpHudFillSegments, warpHudCurrentArc, warpHudCurrentDot } = this.elements;
+
+    this.clearWarpHudChildren(warpHudTrackSegments);
+    this.clearWarpHudChildren(warpHudFillSegments);
+
+    for (let i = 0; i < WARP_HUD_BLOCK_COUNT; i += 1) {
+      const startAngle = i * slotAngle + gap / 2;
+      const endAngle = startAngle + blockAngle;
+
+      warpHudTrackSegments.appendChild(
+        this.createWarpHudSegment("track", startAngle, endAngle, outerR, innerR)
+      );
+
+      if (startAngle < fillAngle) {
+        const clippedEndAngle = Math.min(endAngle, fillAngle);
+
+        if (clippedEndAngle > startAngle) {
+          warpHudFillSegments.appendChild(
+            this.createWarpHudSegment("fill", startAngle, clippedEndAngle, outerR, innerR)
+          );
+        }
+      }
+    }
+
+    const currentRadius = this.lerp(WARP_HUD_CURRENT_BASE_R, WARP_HUD_CURRENT_MORPH_R, currentFade);
+    const hasCurrentValue = this._warpHudCurrentValue > 0;
+    const currentSweepAngle = hasCurrentValue ? this._warpHudCurrentValue * 3.6 : 0;
+
+    warpHudCurrentArc.setAttribute("d", this.describeWarpHudCurrentArc(currentRadius, currentSweepAngle));
+    warpHudCurrentArc.style.opacity = hasCurrentValue ? currentFade.toFixed(3) : "0";
+
+    const dotPoint = this.warpHudPolarToCartesian(50, 50, currentRadius, 0);
+    warpHudCurrentDot.setAttribute("cx", dotPoint.x.toFixed(3));
+    warpHudCurrentDot.setAttribute("cy", dotPoint.y.toFixed(3));
+    warpHudCurrentDot.setAttribute("r", WARP_HUD_CURRENT_DOT_R.toFixed(3));
+    warpHudCurrentDot.style.opacity = hasCurrentValue ? "0" : currentFade.toFixed(3);
+  }
+
+  clearWarpHudChildren(element) {
+    while (element.firstChild) element.removeChild(element.firstChild);
+  }
+
+  createWarpHudSegment(className, startAngle, endAngle, outerR, innerR) {
+    const path = document.createElementNS(WARP_HUD_SVG_NS, "path");
+    path.setAttribute("class", `warp-hud-segment ${className}`);
+    path.setAttribute("d", this.describeWarpHudDonutSegment(startAngle, endAngle, outerR, innerR));
+    return path;
+  }
+
+  describeWarpHudDonutSegment(startAngle, endAngle, outerR, innerR) {
+    const cx = 50;
+    const cy = 50;
+    const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+    const outerStart = this.warpHudPolarToCartesian(cx, cy, outerR, startAngle);
+    const outerEnd = this.warpHudPolarToCartesian(cx, cy, outerR, endAngle);
+    const innerEnd = this.warpHudPolarToCartesian(cx, cy, innerR, endAngle);
+    const innerStart = this.warpHudPolarToCartesian(cx, cy, innerR, startAngle);
+
+    return [
+      `M ${outerStart.x.toFixed(3)} ${outerStart.y.toFixed(3)}`,
+      `A ${outerR.toFixed(3)} ${outerR.toFixed(3)} 0 ${largeArcFlag} 1 ${outerEnd.x.toFixed(3)} ${outerEnd.y.toFixed(3)}`,
+      `L ${innerEnd.x.toFixed(3)} ${innerEnd.y.toFixed(3)}`,
+      `A ${innerR.toFixed(3)} ${innerR.toFixed(3)} 0 ${largeArcFlag} 0 ${innerStart.x.toFixed(3)} ${innerStart.y.toFixed(3)}`,
+      "Z"
+    ].join(" ");
+  }
+
+  describeWarpHudCurrentArc(radius, sweepAngle) {
+    const cx = 50;
+    const cy = 50;
+    const sweep = Math.max(0, Math.min(360, sweepAngle));
+
+    if (sweep <= 0) return "";
+
+    if (sweep >= 359.999) {
+      const p0 = this.warpHudPolarToCartesian(cx, cy, radius, 0);
+      const p180 = this.warpHudPolarToCartesian(cx, cy, radius, 180);
+      const p360 = this.warpHudPolarToCartesian(cx, cy, radius, 359.999);
+
+      return [
+        `M ${p0.x.toFixed(3)} ${p0.y.toFixed(3)}`,
+        `A ${radius.toFixed(3)} ${radius.toFixed(3)} 0 0 1 ${p180.x.toFixed(3)} ${p180.y.toFixed(3)}`,
+        `A ${radius.toFixed(3)} ${radius.toFixed(3)} 0 0 1 ${p360.x.toFixed(3)} ${p360.y.toFixed(3)}`
+      ].join(" ");
+    }
+
+    const start = this.warpHudPolarToCartesian(cx, cy, radius, 0);
+    const end = this.warpHudPolarToCartesian(cx, cy, radius, sweep);
+    const largeArcFlag = sweep > 180 ? 1 : 0;
+
+    return [
+      `M ${start.x.toFixed(3)} ${start.y.toFixed(3)}`,
+      `A ${radius.toFixed(3)} ${radius.toFixed(3)} 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`
+    ].join(" ");
+  }
+
+  warpHudPolarToCartesian(cx, cy, radius, angleDeg) {
+    const angleRad = (angleDeg - 90) * Math.PI / 180;
+
+    return {
+      x: cx + radius * Math.cos(angleRad),
+      y: cy + radius * Math.sin(angleRad)
+    };
+  }
+
+  clamp01(value) {
+    return Math.max(0, Math.min(1, Number(value) || 0));
+  }
+
+  clamp100(value) {
+    return Math.max(0, Math.min(100, Number(value) || 0));
+  }
+
+  lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  easeInOut(t) {
+    return t < 0.5
+      ? 2 * t * t
+      : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  }
+
+  formatWarpHudRemaining(seconds) {
+    const safeSeconds = Math.max(0, Number(seconds) || 0);
+    const days = Math.floor(safeSeconds / WARP_HUD_DAY_SECONDS);
+    if (days > 0) return `${days}D`;
+    return String(Math.ceil(safeSeconds));
+  }
+
+  formatWarpHudRemainingLabel(seconds) {
+    const safeSeconds = Math.max(0, Number(seconds) || 0);
+    const days = Math.floor(safeSeconds / WARP_HUD_DAY_SECONDS);
+    if (days > 0) return `${days} day${days === 1 ? "" : "s"} remaining`;
+    const wholeSeconds = Math.ceil(safeSeconds);
+    return `${wholeSeconds} second${wholeSeconds === 1 ? "" : "s"} remaining`;
   }
 
   refreshSpeedGaugeRange() {
@@ -2413,6 +2781,11 @@ export class UIManager {
 
   dispose() {
     clearTimeout(this.toastTimer);
+    this.cancelWarpHudCompletion();
+    if (this._warpHudMorphFrameId) {
+      window.cancelAnimationFrame(this._warpHudMorphFrameId);
+      this._warpHudMorphFrameId = 0;
+    }
     window.clearTimeout(this.cameraIconSwapTimer);
     this.cancelLoadingProgressAnimation();
     window.removeEventListener("keydown", this.boundBindingKeyDown, true);

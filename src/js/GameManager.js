@@ -553,7 +553,10 @@ export class GameManager {
       renderResolutionScale: this.getRenderResolutionScale()
     });
 
-    this.hyperdriveWarpLayer = new HyperdriveWarpLayer({ renderer: this.renderer });
+    this.hyperdriveWarpLayer = new HyperdriveWarpLayer({
+      renderer: this.renderer,
+      scene: this.scene
+    });
     this.renderPipeline.setHyperdriveWarpLayer(this.hyperdriveWarpLayer);
 
     this.shipVisualManager = new ShipVisualManager({
@@ -1510,11 +1513,17 @@ export class GameManager {
 
   clearTarget(message, completed = false) {
     const now = Date.now();
+    const wasHyperdrive = this.isHyperdrive || !!this.hyperdriveLogId;
     if (this.hyperdriveLogId) {
       void this.worldDataManager.updateNavLog(this.hyperdriveLogId, completed
         ? { status: "completed", committed: true, completed_at: now }
         : { status: "cancelled", cancel_reason: "user_manual", cancelled_at: now }
       );
+      this.hyperdriveLogId = null;
+      this.hyperdriveLog = null;
+      this.isHyperdrive = false;
+    }
+    if (wasHyperdrive) {
       this.hyperdriveLogId = null;
       this.hyperdriveLog = null;
       this.isHyperdrive = false;
@@ -1531,7 +1540,7 @@ export class GameManager {
     this.navTarget = null;
     this.activeNavLog = null;
     this.targetMarker.visible = false;
-    if (message) this.ui.showToast(message);
+    if (message && !(wasHyperdrive && message === "arrived")) this.ui.showToast(message);
     this.savePlayerShipState({ force: true });
   }
 
@@ -1623,8 +1632,6 @@ export class GameManager {
     this.hyperdriveLog = log;
     this.hyperdriveLogId = this.worldDataManager.createHyperdriveNavLog(log);
 
-    const eta = stopDuration + alignDuration + cooldownDuration + flightDuration;
-    this.ui.showToast(`hyperdrive engaged (~${Math.round(eta)}s)`);
     this.savePlayerShipState({ force: true });
   }
 
@@ -1648,22 +1655,54 @@ export class GameManager {
     return from.clone().lerp(target, eased);
   }
 
+  _setShipDirectionPreservingUp(direction) {
+    if (!direction || direction.lengthSq() <= 0.0001) return false;
+    this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion).normalize();
+    this.lookMatrix.lookAt(direction.clone().normalize(), new THREE.Vector3(0, 0, 0), this.vectors.up);
+    this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
+    return true;
+  }
+
   _commitHyperdrive() {
     const log = this.hyperdriveLog;
     if (!log) return;
+    const target = new THREE.Vector3(log.target.x, log.target.y, log.target.z);
+    const fromPos = this.ship.position.clone();
+    const toTarget = target.sub(fromPos);
+    const distance = toTarget.length();
+    const dir = distance > 0.0001
+      ? toTarget.multiplyScalar(1 / distance)
+      : new THREE.Vector3(log.heading_at_jump.x, log.heading_at_jump.y, log.heading_at_jump.z).normalize();
+
+    if (dir.lengthSq() > 0.0001) {
+      log.from_position = { x: fromPos.x, y: fromPos.y, z: fromPos.z };
+      log.heading_at_jump = { x: dir.x, y: dir.y, z: dir.z };
+
+      const specs = this.shipStats.hyperdriveSpecs || {};
+      const entry = log.warp_entry_duration ?? specs.warpEntryDuration ?? 0.6;
+      const exit = log.warp_exit_duration ?? specs.warpExitDuration ?? 0.6;
+      const minCruise = specs.warpMinFlightDuration ?? log.warp_cruise_duration ?? 5;
+      const flightSpeed = specs.warpFlightSpeed ?? 4000;
+      const cruise = Math.max(minCruise, distance / flightSpeed);
+      log.warp_cruise_duration = cruise;
+      log.flight_duration = entry + cruise + exit;
+
+      this._setShipDirectionPreservingUp(dir);
+    }
+
     log.committed = true;
     this.state.autopilotPhase = "warping";
     this.state.speed = 0;
     this.state.desiredSpeed = 0;
     if (this.hyperdriveLogId) {
-      void this.worldDataManager.updateNavLog(this.hyperdriveLogId, { committed: true });
+      void this.worldDataManager.updateNavLog(this.hyperdriveLogId, {
+        committed: true,
+        from_position: log.from_position,
+        heading_at_jump: log.heading_at_jump,
+        warp_cruise_duration: log.warp_cruise_duration,
+        flight_duration: log.flight_duration
+      });
     }
-    const dir = new THREE.Vector3(log.heading_at_jump.x, log.heading_at_jump.y, log.heading_at_jump.z);
-    if (dir.lengthSq() > 0.0001) {
-      this.lookMatrix.lookAt(dir, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
-      this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
-    }
-    this.ui.showToast("hyperdrive committed");
   }
 
   getHyperdriveWarpVisualState(now = Date.now()) {
@@ -1691,6 +1730,7 @@ export class GameManager {
       elapsed:      t,
       duration:     log.flight_duration,
       heading:      log.heading_at_jump,
+      shipQuaternion: this.ship.quaternion,
       shipPosition: this.ship.position
     };
   }
@@ -1706,7 +1746,7 @@ export class GameManager {
       this.ship.position.set(log.target.x, log.target.y, log.target.z);
       this.state.speed = 0;
       this.state.desiredSpeed = 0;
-      this.clearTarget("hyperdrive complete", true);
+      this.clearTarget(null, true);
       return;
     }
 
@@ -1878,7 +1918,7 @@ export class GameManager {
       this.ship.position.set(hyperLog.target.x, hyperLog.target.y, hyperLog.target.z);
       this.state.speed = 0;
       this.state.desiredSpeed = 0;
-      this.clearTarget("hyperdrive complete", true);
+      this.clearTarget(null, true);
     } else if (tSinceJump >= 0) {
       this.hyperdriveLog.committed = true;
       this.state.autopilotPhase = "warping";
@@ -1912,7 +1952,7 @@ export class GameManager {
 
     if (tSinceJump >= hyperLog.flight_duration) {
       this.ship.position.set(hyperLog.target.x, hyperLog.target.y, hyperLog.target.z);
-      this.clearTarget("hyperdrive complete", true);
+      this.clearTarget(null, true);
     } else if (tSinceJump >= 0) {
       this.hyperdriveLog.committed = true;
       this.state.autopilotPhase = "warping";
@@ -1970,7 +2010,7 @@ export class GameManager {
     const toTarget = targetPos.clone().sub(pos);
     if (toTarget.length() <= this.shipStats.arrivalRadius) {
       this.ship.position.copy(pos);
-      this.clearTarget("arrived", true);
+      this.clearTarget(snap.isHyperdrive ? null : "arrived", true);
       return;
     }
     const targetDir = toTarget.clone().normalize();
@@ -2005,8 +2045,7 @@ export class GameManager {
 
     const effectiveDist = toTarget.length() - this.shipStats.arrivalRadius;
     if (effectiveDist <= 0) {
-      if (snap.isHyperdrive) this.isHyperdrive = false;
-      this.clearTarget("arrived", true);
+      this.clearTarget(snap.isHyperdrive ? null : "arrived", true);
       return;
     }
 
@@ -2247,14 +2286,15 @@ export class GameManager {
 
     this.vectors.targetVec.copy(this.navTarget).sub(this.ship.position);
     const distance = this.vectors.targetVec.length();
+    const phase = this.state.autopilotPhase;
 
     if (distance <= this.shipStats.arrivalRadius) {
-      this.clearTarget("arrived", true);
-      this.setSpeed(0);
-      return;
+      if (!(this.isHyperdrive && phase === "warping")) {
+        this.clearTarget(this.isHyperdrive ? null : "arrived", true);
+        this.setSpeed(0);
+        return;
+      }
     }
-
-    const phase = this.state.autopilotPhase;
 
     if (phase === "stopping") {
       this.setSpeed(0);
@@ -2292,7 +2332,7 @@ export class GameManager {
       const tSec = (Date.now() - hyperLog.jump_start_at) / 1000;
       if (tSec >= hyperLog.flight_duration) {
         this.ship.position.set(hyperLog.target.x, hyperLog.target.y, hyperLog.target.z);
-        this.clearTarget("hyperdrive complete", true);
+        this.clearTarget(null, true);
         return;
       }
       this.ship.position.copy(this.computeHyperdrivePositionAtTime(hyperLog, tSec));
@@ -2631,6 +2671,14 @@ export class GameManager {
 
   updateHud() {
     this.ship.getWorldDirection(this.vectors.forward).normalize();
+    const hyperdrivePhase = this.isHyperdrive ? this.state.autopilotPhase : null;
+    const hyperdriveElapsed = hyperdrivePhase === "warping" && this.hyperdriveLog
+      ? Math.max(0, (Date.now() - this.hyperdriveLog.jump_start_at) / 1000)
+      : null;
+    const hyperdriveDuration = hyperdrivePhase === "warping" && this.hyperdriveLog
+      ? this.hyperdriveLog.flight_duration
+      : null;
+
     this.ui.updateHud({
       phase: this.state.phase === "running" ? "Manual" : this.state.phase,
       speed: this.state.speed,
@@ -2639,7 +2687,9 @@ export class GameManager {
       heading: this.vectors.forward,
       target: this.navTarget,
       autopilot: this.state.autopilotPhase !== null && !this.isHyperdrive,
-      hyperdrivePhase: this.isHyperdrive ? this.state.autopilotPhase : null,
+      hyperdrivePhase,
+      hyperdriveElapsed,
+      hyperdriveDuration,
       cooldownStartAt: this.isHyperdrive ? (this.hyperdriveLog?.cooldown_start_at ?? null) : null,
       jumpStartAt: this.isHyperdrive ? (this.hyperdriveLog?.jump_start_at ?? null) : null
     });

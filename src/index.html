@@ -500,76 +500,151 @@
       box-shadow: 0 2.8vh 8.3vh rgba(100, 150, 220, 0.15), 0 0 2.8vh rgba(180, 210, 255, 0.2);
     }
 
-    /* ── Hyperdrive cooldown gauge (toast-style) ───────────────── */
-    .warp-cooldown-gauge {
+    .warp-hud {
       position: absolute;
       left: 50%;
-      bottom: 22vh;
-      transform: translateX(-50%);
+      bottom: 5.5vh;
       z-index: 15;
-      width: 11vh;
-      height: 11vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 50%;
-      backdrop-filter: blur(2.5vh);
-      background: var(--panel);
-      border: 0.12vh solid var(--line);
-      box-shadow: 0 0.4vh 1.6vh rgba(66, 139, 190, 0.18);
+      width: 10vh;
+      height: 20vh;
+      color: var(--text);
+      font-size: 2vh;
       opacity: 0;
-      transition: opacity 180ms ease;
       pointer-events: none;
+      transform: translateX(-50%) scale(0.98);
+      transition: opacity 180ms ease, transform 180ms ease;
+
+      --warp-hud-track: rgba(125, 160, 180, .20);
+      --warp-hud-fill-outer: #20d6ff;
+      --warp-hud-fill-inner: #0d8fb3;
+      --warp-hud-fill-inner-current: var(--warp-hud-fill-inner);
+      --warp-hud-blue-fill-opacity: 1;
+      --warp-hud-value-size: 1.45vh;
     }
 
-    .warp-cooldown-gauge.visible {
+    .warp-hud.visible {
       opacity: 1;
+      transform: translateX(-50%) scale(1);
     }
 
-    .warp-cooldown-svg {
+    .warp-hud.completing {
+      animation: warp-hud-complete 1s ease forwards;
+    }
+
+    :root[data-environment-mode="light"] .warp-hud {
+      --warp-hud-track: rgba(50, 80, 100, .15);
+      --warp-hud-fill-outer: #0077ff;
+      --warp-hud-fill-inner: #68b7ff;
+    }
+
+    .warp-hud-gauge {
+      position: absolute;
+      left: 50%;
+      top: 45%;
+      width: 82%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .warp-hud-svg {
       position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
-      transform: rotate(-90deg);
       overflow: visible;
+      pointer-events: none;
     }
 
-    .warp-cooldown-track {
-      fill: none;
-      stroke: rgba(0, 0, 0, 0.1);
-      stroke-width: 5.5;
+    .warp-hud-segment {
+      shape-rendering: geometricPrecision;
+      pointer-events: none;
     }
 
-    .warp-cooldown-bar {
+    .warp-hud-segment.track {
+      fill: var(--warp-hud-track);
+    }
+
+    .warp-hud-segment.fill {
+      fill: url(#warpHudBlueGradient);
+      opacity: var(--warp-hud-blue-fill-opacity);
+    }
+
+    .warp-hud-current-arc {
       fill: none;
-      stroke: rgba(20, 40, 90, 0.9);
-      stroke-width: 5.5;
+      stroke: var(--warp-hud-fill-inner-current);
+      stroke-width: 1.45;
       stroke-linecap: round;
-      stroke-dasharray: 251.33;
-      stroke-dashoffset: 251.33;
-      transition: stroke-dashoffset 0.12s linear;
+      opacity: 0;
+      vector-effect: non-scaling-stroke;
+      pointer-events: none;
+      transition: opacity .2s linear;
     }
 
-    :root[data-environment-mode="dark"] .warp-cooldown-track {
-      stroke: rgba(255, 255, 255, 0.1);
+    .warp-hud-current-dot {
+      fill: var(--warp-hud-fill-inner-current);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s linear;
     }
 
-    :root[data-environment-mode="dark"] .warp-cooldown-bar {
-      stroke: rgba(99, 210, 255, 0.95);
+    .warp-hud-inner {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
     }
 
-    .warp-cooldown-label {
-      position: relative;
-      font-family: 'Courier New', monospace;
-      font-size: 1.8vh;
+    .warp-hud-value-line {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      text-align: center;
+      line-height: 1;
+    }
+
+    .warp-hud-value {
+      color: var(--warp-hud-fill-inner-current);
+      font-size: var(--warp-hud-value-size);
+      font-weight: 800;
       font-variant-numeric: tabular-nums;
-      letter-spacing: 0.04em;
-      color: rgba(20, 40, 90, 0.9);
+      letter-spacing: 0;
+      line-height: 1;
     }
 
-    :root[data-environment-mode="dark"] .warp-cooldown-label {
-      color: rgba(99, 210, 255, 0.95);
+    @keyframes warp-hud-complete {
+      0% {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+      }
+
+      18% {
+        opacity: 0.16;
+      }
+
+      36% {
+        opacity: 1;
+      }
+
+      56% {
+        opacity: 0.16;
+      }
+
+      74% {
+        opacity: 1;
+      }
+
+      100% {
+        opacity: 0;
+        transform: translateX(-50%) scale(0.96);
+      }
     }
 
     .toast {
@@ -2296,12 +2371,28 @@
       </button>
     </div>
 
-    <div class="warp-cooldown-gauge" id="warpCooldownGauge" aria-hidden="true">
-      <svg class="warp-cooldown-svg" viewBox="0 0 100 100" aria-hidden="true">
-        <circle class="warp-cooldown-track" cx="50" cy="50" r="40"/>
-        <circle class="warp-cooldown-bar" id="warpCooldownBar" cx="50" cy="50" r="40"/>
-      </svg>
-      <span class="warp-cooldown-label" id="warpCooldownLabel">0.0</span>
+    <div class="warp-hud" id="warpHud" role="status" aria-live="polite" aria-hidden="true">
+      <section class="warp-hud-gauge" id="warpHudGauge" aria-label="Hyperdrive status">
+        <svg class="warp-hud-svg" id="warpHudSvg" viewBox="0 0 100 100" aria-hidden="true">
+          <defs>
+            <radialGradient id="warpHudBlueGradient" gradientUnits="userSpaceOnUse" cx="50" cy="50" r="50">
+              <stop offset="55%" stop-color="var(--warp-hud-fill-inner-current)" />
+              <stop offset="100%" stop-color="var(--warp-hud-fill-outer)" />
+            </radialGradient>
+          </defs>
+
+          <g id="warpHudTrackSegments"></g>
+          <g id="warpHudFillSegments"></g>
+          <path class="warp-hud-current-arc" id="warpHudCurrentArc"></path>
+          <circle class="warp-hud-current-dot" id="warpHudCurrentDot" cx="50" cy="16" r="0.725"></circle>
+        </svg>
+
+        <div class="warp-hud-inner">
+          <div class="warp-hud-value-line">
+            <span class="warp-hud-value" id="warpHudValue">0</span>
+          </div>
+        </div>
+      </section>
     </div>
 
     <div class="target-popup-backdrop" id="targetPopupBackdrop" hidden></div>
