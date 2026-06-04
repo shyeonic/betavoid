@@ -1195,6 +1195,13 @@ export class WorldDataManager {
     return id;
   }
 
+  createHyperdriveNavLog(log) {
+    const id = `WARP-${Date.now()}-${Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0")}`;
+    const record = { ...log, id };
+    this.putStoreValue("navLogs", record);
+    return id;
+  }
+
   async updateNavLog(id, updates) {
     const log = await this.getStoreValue("navLogs", id);
     if (!log) return;

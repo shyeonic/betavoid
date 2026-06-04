@@ -26,6 +26,7 @@ export class BloomRenderPipeline {
     this.height = window.innerHeight;
     this.objectBloomLayer = new THREE.Layers();
     this.objectBloomLayer.set(this.objectBloom.layer);
+    this._hyperdriveWarpLayer = null;
     this.bloomOcclusionMaterial = new THREE.MeshBasicMaterial({
       color: 0x000000,
       side: THREE.DoubleSide,
@@ -108,6 +109,10 @@ export class BloomRenderPipeline {
     this.applyBloomComposerSize();
     this.finalComposer.setPixelRatio(this.getFinalPixelRatio());
     this.finalComposer.setSize(width, height);
+  }
+
+  setHyperdriveWarpLayer(layer) {
+    this._hyperdriveWarpLayer = layer;
   }
 
   setRenderResolutionScale(scale) {
@@ -225,25 +230,25 @@ export class BloomRenderPipeline {
   render() {
     if (this.objectBloom.enabled === false) {
       this.renderer.render(this.scene, this.camera);
-      return;
+    } else {
+      const originalCameraLayerMask = this.camera.layers.mask;
+      const originalBackground = this.scene.background;
+      const originalFog = this.scene.fog;
+      try {
+        this.applyBloomMaterialOverrides();
+        this.camera.layers.set(this.objectBloom.layer);
+        this.scene.background = null;
+        this.scene.fog = null;
+        this.bloomComposer.render();
+      } finally {
+        this.camera.layers.mask = originalCameraLayerMask;
+        this.scene.background = originalBackground;
+        this.scene.fog = originalFog;
+        this.restoreBloomMaterialOverrides();
+      }
+      this.finalComposer.render();
     }
-
-    const originalCameraLayerMask = this.camera.layers.mask;
-    const originalBackground = this.scene.background;
-    const originalFog = this.scene.fog;
-    try {
-      this.applyBloomMaterialOverrides();
-      this.camera.layers.set(this.objectBloom.layer);
-      this.scene.background = null;
-      this.scene.fog = null;
-      this.bloomComposer.render();
-    } finally {
-      this.camera.layers.mask = originalCameraLayerMask;
-      this.scene.background = originalBackground;
-      this.scene.fog = originalFog;
-      this.restoreBloomMaterialOverrides();
-    }
-    this.finalComposer.render();
+    this._hyperdriveWarpLayer?.render(this.camera);
   }
 
   dispose() {

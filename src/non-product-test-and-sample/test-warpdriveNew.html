@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Void Zero Warp Environment Sample</title>
+    <style>
+        :root {
+            --bg: #030811;
+            --text: rgba(205, 232, 255, 0.88);
+            --muted: rgba(178, 214, 245, 0.62);
+            --button-bg: rgba(8, 18, 32, 0.58);
+            --button-border: rgba(99, 210, 255, 0.34);
+        }
+
+        body.light {
+            --bg: #f3fbff;
+            --text: rgba(19, 48, 71, 0.88);
+            --muted: rgba(83, 112, 131, 0.72);
+            --button-bg: rgba(246, 251, 255, 0.72);
+            --button-border: rgba(43, 98, 140, 0.24);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            touch-action: none;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .ui {
+            position: fixed;
+            left: 0;
+            width: 100%;
+            color: var(--text);
+            text-align: center;
+            pointer-events: none;
+            text-shadow: 0 0 14px rgba(75, 150, 255, 0.36);
+            letter-spacing: 1px;
+            z-index: 2;
+        }
+
+        #info {
+            top: max(12px, env(safe-area-inset-top));
+            padding: 0 92px 0 12px;
+            font-size: 11px;
+            line-height: 1.35;
+        }
+
+        #mode {
+            top: max(38px, calc(env(safe-area-inset-top) + 32px));
+            padding: 0 92px 0 12px;
+            color: var(--muted);
+            font-size: 10px;
+            line-height: 1.35;
+        }
+
+        #speed {
+            bottom: max(18px, env(safe-area-inset-bottom));
+            padding: 0 12px;
+            font-size: 13px;
+            line-height: 1.35;
+            white-space: nowrap;
+        }
+
+        .buttons {
+            position: fixed;
+            right: max(12px, env(safe-area-inset-right));
+            bottom: max(58px, calc(env(safe-area-inset-bottom) + 58px));
+            display: grid;
+            gap: 8px;
+            pointer-events: auto;
+            z-index: 3;
+        }
+
+        button {
+            min-width: 76px;
+            min-height: 34px;
+            border: 1px solid var(--button-border);
+            border-radius: 8px;
+            background: var(--button-bg);
+            color: var(--text);
+            padding: 0 12px;
+            font: 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+            letter-spacing: 0.7px;
+            backdrop-filter: blur(7px);
+            cursor: pointer;
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        @media (max-width: 620px) {
+            #info {
+                left: 12px;
+                width: calc(100% - 24px);
+                padding-right: 104px;
+                text-align: left;
+            }
+
+            #mode {
+                display: none;
+            }
+
+            #speed {
+                font-size: 11px;
+                letter-spacing: 0.4px;
+            }
+
+            button {
+                min-width: 68px;
+                min-height: 32px;
+                font-size: 11px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="info" class="ui">DRAG : ORBIT CAM / TAP : WARP +1 / RIGHT CLICK : WARP -1 / SPACE : MAX / T : THEME</div>
+    <div id="mode" class="ui">MAIN ENVIRONMENT PORT / BACKGROUND + FOG + WORLD LIGHTS + STAR FIELD / SHIP TAG : 3dship</div>
+    <div id="speed" class="ui">THEME <span id="theme-label">DARK</span> / WARP <span id="warp-num">0</span> / MOVE 4000 / Z <span id="ship-z">0</span></div>
+    <div class="buttons" aria-label="warp controls">
+        <button id="warp-up" type="button">WARP +</button>
+        <button id="warp-down" type="button">WARP -</button>
+        <button id="warp-max" type="button">MAX</button>
+        <button id="theme-toggle" type="button">LIGHT</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from "three";
+        import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+        const ENVIRONMENT_MODES = {
+            light: "light",
+            dark: "dark"
+        };
+
+        const SPACE_ENVIRONMENT_PRESETS = {
+            light: {
+                id: ENVIRONMENT_MODES.light,
+                renderer: {
+                    toneMapping: "linear",
+                    toneMappingExposure: 1.0
+                },
+                objectBloom: {
+                    enabled: true,
+                    layer: 1,
+                    strength: 0.2,
+                    radius: 0.05,
+                    threshold: 0.18,
+                    pixelRatioCap: 1,
+                    resolutionScale: 0.6
+                },
+                scene: {
+                    background: 0xf3fbff,
+                    fog: { type: "exp2", color: 0xe8f7ff, density: 0.00006 }
+                },
+                lights: {
+                    ambient: { color: 0xf2fbff, intensity: 0.9 },
+                    key: { color: 0xffffff, intensity: 6, position: [7, 8, 6] },
+                    rim: { color: 0x8fdcff, intensity: 0.55, position: [-8, 4, -8] },
+                    hemisphere: { skyColor: 0xf7fcff, groundColor: 0x8bb8c8, intensity: 0.45 }
+                },
+                worldMap: {
+                    bounds: {
+                        chunk: { color: 0xe7f2f9, opacity: 1 },
+                        sector: {
+                            opacity: 0.5,
+                            colors: {
+                                "SEC-001": 0xffbc66,
+                                "SEC-002": 0x63d2ff,
+                                "SEC-003": 0x82e3bd,
+                                "SEC-004": 0xa6ebff,
+                                "SEC-005": 0xb896ff,
+                                "SEC-006": 0xff6b6b,
+                                "SEC-007": 0xffd166,
+                                "SEC-008": 0x9ee7ff,
+                                "SEC-009": 0x7ee081,
+                                "SEC-010": 0xd9d9d9
+                            },
+                            fallbackColor: 0xffffff
+                        }
+                    },
+                    betaVoid: {
+                        particleHue: 0.94,
+                        particleHueRange: 0.04,
+                        particleSaturation: 0.96,
+                        particleMinLightness: 0.31,
+                        particleMaxLightness: 0.67,
+                        particleBlending: "normal",
+                        coreColor: [1, 0.08, 0.22],
+                        coreCenterColor: [1, 1, 1]
+                    }
+                },
+                targeting: {
+                    frame: {
+                        outerColor: "#0000ff",
+                        outerOpacity: 0.15,
+                        innerColor: "#0000ff",
+                        innerOpacity: 0.45
+                    }
+                },
+                starField: {
+                    layers: [
+                        { count: 1800, radius: 8500, size: 32.8, opacity: 0.98 },
+                        { count: 900, radius: 24000, size: 51.2, opacity: 0.74 },
+                        { count: 420, radius: 52000, size: 73.6, opacity: 0.5 }
+                    ]
+                }
+            },
+            dark: {
+                id: ENVIRONMENT_MODES.dark,
+                renderer: {
+                    toneMapping: "acesFilmic",
+                    toneMappingExposure: 0.82
+                },
+                objectBloom: {
+                    enabled: true,
+                    layer: 1,
+                    strength: 0.2,
+                    radius: 0.05,
+                    threshold: 0.18,
+                    pixelRatioCap: 1,
+                    resolutionScale: 0.6
+                },
+                scene: {
+                    background: 0x030811,
+                    fog: { type: "exp2", color: 0x05101b, density: 0.00004 }
+                },
+                lights: {
+                    ambient: { color: 0x9fb9d8, intensity: 0.28 },
+                    key: { color: 0xd9f1ff, intensity: 0.36, position: [7, 8, 6] },
+                    rim: { color: 0x5cc8ff, intensity: 0.32, position: [-8, 4, -8] },
+                    hemisphere: { skyColor: 0x93b6d5, groundColor: 0x08131c, intensity: 0.18 }
+                },
+                worldMap: {
+                    bounds: {
+                        chunk: { color: 0x404040, opacity: 1 },
+                        sector: {
+                            opacity: 0.5,
+                            colors: {
+                                "SEC-001": 0xffbc66,
+                                "SEC-002": 0x63d2ff,
+                                "SEC-003": 0x82e3bd,
+                                "SEC-004": 0xa6ebff,
+                                "SEC-005": 0xb896ff,
+                                "SEC-006": 0xff6b6b,
+                                "SEC-007": 0xffd166,
+                                "SEC-008": 0x9ee7ff,
+                                "SEC-009": 0x7ee081,
+                                "SEC-010": 0xd9d9d9
+                            },
+                            fallbackColor: 0xffffff
+                        }
+                    },
+                    betaVoid: {
+                        particleHue: 0.94,
+                        particleHueRange: 0.04,
+                        particleSaturation: 0.96,
+                        particleMinLightness: 0.05,
+                        particleMaxLightness: 0.20,
+                        particleBlending: "normal",
+                        coreColor: [1, 0.08, 0.22],
+                        coreCenterColor: [0, 0, 0]
+                    }
+                },
+                targeting: {
+                    frame: {
+                        outerColor: "#00ff66",
+                        outerOpacity: 0.45,
+                        innerColor: "#00ff66",
+                        innerOpacity: 0.75
+                    }
+                },
+                starField: {
+                    layers: [
+                        { count: 1800, radius: 8500, size: 32.8, opacity: 0.98 },
+                        { count: 900, radius: 24000, size: 51.2, opacity: 0.74 },
+                        { count: 420, radius: 52000, size: 73.6, opacity: 0.5 }
+                    ]
+                }
+            }
+        };
+
+        const RENDERER_TONE_MAPPINGS = {
+            acesFilmic: THREE.ACESFilmicToneMapping,
+            neutral: THREE.NeutralToneMapping ?? THREE.LinearToneMapping,
+            linear: THREE.LinearToneMapping,
+            none: THREE.NoToneMapping
+        };
+
+        const LIGHTING_SETTINGS = {
+            ship: {
+                reflectionIntensity: 0.9,
+                roughnessOffset: 0.02,
+                fillLight: { color: 0xe8f7ff, intensity: 2, distance: 44, position: [0, 2.2, -2] },
+                rimLight: { color: 0x8fdcff, intensity: 2, distance: 48, position: [-3.5, 1.2, 3.5] }
+            }
+        };
+
+        const RENDER_RESOLUTION_SCALES = [0.5, 0.75, 1];
+
+        const DEFAULT_PERFORMANCE_SETTINGS = {
+            materialMaps: true,
+            renderResolutionScale: 1,
+            bloomQuality: "medium",
+            lightingEffects: true,
+            antialias: false
+        };
+
+        const SHIP_STATS = {
+            hyperdriveSpecs: {
+                warpFlightSpeed: 4000
+            }
+        };
+
+        const CONFIG = {
+            cameraDistance: 10,
+            cameraFollowHeight: 2,
+            cameraOrbitSensitivity: 0.005,
+            cameraMinDistance: 6,
+            cameraMaxDistance: 60
+        };
+
+        const WORLD_CONFIG = {
+            renderScale: 0.01,
+            chunkSize: {
+                x: 400000,
+                y: 400000,
+                z: 400000
+            }
+        };
+
+        const STREAK_COUNT = 160;
+        const MAX_WARP = 10;
+        const TUNNEL_RADIUS = 470;
+        const MIN_RADIUS = 42;
+        const FRONT_Z = 1850;
+        const REAR_Z = -560;
+        const TUNNEL_LENGTH = FRONT_Z - REAR_Z;
+
+        let environmentMode = ENVIRONMENT_MODES.dark;
+        let performanceSettings = { ...DEFAULT_PERFORMANCE_SETTINGS };
+        let shipSpeed = SHIP_STATS.hyperdriveSpecs.warpFlightSpeed;
+        let targetWarp = 0;
+        let warpFactor = 0;
+        let didSignalReady = false;
+
+        let renderer;
+        let camera;
+        let envScene;
+        let shipScene;
+        let postScene;
+        let postCamera;
+        let postMaterial;
+        let envTarget;
+        let worldLights = null;
+        let shipLights = null;
+        let shipRoot;
+        let worldMapRoot;
+        let chunkBoundsLine;
+        let sectorBoundsLine;
+        let starLayers = [];
+        let streakState = null;
+        let starWrapCount = 0;
+        let shipReflectionTexture = null;
+        let shipReflectionIntensity = LIGHTING_SETTINGS.ship.reflectionIntensity;
+        let shipRoughnessOffset = LIGHTING_SETTINGS.ship.roughnessOffset;
+        const shipForward = new THREE.Vector3(0, 0, 1);
+        const movement = new THREE.Vector3();
+        const cameraOffset = new THREE.Vector3();
+
+        const orbit = {
+            yaw: -Math.PI + 0.55,
+            pitch: 0.24,
+            distance: CONFIG.cameraDistance,
+            dragging: false,
+            moved: false,
+            lastX: 0,
+            lastY: 0,
+            downX: 0,
+            downY: 0
+        };
+
+        const clock = new THREE.Clock();
+
+        init();
+
+        function init() {
+            setupRenderer();
+            setupScene();
+            setupPostPass();
+            setupWorld();
+            setupShip();
+            setupWarpStreaks();
+            setupEvents();
+            applyEnvironmentPreset(getEnvironmentPreset());
+            updateCamera();
+            animate();
+        }
+
+        function setupRenderer() {
+            renderer = new THREE.WebGLRenderer({
+                antialias: performanceSettings.antialias,
+                powerPreference: "high-performance",
+                preserveDrawingBuffer: true
+            });
+            renderer.setPixelRatio(getRendererPixelRatio());
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+            renderer.toneMapping = getRendererToneMapping(getEnvironmentPreset().renderer.toneMapping);
+            renderer.toneMappingExposure = getEnvironmentPreset().renderer.toneMappingExposure;
+            renderer.autoClear = false;
+            document.body.appendChild(renderer.domElement);
+            setupShipReflectionTexture();
+        }
+
+        function setupShipReflectionTexture() {
+            const pmremGenerator = new THREE.PMREMGenerator(renderer);
+            const roomEnvironment = new RoomEnvironment();
+            shipReflectionTexture = pmremGenerator.fromScene(roomEnvironment, 0.04).texture;
+            pmremGenerator.dispose();
+            if (roomEnvironment.dispose) roomEnvironment.dispose();
+        }
+
+        function setupScene() {
+            const preset = getEnvironmentPreset();
+            envScene = new THREE.Scene();
+            envScene.background = new THREE.Color(preset.scene.background);
+            envScene.fog = new THREE.FogExp2(preset.scene.fog.color, preset.scene.fog.density);
+
+            shipScene = new THREE.Scene();
+
+            camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 80000);
+
+            shipRoot = new THREE.Group();
+            shipRoot.name = "3dship";
+            shipRoot.userData.tag = "3dship";
+            shipScene.add(shipRoot);
+            setupShipLocalLights();
+        }
+
+        function setupPostPass() {
+            const pixelRatio = renderer.getPixelRatio();
+            envTarget = new THREE.WebGLRenderTarget(
+                Math.floor(window.innerWidth * pixelRatio),
+                Math.floor(window.innerHeight * pixelRatio),
+                {
+                    minFilter: THREE.LinearFilter,
+                    magFilter: THREE.LinearFilter,
+                    format: THREE.RGBAFormat,
+                    depthBuffer: true,
+                    stencilBuffer: false
+                }
+            );
+            postScene = new THREE.Scene();
+            postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            postMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    tDiffuse: { value: null },
+                    uWarp: { value: 0 },
+                    uTime: { value: 0 },
+                    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                    uVignetteBase: { value: 0.28 },
+                    uVignetteWarp: { value: 0.30 },
+                    uVignetteRadius: { value: 0.43 },
+                    uVignetteSoftness: { value: 0.54 },
+                    uVignetteColor: { value: new THREE.Color(getEnvironmentPreset().scene.background) },
+                    uVignetteFrame: { value: 0.36 },
+                    uVignetteFrameWidth: { value: 0.18 },
+                    uChroma: { value: 0.006 },
+                    uGrain: { value: 0.016 }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D tDiffuse;
+                    uniform float uWarp;
+                    uniform float uTime;
+                    uniform vec2 uResolution;
+                    uniform float uVignetteBase;
+                    uniform float uVignetteWarp;
+                    uniform float uVignetteRadius;
+                    uniform float uVignetteSoftness;
+                    uniform vec3 uVignetteColor;
+                    uniform float uVignetteFrame;
+                    uniform float uVignetteFrameWidth;
+                    uniform float uChroma;
+                    uniform float uGrain;
+                    varying vec2 vUv;
+
+                    float hash(vec2 p) {
+                        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+                    }
+
+                    float noise(vec2 p) {
+                        vec2 i = floor(p);
+                        vec2 f = fract(p);
+                        f = f * f * (3.0 - 2.0 * f);
+                        return mix(
+                            mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+                            mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+                            f.y
+                        );
+                    }
+
+                    void main() {
+                        vec2 center = vUv - 0.5;
+                        vec2 aspect = vec2(max(uResolution.x, 1.0) / max(uResolution.y, 1.0), 1.0);
+                        vec2 warpSpace = center * aspect;
+                        float dist = length(warpSpace);
+                        vec2 dir = normalize(warpSpace + 0.0001);
+                        float w = clamp(uWarp / 10.0, 0.0, 1.0);
+
+                        float radial = smoothstep(0.04, 0.78, dist);
+                        float waveA = sin(dist * 34.0 - uTime * (5.0 + 13.0 * w));
+                        float waveB = sin(dist * 17.0 + uTime * (2.0 + 6.0 * w));
+                        float fieldNoise = noise(warpSpace * 7.0 + vec2(uTime * 0.12, -uTime * 0.08)) - 0.5;
+
+                        vec2 lens = dir * radial * w * (0.020 * waveA + 0.012 * waveB + 0.018 * dist * dist);
+                        vec2 shear = vec2(warpSpace.y, -warpSpace.x) * w * 0.014 * sin(uTime * 0.7 + dist * 6.0);
+                        vec2 turbulence = vec2(fieldNoise, noise(warpSpace * 9.0 - vec2(uTime * 0.14)) - 0.5) * w * 0.016;
+                        vec2 warpOffset = (lens + shear + turbulence) / aspect;
+                        vec2 uv = vUv + warpOffset;
+
+                        float chroma = w * smoothstep(0.18, 0.92, dist) * uChroma;
+                        vec2 chromaOffset = dir * chroma / aspect;
+                        float r = texture2D(tDiffuse, uv + chromaOffset).r;
+                        float g = texture2D(tDiffuse, uv).g;
+                        float b = texture2D(tDiffuse, uv - chromaOffset).b;
+                        vec3 color = vec3(r, g, b);
+
+                        vec2 vignetteSpace = warpSpace;
+                        float vignettePower = 2.35;
+                        float vignetteDistance = pow(
+                            pow(abs(vignetteSpace.x), vignettePower) +
+                            pow(abs(vignetteSpace.y), vignettePower),
+                            1.0 / vignettePower
+                        );
+                        float vignetteStart = max(0.05, uVignetteRadius - w * 0.035);
+                        float vignetteEnd = vignetteStart + max(0.08, uVignetteSoftness - w * 0.07);
+                        float radialMask = smoothstep(vignetteStart, vignetteEnd, vignetteDistance);
+                        float frameDistance = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
+                        float frameMask = (1.0 - smoothstep(0.0, uVignetteFrameWidth + w * 0.035, frameDistance)) * uVignetteFrame;
+                        float edgeMask = max(radialMask, frameMask);
+                        float edgePulse = 1.0 + sin(uTime * (0.8 + w * 1.7) + vignetteDistance * 13.0) * 0.035 * w;
+                        float vignetteAmount = clamp(edgeMask * edgePulse * (uVignetteBase + uVignetteWarp * w), 0.0, 1.0);
+                        color = mix(color, uVignetteColor, vignetteAmount);
+                        color += (hash(vUv * uResolution + uTime) - 0.5) * uGrain * (0.25 + w);
+
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+                depthWrite: false,
+                depthTest: false
+            });
+            postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMaterial));
+        }
+
+        function setupWorld() {
+            const preset = getEnvironmentPreset();
+            const { ambient, key, rim, hemisphere } = preset.lights;
+
+            const globalLight = new THREE.AmbientLight(ambient.color, ambient.intensity);
+            envScene.add(globalLight);
+
+            const keyLight = new THREE.DirectionalLight(key.color, key.intensity);
+            keyLight.position.set(...key.position);
+            envScene.add(keyLight);
+
+            const rimLight = new THREE.DirectionalLight(rim.color, rim.intensity);
+            rimLight.position.set(...rim.position);
+            envScene.add(rimLight);
+
+            const softUnderLight = new THREE.HemisphereLight(
+                hemisphere.skyColor,
+                hemisphere.groundColor,
+                hemisphere.intensity
+            );
+            envScene.add(softUnderLight);
+            worldLights = { globalLight, keyLight, rimLight, softUnderLight };
+
+            starLayers = preset.starField.layers.map((layer) => {
+                return createStars(layer.count, layer.radius, layer.size, layer.opacity);
+            });
+
+            setupWorldMapBounds();
+            applyEnvironmentPreset(preset);
+        }
+
+        function setupShip() {
+            const fallbackShipMaterial = new THREE.MeshStandardMaterial({
+                color: 0xCFF3FF,
+                metalness: 0.55,
+                roughness: 0.28,
+                emissive: 0x00449E,
+                emissiveIntensity: 0.2
+            });
+
+            const cube = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), fallbackShipMaterial);
+            cube.name = "3dship_cube";
+            cube.userData.tag = "3dship";
+            shipRoot.add(cube);
+            applyShipReflection(shipRoot);
+        }
+
+        function setupShipLocalLights() {
+            const { fillLight, rimLight } = LIGHTING_SETTINGS.ship;
+            const shipFillLight = new THREE.PointLight(fillLight.color, fillLight.intensity, fillLight.distance);
+            shipFillLight.position.set(...fillLight.position);
+
+            const shipRimLight = new THREE.PointLight(rimLight.color, rimLight.intensity, rimLight.distance);
+            shipRimLight.position.set(...rimLight.position);
+
+            shipRoot.add(shipFillLight, shipRimLight);
+            shipLights = { shipFillLight, shipRimLight };
+        }
+
+        function applyShipReflection(model) {
+            if (!shipReflectionTexture) return;
+
+            model.traverse((child) => {
+                if (!child.isMesh || !child.material) return;
+                const materials = Array.isArray(child.material) ? child.material : [child.material];
+                materials.forEach((material) => {
+                    if (!material || !("envMapIntensity" in material)) return;
+                    material.envMap = shipReflectionTexture;
+                    material.envMapIntensity = shipReflectionIntensity;
+                    if ("roughness" in material) {
+                        material.roughness = Math.min(1, material.roughness + shipRoughnessOffset);
+                    }
+                    material.needsUpdate = true;
+                });
+            });
+        }
+
+        function setupWorldMapBounds() {
+            worldMapRoot = new THREE.Group();
+            worldMapRoot.name = "world-map";
+            envScene.add(worldMapRoot);
+
+            const sampleChunk = {
+                chunk_id: "sample",
+                sector_id: "SEC-002",
+                global_bounds: {
+                    min: { x: -200000, y: -200000, z: -200000 },
+                    max: { x: 200000, y: 200000, z: 200000 }
+                }
+            };
+            const sampleSector = {
+                sector_id: "SEC-002",
+                chunk_id: sampleChunk.chunk_id,
+                name: "sample",
+                global_bounds: sampleChunk.global_bounds
+            };
+
+            chunkBoundsLine = createChunkBounds(sampleChunk);
+            worldMapRoot.add(chunkBoundsLine);
+
+            sectorBoundsLine = createSectorBounds(sampleSector);
+            worldMapRoot.add(sectorBoundsLine);
+        }
+
+        function setupWarpStreaks() {
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(STREAK_COUNT * 2 * 3);
+            const alphas = new Float32Array(STREAK_COUNT * 2);
+            const data = [];
+
+            for (let i = 0; i < STREAK_COUNT; i += 1) {
+                resetStreak(data, alphas, i, false);
+            }
+
+            geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute("alpha", new THREE.BufferAttribute(alphas, 1));
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uWarp: { value: 0 },
+                    uColorA: { value: new THREE.Color(0x63d2ff) },
+                    uColorB: { value: new THREE.Color(0xd8ecff) }
+                },
+                vertexShader: `
+                    attribute float alpha;
+                    varying float vAlpha;
+                    uniform float uWarp;
+                    void main() {
+                        vAlpha = alpha * (0.38 + clamp(uWarp / 10.0, 0.0, 1.0) * 1.05);
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    varying float vAlpha;
+                    uniform float uWarp;
+                    uniform vec3 uColorA;
+                    uniform vec3 uColorB;
+                    void main() {
+                        float w = clamp(uWarp / 10.0, 0.0, 1.0);
+                        vec3 color = mix(uColorA, uColorB, 0.20 + 0.34 * w);
+                        gl_FragColor = vec4(color, vAlpha);
+                    }
+                `,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                depthTest: true
+            });
+            const lines = new THREE.LineSegments(geometry, material);
+            lines.name = "warp-streaks";
+            envScene.add(lines);
+
+            streakState = { data, geometry, material, positions, alphas, lines };
+        }
+
+        function createStars(count, radius, size, opacity) {
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+            const colors = new Float32Array(count * 3);
+            const color = new THREE.Color();
+
+            for (let i = 0; i < count; i += 1) {
+                const index = i * 3;
+                positions[index] = (Math.random() * 2 - 1) * radius;
+                positions[index + 1] = (Math.random() * 2 - 1) * radius;
+                positions[index + 2] = (Math.random() * 2 - 1) * radius;
+
+                const hue = 0.58 + Math.random() * 0.08;
+                const saturation = 0.78 + Math.random() * 0.2;
+                const lightness = 0.08 + Math.random() * 0.58;
+                color.setHSL(hue, saturation, lightness);
+                colors[index] = color.r;
+                colors[index + 1] = color.g;
+                colors[index + 2] = color.b;
+            }
+
+            geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.PointsMaterial({
+                size,
+                vertexColors: true,
+                transparent: true,
+                opacity,
+                sizeAttenuation: true,
+                depthWrite: false,
+                fog: false
+            });
+
+            const points = new THREE.Points(geometry, material);
+            points.frustumCulled = false;
+            points.userData.radius = radius;
+            points.userData.count = count;
+            envScene.add(points);
+            return points;
+        }
+
+        function updateStars() {
+            for (const layer of starLayers) {
+                const radius = layer.userData.radius;
+                const span = radius * 2;
+                const positions = layer.geometry.attributes.position.array;
+                let changed = false;
+
+                for (let i = 0; i < positions.length; i += 3) {
+                    let x = positions[i];
+                    let y = positions[i + 1];
+                    let z = positions[i + 2];
+                    let wrapped = false;
+
+                    if (x - shipRoot.position.x > radius) {
+                        x -= span;
+                        changed = wrapped = true;
+                    } else if (shipRoot.position.x - x > radius) {
+                        x += span;
+                        changed = wrapped = true;
+                    }
+
+                    if (y - shipRoot.position.y > radius) {
+                        y -= span;
+                        changed = wrapped = true;
+                    } else if (shipRoot.position.y - y > radius) {
+                        y += span;
+                        changed = wrapped = true;
+                    }
+
+                    if (z - shipRoot.position.z > radius) {
+                        z -= span;
+                        changed = wrapped = true;
+                    } else if (shipRoot.position.z - z > radius) {
+                        z += span;
+                        changed = wrapped = true;
+                    }
+
+                    positions[i] = x;
+                    positions[i + 1] = y;
+                    positions[i + 2] = z;
+                    if (wrapped) starWrapCount += 1;
+                }
+
+                if (changed) layer.geometry.attributes.position.needsUpdate = true;
+            }
+        }
+
+        function applyEnvironmentPreset(preset = getEnvironmentPreset()) {
+            renderer.toneMapping = getRendererToneMapping(preset.renderer.toneMapping);
+            renderer.toneMappingExposure = preset.renderer.toneMappingExposure;
+            renderer.setClearColor(preset.scene.background, 1);
+
+            envScene.background = new THREE.Color(preset.scene.background);
+            envScene.fog = new THREE.FogExp2(preset.scene.fog.color, preset.scene.fog.density);
+
+            if (worldLights) {
+                const { ambient, key, rim, hemisphere } = preset.lights;
+                worldLights.globalLight.color.setHex(ambient.color);
+                worldLights.globalLight.intensity = ambient.intensity;
+                worldLights.keyLight.color.setHex(key.color);
+                worldLights.keyLight.intensity = key.intensity;
+                worldLights.keyLight.position.set(...key.position);
+                worldLights.rimLight.color.setHex(rim.color);
+                worldLights.rimLight.intensity = rim.intensity;
+                worldLights.rimLight.position.set(...rim.position);
+                worldLights.softUnderLight.color.setHex(hemisphere.skyColor);
+                worldLights.softUnderLight.groundColor.setHex(hemisphere.groundColor);
+                worldLights.softUnderLight.intensity = hemisphere.intensity;
+            }
+
+            applyWorldMapVisuals(preset.worldMap);
+            applyWarpTheme(preset.id);
+            applyLightingPerformanceSettings();
+
+            document.body.classList.toggle("light", preset.id === ENVIRONMENT_MODES.light);
+            document.getElementById("theme-label").textContent = preset.id === ENVIRONMENT_MODES.light ? "LIGHT" : "DARK";
+            document.getElementById("theme-toggle").textContent = preset.id === ENVIRONMENT_MODES.light ? "DARK" : "LIGHT";
+            if (window.__vzWarpSampleStats) window.__vzWarpSampleStats.environmentMode = preset.id;
+        }
+
+        function applyLightingPerformanceSettings() {
+            const enabled = performanceSettings.lightingEffects;
+            if (worldLights) {
+                worldLights.globalLight.visible = true;
+                worldLights.keyLight.visible = enabled;
+                worldLights.rimLight.visible = enabled;
+                worldLights.softUnderLight.visible = enabled;
+            }
+
+            if (shipLights?.shipFillLight) shipLights.shipFillLight.visible = enabled;
+            if (shipLights?.shipRimLight) shipLights.shipRimLight.visible = enabled;
+        }
+
+        function applyWorldMapVisuals(worldMap) {
+            if (!chunkBoundsLine || !sectorBoundsLine) return;
+
+            const chunk = worldMap.bounds.chunk;
+            chunkBoundsLine.material.color.setHex(chunk.color);
+            chunkBoundsLine.material.opacity = chunk.opacity;
+            chunkBoundsLine.material.transparent = chunk.opacity < 1;
+            chunkBoundsLine.material.needsUpdate = true;
+
+            const sector = worldMap.bounds.sector;
+            const sectorId = sectorBoundsLine.userData.sector_id;
+            sectorBoundsLine.material.color.setHex(sector.colors[sectorId] || sector.fallbackColor || 0xffffff);
+            sectorBoundsLine.material.opacity = sector.opacity;
+            sectorBoundsLine.material.transparent = sector.opacity < 1;
+            sectorBoundsLine.material.needsUpdate = true;
+        }
+
+        function applyWarpTheme(mode) {
+            if (!streakState) return;
+            const isLight = mode === ENVIRONMENT_MODES.light;
+            streakState.material.uniforms.uColorA.value.setHex(isLight ? 0x002f9f : 0x63d2ff);
+            streakState.material.uniforms.uColorB.value.setHex(isLight ? 0x004ed8 : 0xd8ecff);
+            streakState.material.blending = isLight ? THREE.NormalBlending : THREE.AdditiveBlending;
+            streakState.material.needsUpdate = true;
+
+            postMaterial.uniforms.uVignetteBase.value = isLight ? 0.30 : 0.28;
+            postMaterial.uniforms.uVignetteWarp.value = isLight ? 0.75 : 0.62;
+            postMaterial.uniforms.uVignetteRadius.value = isLight ? 0.46 : 0.42;
+            postMaterial.uniforms.uVignetteSoftness.value = isLight ? 0.50 : 0.50;
+            postMaterial.uniforms.uVignetteColor.value.setHex(getEnvironmentPreset(mode).scene.background);
+            postMaterial.uniforms.uVignetteFrame.value = isLight ? 1.0 : 0.86;
+            postMaterial.uniforms.uVignetteFrameWidth.value = isLight ? 0.25 : 0.21;
+            postMaterial.uniforms.uChroma.value = isLight ? 0.003 : 0.006;
+            postMaterial.uniforms.uGrain.value = isLight ? 0.006 : 0.022;
+        }
+
+        function getEnvironmentPreset(mode = environmentMode) {
+            return SPACE_ENVIRONMENT_PRESETS[normalizeEnvironmentMode(mode)] || SPACE_ENVIRONMENT_PRESETS.light;
+        }
+
+        function normalizeEnvironmentMode(mode) {
+            return mode === ENVIRONMENT_MODES.dark ? ENVIRONMENT_MODES.dark : ENVIRONMENT_MODES.light;
+        }
+
+        function getRendererToneMapping(mode) {
+            return RENDERER_TONE_MAPPINGS[mode] || THREE.LinearToneMapping;
+        }
+
+        function getRenderResolutionScale(settings = performanceSettings) {
+            return normalizeRenderResolutionScale(settings.renderResolutionScale);
+        }
+
+        function getRendererPixelRatio() {
+            return Math.min(window.devicePixelRatio, 2) * getRenderResolutionScale();
+        }
+
+        function normalizeRenderResolutionScale(scale) {
+            const value = Number(scale);
+            return RENDER_RESOLUTION_SCALES.includes(value)
+                ? value
+                : DEFAULT_PERFORMANCE_SETTINGS.renderResolutionScale;
+        }
+
+        function createSectorBounds(sector) {
+            const min = toRenderVector(sector.global_bounds.min);
+            const max = toRenderVector(sector.global_bounds.max);
+            const positions = new Float32Array([
+                min.x, min.y, min.z, max.x, min.y, min.z,
+                max.x, min.y, min.z, max.x, max.y, min.z,
+                max.x, max.y, min.z, min.x, max.y, min.z,
+                min.x, max.y, min.z, min.x, min.y, min.z,
+                min.x, min.y, max.z, max.x, min.y, max.z,
+                max.x, min.y, max.z, max.x, max.y, max.z,
+                max.x, max.y, max.z, min.x, max.y, max.z,
+                min.x, max.y, max.z, min.x, min.y, max.z,
+                min.x, min.y, min.z, min.x, min.y, max.z,
+                max.x, min.y, min.z, max.x, min.y, max.z,
+                max.x, max.y, min.z, max.x, max.y, max.z,
+                min.x, max.y, min.z, min.x, max.y, max.z
+            ]);
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+            const material = new THREE.LineBasicMaterial({
+                color: getSectorColor(sector.sector_id),
+                transparent: true,
+                opacity: getSectorBoundsOpacity(),
+                fog: false
+            });
+            const lines = new THREE.LineSegments(geometry, material);
+            lines.userData = {
+                kind: "sector",
+                sector_id: sector.sector_id,
+                chunk_id: sector.chunk_id,
+                name: sector.name
+            };
+            return lines;
+        }
+
+        function createChunkBounds(chunk) {
+            const chunkStyle = getChunkBoundsStyle();
+            const lines = createBoxBounds(chunk.global_bounds, {
+                color: chunkStyle.color,
+                opacity: chunkStyle.opacity
+            });
+            lines.userData = {
+                kind: "chunk",
+                chunk_id: chunk.chunk_id,
+                sector_id: chunk.sector_id
+            };
+            return lines;
+        }
+
+        function createBoxBounds(bounds, { color, opacity }) {
+            const min = toRenderVector(bounds.min);
+            const max = toRenderVector(bounds.max);
+            const positions = new Float32Array([
+                min.x, min.y, min.z, max.x, min.y, min.z,
+                max.x, min.y, min.z, max.x, max.y, min.z,
+                max.x, max.y, min.z, min.x, max.y, min.z,
+                min.x, max.y, min.z, min.x, min.y, min.z,
+                min.x, min.y, max.z, max.x, min.y, max.z,
+                max.x, min.y, max.z, max.x, max.y, max.z,
+                max.x, max.y, max.z, min.x, max.y, max.z,
+                min.x, max.y, max.z, min.x, min.y, max.z,
+                min.x, min.y, min.z, min.x, min.y, max.z,
+                max.x, min.y, min.z, max.x, min.y, max.z,
+                max.x, max.y, min.z, max.x, max.y, max.z,
+                min.x, max.y, min.z, min.x, max.y, max.z
+            ]);
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+            const material = new THREE.LineBasicMaterial({
+                color,
+                transparent: opacity < 1,
+                opacity,
+                fog: false,
+                toneMapped: false
+            });
+            return new THREE.LineSegments(geometry, material);
+        }
+
+        function getSectorColor(sectorId) {
+            const sectorStyle = getEnvironmentPreset().worldMap.bounds.sector;
+            return sectorStyle.colors?.[sectorId] || sectorStyle.fallbackColor || 0xffffff;
+        }
+
+        function getSectorBoundsOpacity() {
+            return getEnvironmentPreset().worldMap.bounds.sector.opacity;
+        }
+
+        function getChunkBoundsStyle() {
+            return getEnvironmentPreset().worldMap.bounds.chunk;
+        }
+
+        function toRenderVector(position) {
+            return new THREE.Vector3(
+                position.x * WORLD_CONFIG.renderScale,
+                position.y * WORLD_CONFIG.renderScale,
+                position.z * WORLD_CONFIG.renderScale
+            );
+        }
+
+        function resetStreak(data, alphas, i, nearFront) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = MIN_RADIUS + Math.pow(Math.random(), 0.72) * (TUNNEL_RADIUS - MIN_RADIUS);
+            data[i] = {
+                angle,
+                radius,
+                z: nearFront ? FRONT_Z - Math.random() * 160 : REAR_Z + Math.random() * TUNNEL_LENGTH,
+                speed: 0.9 + Math.random() * 0.45,
+                length: 18 + Math.random() * 18,
+                swirl: (Math.random() - 0.5) * 0.00015,
+                alpha: 0.34 + Math.random() * 0.58,
+                phase: Math.random() * Math.PI * 2
+            };
+            alphas[i * 2] = data[i].alpha;
+            alphas[i * 2 + 1] = 0.0;
+        }
+
+        function updateStreaks(delta) {
+            const { data, geometry, material, positions, alphas, lines } = streakState;
+            const speed = 0.35 + warpFactor * 4.8;
+            const localWarp = Math.min(warpFactor / 10.0, 1.0);
+            lines.position.copy(shipRoot.position);
+
+            for (let i = 0; i < STREAK_COUNT; i += 1) {
+                const d = data[i];
+                d.z -= speed * d.speed * (28.0 + Math.max(warpFactor, 0.6) * 2.0) * delta;
+                if (d.z < REAR_Z) resetStreak(data, alphas, i, true);
+
+                const w = Math.max(warpFactor, 0.01);
+                const swirlAngle = d.angle + d.swirl * d.z;
+                const laneRadius = d.radius + Math.sin(d.phase + d.z * 0.0025) * (0.8 + 2.5 * localWarp);
+                const x = Math.cos(swirlAngle) * laneRadius;
+                const y = Math.sin(swirlAngle) * laneRadius;
+                const trailLength = d.length + w * 16.0 + w * w * 1.2;
+                const zHead = d.z;
+                const zTail = Math.min(FRONT_Z + 80, d.z + trailLength);
+                const base = i * 6;
+                positions[base] = x;
+                positions[base + 1] = y;
+                positions[base + 2] = zHead;
+                positions[base + 3] = x;
+                positions[base + 4] = y;
+                positions[base + 5] = zTail;
+            }
+
+            geometry.attributes.position.needsUpdate = true;
+            material.uniforms.uWarp.value = warpFactor;
+        }
+
+        function updateCamera() {
+            const x = Math.sin(orbit.yaw) * Math.cos(orbit.pitch) * orbit.distance;
+            const y = Math.sin(orbit.pitch) * orbit.distance + CONFIG.cameraFollowHeight;
+            const z = Math.cos(orbit.yaw) * Math.cos(orbit.pitch) * orbit.distance;
+            cameraOffset.set(x, y, z);
+            camera.position.copy(shipRoot.position).add(cameraOffset);
+            camera.lookAt(shipRoot.position);
+        }
+
+        function updatePosition(dt) {
+            shipRoot.getWorldDirection(shipForward).normalize();
+            movement.set(0, 0, 0);
+            movement.addScaledVector(shipForward, shipSpeed * dt);
+            shipRoot.position.add(movement);
+        }
+
+        function setupEvents() {
+            renderer.domElement.addEventListener("pointerdown", (event) => {
+                if (event.target.closest && event.target.closest("button")) return;
+                orbit.dragging = true;
+                orbit.moved = false;
+                orbit.lastX = orbit.downX = event.clientX;
+                orbit.lastY = orbit.downY = event.clientY;
+                renderer.domElement.setPointerCapture(event.pointerId);
+            });
+
+            renderer.domElement.addEventListener("pointermove", (event) => {
+                if (!orbit.dragging) return;
+                const dx = event.clientX - orbit.lastX;
+                const dy = event.clientY - orbit.lastY;
+                orbit.lastX = event.clientX;
+                orbit.lastY = event.clientY;
+                if (Math.hypot(event.clientX - orbit.downX, event.clientY - orbit.downY) > 8) orbit.moved = true;
+                orbit.yaw -= dx * CONFIG.cameraOrbitSensitivity;
+                orbit.pitch -= dy * CONFIG.cameraOrbitSensitivity;
+                orbit.pitch = Math.max(-1.12, Math.min(1.12, orbit.pitch));
+            });
+
+            renderer.domElement.addEventListener("pointerup", (event) => {
+                if (!orbit.dragging) return;
+                orbit.dragging = false;
+                try { renderer.domElement.releasePointerCapture(event.pointerId); } catch (_) {}
+                if (!orbit.moved) targetWarp = Math.min(MAX_WARP, targetWarp + 1);
+            });
+
+            window.addEventListener("contextmenu", (event) => {
+                event.preventDefault();
+                targetWarp = Math.max(0, targetWarp - 1);
+            });
+
+            window.addEventListener("keydown", (event) => {
+                if (event.code === "Space") {
+                    event.preventDefault();
+                    targetWarp = MAX_WARP;
+                } else if (event.code === "ArrowUp" || event.key === "+" || event.key === "=") {
+                    targetWarp = Math.min(MAX_WARP, targetWarp + 1);
+                } else if (event.code === "ArrowDown" || event.key === "-" || event.key === "_") {
+                    targetWarp = Math.max(0, targetWarp - 1);
+                } else if (event.key.toLowerCase() === "t") {
+                    environmentMode = environmentMode === ENVIRONMENT_MODES.dark ? ENVIRONMENT_MODES.light : ENVIRONMENT_MODES.dark;
+                    applyEnvironmentPreset(getEnvironmentPreset());
+                }
+            });
+
+            document.getElementById("warp-up").addEventListener("click", (event) => {
+                event.stopPropagation();
+                targetWarp = Math.min(MAX_WARP, targetWarp + 1);
+            });
+            document.getElementById("warp-down").addEventListener("click", (event) => {
+                event.stopPropagation();
+                targetWarp = Math.max(0, targetWarp - 1);
+            });
+            document.getElementById("warp-max").addEventListener("click", (event) => {
+                event.stopPropagation();
+                targetWarp = MAX_WARP;
+            });
+            document.getElementById("theme-toggle").addEventListener("click", (event) => {
+                event.stopPropagation();
+                environmentMode = environmentMode === ENVIRONMENT_MODES.dark ? ENVIRONMENT_MODES.light : ENVIRONMENT_MODES.dark;
+                applyEnvironmentPreset(getEnvironmentPreset());
+            });
+
+            window.addEventListener("resize", onResize);
+        }
+
+        function onResize() {
+            const pixelRatio = getRendererPixelRatio();
+            renderer.setPixelRatio(pixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            envTarget.setSize(
+                Math.floor(window.innerWidth * pixelRatio),
+                Math.floor(window.innerHeight * pixelRatio)
+            );
+            postMaterial.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = Math.min(clock.getDelta(), 0.05);
+            const time = clock.getElapsedTime();
+
+            warpFactor += (targetWarp - warpFactor) * 0.055;
+            if (Math.abs(warpFactor - targetWarp) < 0.01) warpFactor = targetWarp;
+            document.getElementById("warp-num").textContent = targetWarp.toFixed(0);
+
+            updatePosition(delta);
+            updateStars();
+            updateCamera();
+            updateStreaks(delta);
+
+            document.getElementById("ship-z").textContent = Math.round(shipRoot.position.z).toString();
+            if (window.__vzWarpSampleStats) {
+                window.__vzWarpSampleStats.shipZ = shipRoot.position.z;
+                window.__vzWarpSampleStats.starWrapCount = starWrapCount;
+                window.__vzWarpSampleStats.streakZ = streakState.lines.position.z;
+                window.__vzWarpSampleStats.environmentCameraFov = camera.fov;
+                window.__vzWarpSampleStats.renderPasses = "envScene-post-shipScene";
+                window.__vzWarpSampleStats.vignetteSpec = "background-color-fade";
+                window.__vzWarpSampleStats.warpDistortionSpec = "height-normalized-fixed-ratio";
+            }
+
+            camera.fov = 68 + Math.min(warpFactor * 0.7, 8);
+            camera.updateProjectionMatrix();
+
+            postMaterial.uniforms.uWarp.value = warpFactor;
+            postMaterial.uniforms.uTime.value = time;
+
+            renderer.setRenderTarget(envTarget);
+            renderer.clear(true, true, true);
+            renderer.render(envScene, camera);
+
+            renderer.setRenderTarget(null);
+            renderer.clear(true, true, true);
+            postMaterial.uniforms.tDiffuse.value = envTarget.texture;
+            renderer.render(postScene, postCamera);
+            renderer.clearDepth();
+            renderer.render(shipScene, camera);
+
+            if (!didSignalReady) {
+                didSignalReady = true;
+                window.__vzWarpSampleReady = true;
+                window.__vzWarpSampleStats = {
+                    stars: SPACE_ENVIRONMENT_PRESETS.light.starField.layers.reduce((sum, layer) => sum + layer.count, 0),
+                    streaks: STREAK_COUNT,
+                    starLayers: starLayers.length,
+                    shipTag: shipRoot.userData.tag,
+                    shipSpeed,
+                    environmentMode,
+                    shipZ: shipRoot.position.z,
+                    starWrapCount,
+                    streakZ: streakState.lines.position.z,
+                    environmentCameraFov: camera.fov,
+                    renderPasses: "envScene-post-shipScene",
+                    vignetteSpec: "background-color-fade",
+                    warpDistortionSpec: "height-normalized-fixed-ratio"
+                };
+            }
+        }
+    </script>
+</body>
+</html>

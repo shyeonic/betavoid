@@ -127,6 +127,10 @@ export class UIManager {
       targetY: this.getElement("#targetY"),
       targetZ: this.getElement("#targetZ"),
       navToggle: this.getElement("#navToggle"),
+      warpToggle: this.getElement("#warpToggle"),
+      warpCooldownGauge: this.getElement("#warpCooldownGauge"),
+      warpCooldownBar: this.getElement("#warpCooldownBar"),
+      warpCooldownLabel: this.getElement("#warpCooldownLabel"),
       bottomNavMenuButton: this.getElement("#bottomNavMenuButton"),
       bottomNavMenuStack: this.getElement("#bottomNavMenuStack"),
       bottomNavScanButton: this.getElement("#bottomNavScanButton"),
@@ -143,6 +147,9 @@ export class UIManager {
       errorToast: this.getElement("#errorToast")
     };
     this.navActive = false;
+    this.warpPending = false;
+    this.warpActive = false;
+    this._warpCooldownOutTimer = null;
     this.settingsTab = "data";
     this.environmentMode = "light";
     this.performanceSettings = {
@@ -220,6 +227,9 @@ export class UIManager {
     onStart,
     onNavigate,
     onCancelNavigate,
+    onHyperdriveNavigate,
+    onCancelHyperdrive,
+    onHyperdriveToWorldObject,
     onSetSpeed,
     onKeyBindingsChange,
     onRegenerateWorld,
@@ -242,6 +252,7 @@ export class UIManager {
     this.onRequestObjectList = typeof onRequestObjectList === "function" ? onRequestObjectList : null;
     this.onSelectWorldObject = typeof onSelectWorldObject === "function" ? onSelectWorldObject : null;
     this.onNavigateToWorldObject = typeof onNavigateToWorldObject === "function" ? onNavigateToWorldObject : null;
+    this.onHyperdriveToWorldObject = typeof onHyperdriveToWorldObject === "function" ? onHyperdriveToWorldObject : null;
     this.onClearWorldSelection = typeof onClearWorldSelection === "function" ? onClearWorldSelection : null;
     this.onEnterTargetCam = typeof onEnterTargetCam === "function" ? onEnterTargetCam : null;
     this.onProcessBetaVoid = typeof onProcessBetaVoid === "function" ? onProcessBetaVoid : null;
@@ -461,6 +472,24 @@ export class UIManager {
       });
       this.closeTargetPopup({ restoreFocus: false });
     });
+    this.elements.warpToggle.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (this.warpActive) return;
+      if (this.warpPending) {
+        if (typeof onCancelHyperdrive === "function") onCancelHyperdrive();
+        this.closeTargetPopup({ restoreFocus: false });
+        return;
+      }
+      if (typeof onHyperdriveNavigate === "function") {
+        onHyperdriveNavigate({
+          x: Number(this.elements.targetX.value) || 0,
+          y: Number(this.elements.targetY.value) || 0,
+          z: Number(this.elements.targetZ.value) || 0
+        });
+      }
+      this.closeTargetPopup({ restoreFocus: false });
+    });
     this.elements.bottomNavScanButton.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -536,6 +565,17 @@ export class UIManager {
         if (!object || !this.onNavigateToWorldObject) return;
 
         this.onNavigateToWorldObject(object);
+        this.closeObjectList({ restoreFocus: false });
+        return;
+      }
+
+      const hyperdriveButton = target?.closest("[data-object-hyperdrive-id]");
+      if (hyperdriveButton) {
+        event.preventDefault();
+        const object = this.findRenderedObject(hyperdriveButton.dataset.objectHyperdriveId);
+        if (!object || !this.onHyperdriveToWorldObject) return;
+
+        this.onHyperdriveToWorldObject(object);
         this.closeObjectList({ restoreFocus: false });
         return;
       }
@@ -895,6 +935,18 @@ export class UIManager {
       return;
     }
 
+    const hyperdriveButton = target?.closest("[data-object-hyperdrive-id]");
+    if (hyperdriveButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const object = this.findRenderedObject(hyperdriveButton.dataset.objectHyperdriveId);
+      if (!object || !this.onHyperdriveToWorldObject) return;
+
+      this.onHyperdriveToWorldObject(object);
+      this.closeObjectList({ restoreFocus: false });
+      return;
+    }
+
     const processButton = target?.closest("[data-beta-void-process-id]");
     if (processButton) {
       event.preventDefault();
@@ -965,8 +1017,14 @@ export class UIManager {
     nav.dataset.objectNavId = object.id;
     nav.textContent = this.t("ui.scanner.autoNavigate", "Auto Navigate");
 
+    const hyperNav = document.createElement("button");
+    hyperNav.className = "object-bubble-button object-hyperdrive-button";
+    hyperNav.type = "button";
+    hyperNav.dataset.objectHyperdriveId = object.id;
+    hyperNav.textContent = this.t("ui.scanner.hyperdrive", "Hyperdrive");
+
     if (includeSelect) bubble.append(select);
-    bubble.append(detail, nav);
+    bubble.append(detail, nav, hyperNav);
     return bubble;
   }
 
@@ -1035,7 +1093,13 @@ export class UIManager {
     nav.dataset.objectNavId = object.id;
     nav.textContent = this.t("ui.scanner.autoNavigate", "Auto Navigate");
 
-    const actions = [nav];
+    const hyperNav = document.createElement("button");
+    hyperNav.className = "object-navigate-button";
+    hyperNav.type = "button";
+    hyperNav.dataset.objectHyperdriveId = object.id;
+    hyperNav.textContent = this.t("ui.scanner.hyperdrive", "Hyperdrive");
+
+    const actions = [nav, hyperNav];
     if (object.kind === "betaVoid" && object.status === "active") {
       const process = document.createElement("button");
       process.className = "object-navigate-button";
@@ -1090,6 +1154,15 @@ export class UIManager {
         event.preventDefault();
         event.stopPropagation();
         if (this.onNavigateToWorldObject) this.onNavigateToWorldObject(object);
+        this.closeSelectionSummaryBubble();
+        return;
+      }
+
+      const hyperdriveButton = target?.closest("[data-object-hyperdrive-id]");
+      if (hyperdriveButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (this.onHyperdriveToWorldObject) this.onHyperdriveToWorldObject(object);
         this.closeSelectionSummaryBubble();
       }
     });
@@ -2131,6 +2204,63 @@ export class UIManager {
     this.elements.navToggle.title = snapshot.autopilot
       ? "Disable autopilot navigation"
       : "Enable autopilot navigation";
+
+    const hp = snapshot.hyperdrivePhase;
+    this.warpPending = hp !== null && hp !== undefined && hp !== "warping";
+    this.warpActive = hp === "warping";
+    this.elements.targetForm.classList.toggle("warp-pending", this.warpPending);
+    this.elements.targetForm.classList.toggle("warp-active", this.warpActive);
+    if (this.warpActive) {
+      this.elements.warpToggle.textContent = this.t("ui.nav.hyperdriving", "Hyperdriving");
+      this.elements.warpToggle.disabled = true;
+      this.elements.warpToggle.setAttribute("aria-pressed", "true");
+      this.elements.warpToggle.title = this.t("ui.nav.hyperdriveLocked", "Hyperdrive engaged — cannot cancel");
+    } else if (this.warpPending) {
+      this.elements.warpToggle.textContent = this.t("ui.nav.hyperdriveOn", "Hyperdrive On");
+      this.elements.warpToggle.disabled = false;
+      this.elements.warpToggle.setAttribute("aria-pressed", "true");
+      this.elements.warpToggle.title = this.t("ui.nav.hyperdriveCancelHint", "Cancel hyperdrive");
+    } else {
+      this.elements.warpToggle.textContent = this.t("ui.nav.hyperdrive", "Hyperdrive");
+      this.elements.warpToggle.disabled = false;
+      this.elements.warpToggle.setAttribute("aria-pressed", "false");
+      this.elements.warpToggle.title = this.t("ui.nav.hyperdriveHint", "Engage hyperdrive");
+    }
+
+    this.updateCooldownGauge(snapshot.hyperdrivePhase, snapshot.cooldownStartAt, snapshot.jumpStartAt);
+  }
+
+  updateCooldownGauge(phase, cooldownStartAt, jumpStartAt) {
+    const gauge = this.elements.warpCooldownGauge;
+    const bar = this.elements.warpCooldownBar;
+    const label = this.elements.warpCooldownLabel;
+    const CIRCUMFERENCE = 251.33;
+
+    if (phase === "cooldown" && cooldownStartAt && jumpStartAt) {
+      const total = (jumpStartAt - cooldownStartAt) / 1000;
+      const elapsed = (Date.now() - cooldownStartAt) / 1000;
+      const progress = Math.min(1, Math.max(0, elapsed / total));
+      const remaining = Math.max(0, total - elapsed);
+
+      bar.style.strokeDashoffset = ((1 - progress) * CIRCUMFERENCE).toFixed(2);
+      label.textContent = remaining.toFixed(1);
+
+      if (this._warpCooldownOutTimer) {
+        clearTimeout(this._warpCooldownOutTimer);
+        this._warpCooldownOutTimer = null;
+      }
+      gauge.classList.add("visible");
+      return;
+    }
+
+    if (gauge.classList.contains("visible") && !this._warpCooldownOutTimer) {
+      bar.style.strokeDashoffset = "0";
+      label.textContent = "0.0";
+      this._warpCooldownOutTimer = setTimeout(() => {
+        gauge.classList.remove("visible");
+        this._warpCooldownOutTimer = null;
+      }, 480);
+    }
   }
 
   refreshSpeedGaugeRange() {

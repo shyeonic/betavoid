@@ -21,7 +21,14 @@
       "Bash(Test-Path \"c:\\\\inf_workspace_local\\\\Void Zero\\\\src\\\\test-chumkmapEditor\\\\galaxy-map-pure-reader.html\")",
       "Bash(xargs grep -l \"createNavLog\\\\|navLog\")",
       "Bash(cd \"c:\\\\inf_workspace_local\\\\Void Zero\" && cat .gitignore)",
-      "Read(//c/inf_workspace_local/Void Zero/**)"
+      "Read(//c/inf_workspace_local/Void Zero/**)",
+      "Bash(wc -l js/GameManager.js js/WorldDataManager.js js/definitions/shipDefinitions.js js/config.js)",
+      "Bash(dir js\\\\GameManager.js js\\\\WorldDataManager.js js\\\\definitions\\\\shipDefinitions.js js\\\\config.js)",
+      "Bash(node --check js/definitions/shipDefinitions.js)",
+      "Bash(node --check js/WorldDataManager.js)",
+      "Bash(node --check js/GameManager.js)",
+      "Bash(node --check js/UIManager.js)",
+      "Bash(node --check js/WarpEffect.js)"
     ]
   }
 }

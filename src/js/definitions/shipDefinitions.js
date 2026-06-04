@@ -19,7 +19,14 @@ export const SHIP_DEFINITIONS = {
       yawRate: 1.55,
       rollRate: 1.8,
       strafeRate: 45,
-      verticalRate: 45
+      verticalRate: 45,
+      hyperdriveSpecs: {
+        cooldownDuration: 5,
+        warpEntryDuration: 0.6,
+        warpExitDuration: 0.6,
+        warpMinFlightDuration: 5,
+        warpFlightSpeed: 4000
+      }
     },
     visual: SHIP_VISUAL_DEFINITIONS.ship_01
   },
@@ -40,7 +47,14 @@ export const SHIP_DEFINITIONS = {
       yawRate: 1.55,
       rollRate: 1.8,
       strafeRate: 45,
-      verticalRate: 45
+      verticalRate: 45,
+      hyperdriveSpecs: {
+        cooldownDuration: 5,
+        warpEntryDuration: 0.6,
+        warpExitDuration: 0.6,
+        warpMinFlightDuration: 5,
+        warpFlightSpeed: 4000
+      }
     },
     visual: SHIP_VISUAL_DEFINITIONS.ship_02
   }

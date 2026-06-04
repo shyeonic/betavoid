@@ -468,6 +468,110 @@
       box-shadow: 0 0 1.8vh rgba(99, 210, 255, 0.22);
     }
 
+    .warp-toggle {
+      align-self: stretch;
+      display: grid;
+      place-items: center;
+      height: auto;
+      width: 7vh;
+      color: var(--muted);
+      font-size: 1.15vh;
+      letter-spacing: 0.04em;
+    }
+
+    .target-panel.warp-pending .warp-toggle {
+      color: rgba(255, 190, 60, 1);
+      border-color: rgba(255, 190, 60, 0.72);
+      background: rgba(255, 190, 60, 0.12);
+      box-shadow: 0 0 1.8vh rgba(255, 190, 60, 0.2);
+    }
+
+    .target-panel.warp-active .warp-toggle {
+      color: rgba(220, 235, 255, 0.9);
+      border-color: rgba(180, 210, 255, 0.72);
+      background: rgba(180, 210, 255, 0.18);
+      box-shadow: 0 0 2.2vh rgba(180, 210, 255, 0.3);
+      cursor: not-allowed;
+      opacity: 0.8;
+    }
+
+    .target-panel.warp-active {
+      border-color: rgba(180, 210, 255, 0.5);
+      box-shadow: 0 2.8vh 8.3vh rgba(100, 150, 220, 0.15), 0 0 2.8vh rgba(180, 210, 255, 0.2);
+    }
+
+    /* ── Hyperdrive cooldown gauge (toast-style) ───────────────── */
+    .warp-cooldown-gauge {
+      position: absolute;
+      left: 50%;
+      bottom: 22vh;
+      transform: translateX(-50%);
+      z-index: 15;
+      width: 11vh;
+      height: 11vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      backdrop-filter: blur(2.5vh);
+      background: var(--panel);
+      border: 0.12vh solid var(--line);
+      box-shadow: 0 0.4vh 1.6vh rgba(66, 139, 190, 0.18);
+      opacity: 0;
+      transition: opacity 180ms ease;
+      pointer-events: none;
+    }
+
+    .warp-cooldown-gauge.visible {
+      opacity: 1;
+    }
+
+    .warp-cooldown-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+      overflow: visible;
+    }
+
+    .warp-cooldown-track {
+      fill: none;
+      stroke: rgba(0, 0, 0, 0.1);
+      stroke-width: 5.5;
+    }
+
+    .warp-cooldown-bar {
+      fill: none;
+      stroke: rgba(20, 40, 90, 0.9);
+      stroke-width: 5.5;
+      stroke-linecap: round;
+      stroke-dasharray: 251.33;
+      stroke-dashoffset: 251.33;
+      transition: stroke-dashoffset 0.12s linear;
+    }
+
+    :root[data-environment-mode="dark"] .warp-cooldown-track {
+      stroke: rgba(255, 255, 255, 0.1);
+    }
+
+    :root[data-environment-mode="dark"] .warp-cooldown-bar {
+      stroke: rgba(99, 210, 255, 0.95);
+    }
+
+    .warp-cooldown-label {
+      position: relative;
+      font-family: 'Courier New', monospace;
+      font-size: 1.8vh;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.04em;
+      color: rgba(20, 40, 90, 0.9);
+    }
+
+    :root[data-environment-mode="dark"] .warp-cooldown-label {
+      color: rgba(99, 210, 255, 0.95);
+    }
+
     .toast {
       left: 50%;
       bottom: 12.6vh;
@@ -2192,6 +2296,14 @@
       </button>
     </div>
 
+    <div class="warp-cooldown-gauge" id="warpCooldownGauge" aria-hidden="true">
+      <svg class="warp-cooldown-svg" viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="warp-cooldown-track" cx="50" cy="50" r="40"/>
+        <circle class="warp-cooldown-bar" id="warpCooldownBar" cx="50" cy="50" r="40"/>
+      </svg>
+      <span class="warp-cooldown-label" id="warpCooldownLabel">0.0</span>
+    </div>
+
     <div class="target-popup-backdrop" id="targetPopupBackdrop" hidden></div>
     <form class="target-panel" id="targetForm" role="dialog" aria-modal="true" aria-label="Target navigation" hidden>
       <div class="target-fields">
@@ -2209,6 +2321,7 @@
         </label>
       </div>
       <button class="primary nav-toggle" id="navToggle" type="submit" aria-pressed="false">Nav Off</button>
+      <button class="primary warp-toggle" id="warpToggle" type="button" aria-pressed="false" title="Engage hyperdrive">Hyperdrive</button>
     </form>
 
     <nav class="bottom-nav" aria-label="Bottom navigation">

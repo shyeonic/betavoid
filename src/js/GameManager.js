@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { BloomRenderPipeline } from "./BloomRenderPipeline.js";
+import { HyperdriveWarpLayer } from "./HyperdriveWarpLayer.js";
 import { CONFIG, CONTROL_SETTINGS, DEFAULT_KEY_BINDINGS, KEY_BINDING_GROUPS } from "./config.js";
 import { ResourceManager } from "./ResourceManager.js";
 import { ShipVisualManager } from "./ShipVisualManager.js";
@@ -67,6 +68,9 @@ export class GameManager {
     this._deactivationLog = null;
     this._lastDeactivationResolvedAt = 0;
     this._preflightSnapshot = null;
+    this.hyperdriveLog = null;
+    this.hyperdriveLogId = null;
+    this.isHyperdrive = false;
 
     this.activeActions = new Set();
     this.clock = new THREE.Clock();
@@ -254,6 +258,9 @@ export class GameManager {
       onStart: () => this.startGame(),
       onNavigate: (coords) => this.setTarget(coords),
       onCancelNavigate: () => this.clearTarget("navigation stopped"),
+      onHyperdriveNavigate: (coords) => this.initiateHyperdrive(coords),
+      onCancelHyperdrive: () => this.cancelHyperdrive(),
+      onHyperdriveToWorldObject: (object) => this.hyperdriveToWorldObject(object),
       onSetSpeed: (speed) => this.setManualSpeed(speed),
       onKeyBindingsChange: (bindings) => this.setKeyBindings(bindings),
       onRegenerateWorld: () => this.regenerateWorld(),
@@ -545,6 +552,10 @@ export class GameManager {
       objectBloom: this.getObjectBloomSettings(preset),
       renderResolutionScale: this.getRenderResolutionScale()
     });
+
+    this.hyperdriveWarpLayer = new HyperdriveWarpLayer({ renderer: this.renderer });
+    this.renderPipeline.setHyperdriveWarpLayer(this.hyperdriveWarpLayer);
+
     this.shipVisualManager = new ShipVisualManager({
       bloomLayer: this.renderPipeline.objectBloomLayerId,
       onBloomTargetsDirty: () => this.renderPipeline?.markTargetsDirty(),
@@ -585,6 +596,7 @@ export class GameManager {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderPipeline?.setRenderResolutionScale(this.getRenderResolutionScale());
     this.renderPipeline?.setSize(window.innerWidth, window.innerHeight);
+    this.hyperdriveWarpLayer?.setSize(window.innerWidth, window.innerHeight);
     this.worldMapManager?.setRenderResolutionScale(this.getRenderResolutionScale());
   }
 
@@ -644,7 +656,16 @@ export class GameManager {
       resize: () => this.onResize(),
       pagehide: () => {
         if (this.state.phase === "running") {
-          this._commitDeactivationNavLog();
+          // 임시 비활성화용 coast navLog가 있으면 취소하고 즉시 정지 navLog로 교체
+          if (this._deactivationLog) {
+            void this.worldDataManager.updateNavLog(this._deactivationLog.id, { status: "cancelled", cancelled_at: Date.now() });
+            this._deactivationLog = null;
+          }
+          this._commitDeactivationNavLog(null, 0);
+          if (this._deactivationLog) {
+            const { id: _id, ...logData } = this._deactivationLog;
+            try { localStorage.setItem("vz_deactivation_snapshot", JSON.stringify(logData)); } catch (_) {}
+          }
           this.savePlayerShipState({ force: true });
         }
       },
@@ -656,6 +677,8 @@ export class GameManager {
         } else if (document.visibilityState === "visible") {
           this._resolvePreflightSnapshot();
           this._resolveDeactivationNavLog();
+          try { localStorage.removeItem("vz_deactivation_snapshot"); } catch (_) {}
+          this._resolveHyperdriveWarp();
           this._snapToActiveNavLog();
         }
       }
@@ -744,7 +767,67 @@ export class GameManager {
     const activeLog = navLogs.find(log => log.status === "active");
     let usedNavLog = false;
 
-    if (activeLog?.flight_start_at != null && activeLog?.from_position != null) {
+    if (activeLog?.type === "hyperdrive") {
+      const hyperLog = activeLog;
+      const tSinceJump = (Date.now() - hyperLog.jump_start_at) / 1000;
+      const tSinceCooldown = (Date.now() - hyperLog.cooldown_start_at) / 1000;
+      const navTargetVec = new THREE.Vector3(hyperLog.target.x, hyperLog.target.y, hyperLog.target.z);
+
+      this.hyperdriveLog = hyperLog;
+      this.hyperdriveLogId = hyperLog.id;
+      this.isHyperdrive = true;
+      this.navTarget = navTargetVec;
+      this.targetMarker.visible = true;
+      this.targetMarker.position.copy(navTargetVec);
+
+      if (tSinceJump >= hyperLog.flight_duration) {
+        // 워프 완료 — 목적지 스냅
+        this.ship.position.set(hyperLog.target.x, hyperLog.target.y, hyperLog.target.z);
+        this.state.speed = 0;
+        this.state.desiredSpeed = 0;
+        void this.worldDataManager.updateNavLog(hyperLog.id, { status: "completed", committed: true, completed_at: Date.now() });
+        this.isHyperdrive = false;
+        this.hyperdriveLog = null;
+        this.hyperdriveLogId = null;
+        this.navTarget = null;
+        this.targetMarker.visible = false;
+        usedNavLog = true;
+      } else if (tSinceJump >= 0) {
+        // 워프 비행 중 — 결정론적 위치 복원
+        const warpPos = this.computeHyperdrivePositionAtTime(hyperLog, tSinceJump);
+        this.ship.position.copy(warpPos);
+        const toTarget = navTargetVec.clone().sub(warpPos);
+        if (toTarget.lengthSq() > 0.0001) {
+          this.lookMatrix.lookAt(toTarget.clone().normalize(), new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+          this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
+        }
+        this.state.speed = 0;
+        this.state.desiredSpeed = 0;
+        this.hyperdriveLog.committed = true;
+        this.state.autopilotPhase = "warping";
+        usedNavLog = true;
+      } else if (tSinceCooldown >= 0) {
+        // 쿨타임 중 — from_position에서 정지 상태
+        // 설계 의도: 쿨타임이 부재 중 경과하면 jump_start_at 도달로 이어지고
+        // tSinceJump >= 0 분기(위)에서 자동 커밋 처리됨.
+        // 쿨타임 취소는 반드시 사용자의 명시적 키 입력을 요구하며,
+        // 부재 중 경과된 쿨타임은 암묵적 취소 사유가 되지 않는다.
+        this.ship.position.set(hyperLog.from_position.x, hyperLog.from_position.y, hyperLog.from_position.z);
+        const dir = new THREE.Vector3(hyperLog.heading_at_jump.x, hyperLog.heading_at_jump.y, hyperLog.heading_at_jump.z);
+        if (dir.lengthSq() > 0.0001) {
+          this.lookMatrix.lookAt(dir, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+          this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
+        }
+        this.state.speed = 0;
+        this.state.desiredSpeed = 0;
+        this.state.autopilotPhase = "cooldown";
+        usedNavLog = true;
+      } else {
+        // 정지/정렬 단계 — playerShipState에서 위치/속도 복원
+        this.state.autopilotPhase = "stopping";
+        // usedNavLog = false → 아래 playerShipState 블록에서 위치 복원 후 preflight 전진
+      }
+    } else if (activeLog?.flight_start_at != null && activeLog?.from_position != null) {
       const tSec = (Date.now() - activeLog.flight_start_at) / 1000;
 
       if (activeLog.type === "deactivation") {
@@ -767,6 +850,7 @@ export class GameManager {
           void this.worldDataManager.updateNavLog(activeLog.id, { status: "cancelled", cancelled_at: Date.now() });
         }
         usedNavLog = true;
+        try { localStorage.removeItem("vz_deactivation_snapshot"); } catch (_) {}
       } else {
         if (tSec < 0) {
           // Pre-flight: navLog is complete but flight_start_at is in the future
@@ -854,6 +938,9 @@ export class GameManager {
         this._preflightSnapshot = {
           savedAt,
           phase: "stopping",
+          isHyperdrive: this.isHyperdrive,
+          hyperdriveLogId: this.hyperdriveLogId,
+          hyperdriveLog: this.hyperdriveLog ? { ...this.hyperdriveLog } : null,
           position: { x: this.ship.position.x, y: this.ship.position.y, z: this.ship.position.z },
           speed: this.state.speed,
           heading: { x: fwd.x, y: fwd.y, z: fwd.z },
@@ -863,11 +950,25 @@ export class GameManager {
           navLogId: this.activeNavLogId
         };
         this._resolvePreflightSnapshot();
-      } else if (savedAt > 0 && this.state.speed > 0) {
+      } else if (savedAt > 0 && this.state.speed !== 0) {
         // 수동 비행 중 비활성화 구간 결정론적 항법 적용
         const elapsed = (Date.now() - savedAt) / 1000;
         if (elapsed > 0) {
-          this._commitDeactivationNavLog(savedAt);
+          let snapshotLog = null;
+          try {
+            const raw = localStorage.getItem("vz_deactivation_snapshot");
+            if (raw) snapshotLog = JSON.parse(raw);
+          } catch (_) {}
+
+          if (snapshotLog?.flight_start_at && snapshotLog?.from_position) {
+            // pagehide 시점의 정확한 위치/속도/타임스탬프로 navLog 재생성
+            const id = this.worldDataManager.createNavLog({ ...snapshotLog, status: "active" });
+            this._deactivationLog = { ...snapshotLog, id };
+          } else {
+            // desired_speed=0 강제: 게임 종료 시점부터 즉시 감속
+            this._commitDeactivationNavLog(savedAt, 0);
+          }
+          try { localStorage.removeItem("vz_deactivation_snapshot"); } catch (_) {}
           this._resolveDeactivationNavLog();
           if (this.state.autopilotPhase === null) {
             this.state.desiredSpeed = 0;
@@ -1090,6 +1191,7 @@ export class GameManager {
       this.worldLights.softUnderLight.intensity = hemisphere.intensity;
     }
     this.worldMapManager?.setEnvironmentVisuals(preset.worldMap);
+    this.hyperdriveWarpLayer?.setEnvironmentPreset(preset);
     this.applyLightingPerformanceSettings();
   }
 
@@ -1332,7 +1434,12 @@ export class GameManager {
 
   setManualSpeed(value) {
     if (this.state.phase !== "running") return false;
-    this.cancelAutopilot();
+    if (this.isHyperdrive && this.state.autopilotPhase === "warping") return false;
+    if (this.isHyperdrive) {
+      this.clearTarget();
+    } else {
+      this.cancelAutopilot();
+    }
     return this.setSpeed(value);
   }
 
@@ -1342,6 +1449,7 @@ export class GameManager {
   }
 
   setTarget({ x, y, z }) {
+    if (this.isHyperdrive) return;
     const { decelerationRate, accelerationRate, pitchRate, yawRate, arrivalRadius } = this.shipStats;
 
     // Stopping phase: deterministic kinematics
@@ -1401,9 +1509,18 @@ export class GameManager {
   }
 
   clearTarget(message, completed = false) {
+    const now = Date.now();
+    if (this.hyperdriveLogId) {
+      void this.worldDataManager.updateNavLog(this.hyperdriveLogId, completed
+        ? { status: "completed", committed: true, completed_at: now }
+        : { status: "cancelled", cancel_reason: "user_manual", cancelled_at: now }
+      );
+      this.hyperdriveLogId = null;
+      this.hyperdriveLog = null;
+      this.isHyperdrive = false;
+    }
     if (this.activeNavLogId) {
-      const now = Date.now();
-      this.worldDataManager.updateNavLog(this.activeNavLogId, completed
+      void this.worldDataManager.updateNavLog(this.activeNavLogId, completed
         ? { status: "completed", completed_at: now }
         : { status: "cancelled", cancelled_at: now }
       );
@@ -1420,6 +1537,7 @@ export class GameManager {
 
   cancelAutopilot() {
     if (this.state.autopilotPhase === null) return;
+    if (this.isHyperdrive) return;
     if (this.activeNavLogId) {
       this.worldDataManager.updateNavLog(this.activeNavLogId, { status: "cancelled", cancelled_at: Date.now() });
       this.activeNavLogId = null;
@@ -1429,6 +1547,173 @@ export class GameManager {
     this.navTarget = null;
     this.activeNavLog = null;
     this.targetMarker.visible = false;
+  }
+
+  initiateHyperdrive({ x, y, z }) {
+    if (this.isHyperdrive) return;
+    if (this.state.autopilotPhase !== null) this.cancelAutopilot();
+
+    const { decelerationRate, accelerationRate, pitchRate, yawRate, hyperdriveSpecs } = this.shipStats;
+    if (!hyperdriveSpecs) {
+      this.ui.showToast("hyperdrive not available");
+      return;
+    }
+
+    const now = Date.now();
+    const v0 = this.state.speed;
+    const stopRate = v0 > 0 ? decelerationRate : v0 < 0 ? accelerationRate : 0;
+    const stopDuration = stopRate > 0 ? Math.abs(v0) / stopRate : 0;
+
+    this.ship.getWorldDirection(this.vectors.forward);
+    const heading = this.vectors.forward.clone();
+    const sign = v0 >= 0 ? 1 : -1;
+    const stopDist = stopDuration > 0
+      ? v0 * stopDuration - sign * 0.5 * stopRate * stopDuration * stopDuration
+      : 0;
+    const fromPos = this.ship.position.clone().addScaledVector(heading, stopDist);
+
+    const toTarget = new THREE.Vector3(x, y, z).sub(fromPos);
+    const targetDir = toTarget.clone().normalize();
+    const dotVal = Math.max(-1, Math.min(1, heading.dot(targetDir)));
+    const angle = Math.acos(dotVal);
+    const alignRate = Math.min(pitchRate, yawRate);
+    const alignDuration = angle > 0.00447 ? Math.log(angle / 0.00447) / alignRate : 0;
+
+    const { cooldownDuration, warpEntryDuration, warpExitDuration, warpMinFlightDuration, warpFlightSpeed } = hyperdriveSpecs;
+    const distance = toTarget.length();
+    const warpCruiseDuration = Math.max(warpMinFlightDuration, distance / warpFlightSpeed);
+    const flightDuration = warpEntryDuration + warpCruiseDuration + warpExitDuration;
+
+    const stopStartAt = now;
+    const alignStartAt = now + Math.round(stopDuration * 1000);
+    const cooldownStartAt = alignStartAt + Math.round(alignDuration * 1000);
+    const jumpStartAt = cooldownStartAt + Math.round(cooldownDuration * 1000);
+
+    this.navTarget = new THREE.Vector3(x, y, z);
+    this.isHyperdrive = true;
+    this.state.autopilotPhase = stopDuration > 0 ? "stopping" : alignDuration > 0 ? "aligning" : "cooldown";
+    this.targetMarker.visible = true;
+    this.targetMarker.position.copy(this.navTarget);
+
+    const from = { x: fromPos.x, y: fromPos.y, z: fromPos.z };
+    const log = {
+      type: "hyperdrive",
+      issued_at: now,
+      from_position: from,
+      target: { x, y, z },
+      heading_at_jump: { x: targetDir.x, y: targetDir.y, z: targetDir.z },
+      stop_start_at: stopStartAt,
+      align_start_at: alignStartAt,
+      cooldown_start_at: cooldownStartAt,
+      jump_start_at: jumpStartAt,
+      stop_duration: stopDuration,
+      align_duration: alignDuration,
+      cooldown_duration: cooldownDuration,
+      warp_entry_duration: warpEntryDuration,
+      warp_cruise_duration: warpCruiseDuration,
+      warp_exit_duration: warpExitDuration,
+      flight_duration: flightDuration,
+      committed: false,
+      status: "active",
+      cancel_reason: null,
+      completed_at: null,
+      cancelled_at: null
+    };
+
+    this.hyperdriveLog = log;
+    this.hyperdriveLogId = this.worldDataManager.createHyperdriveNavLog(log);
+
+    const eta = stopDuration + alignDuration + cooldownDuration + flightDuration;
+    this.ui.showToast(`hyperdrive engaged (~${Math.round(eta)}s)`);
+    this.savePlayerShipState({ force: true });
+  }
+
+  canCancelHyperdrive() {
+    if (!this.isHyperdrive || !this.hyperdriveLog) return false;
+    return Date.now() < this.hyperdriveLog.jump_start_at;
+  }
+
+  cancelHyperdrive() {
+    if (!this.canCancelHyperdrive()) return;
+    this.clearTarget("hyperdrive cancelled");
+  }
+
+  computeHyperdrivePositionAtTime(log, tSec) {
+    const from = new THREE.Vector3(log.from_position.x, log.from_position.y, log.from_position.z);
+    const target = new THREE.Vector3(log.target.x, log.target.y, log.target.z);
+    if (tSec <= 0) return from.clone();
+    if (tSec >= log.flight_duration) return target.clone();
+    const t = tSec / log.flight_duration;
+    const eased = t * t * (3 - 2 * t);
+    return from.clone().lerp(target, eased);
+  }
+
+  _commitHyperdrive() {
+    const log = this.hyperdriveLog;
+    if (!log) return;
+    log.committed = true;
+    this.state.autopilotPhase = "warping";
+    this.state.speed = 0;
+    this.state.desiredSpeed = 0;
+    if (this.hyperdriveLogId) {
+      void this.worldDataManager.updateNavLog(this.hyperdriveLogId, { committed: true });
+    }
+    const dir = new THREE.Vector3(log.heading_at_jump.x, log.heading_at_jump.y, log.heading_at_jump.z);
+    if (dir.lengthSq() > 0.0001) {
+      this.lookMatrix.lookAt(dir, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+      this.ship.quaternion.setFromRotationMatrix(this.lookMatrix).normalize();
+    }
+    this.ui.showToast("hyperdrive committed");
+  }
+
+  getHyperdriveWarpVisualState(now = Date.now()) {
+    if (!this.isHyperdrive || this.state.autopilotPhase !== "warping" || !this.hyperdriveLog) {
+      return { active: false, intensity: 0 };
+    }
+
+    const log = this.hyperdriveLog;
+    const t = (now - log.jump_start_at) / 1000;
+
+    if (t < 0 || t >= log.flight_duration) {
+      return { active: false, intensity: 0 };
+    }
+
+    const entry     = log.warp_entry_duration ?? 0.6;
+    const exit      = log.warp_exit_duration  ?? 0.6;
+    const remaining = log.flight_duration - t;
+    const entryRamp = Math.min(1, t / entry);
+    const exitRamp  = Math.min(1, remaining / exit);
+    const intensity = Math.max(0, Math.min(entryRamp, exitRamp));
+
+    return {
+      active: true,
+      intensity,
+      elapsed:      t,
+      duration:     log.flight_duration,
+      heading:      log.heading_at_jump,
+      shipPosition: this.ship.position
+    };
+  }
+
+  _resolveHyperdriveWarp() {
+    if (!this.isHyperdrive || !this.hyperdriveLog) return;
+    if (this.state.autopilotPhase !== "warping") return;
+
+    const log = this.hyperdriveLog;
+    const tSec = (Date.now() - log.jump_start_at) / 1000;
+
+    if (tSec >= log.flight_duration) {
+      this.ship.position.set(log.target.x, log.target.y, log.target.z);
+      this.state.speed = 0;
+      this.state.desiredSpeed = 0;
+      this.clearTarget("hyperdrive complete", true);
+      return;
+    }
+
+    const pos = this.computeHyperdrivePositionAtTime(log, tSec);
+    this.ship.position.copy(pos);
+    this.state.speed = 0;
+    this.state.desiredSpeed = 0;
   }
 
   computeAutopilotPeakSpeed(distance) {
@@ -1553,13 +1838,17 @@ export class GameManager {
   }
 
   _commitPreflightSnapshot() {
-    if (this.state.autopilotPhase !== "stopping" && this.state.autopilotPhase !== "aligning") return;
+    const phase = this.state.autopilotPhase;
+    if (phase !== "stopping" && phase !== "aligning" && phase !== "cooldown") return;
     if (!this.navTarget) return;
 
     this.ship.getWorldDirection(this.vectors.forward);
     this._preflightSnapshot = {
       savedAt: Date.now(),
-      phase: this.state.autopilotPhase,
+      phase,
+      isHyperdrive: this.isHyperdrive,
+      hyperdriveLogId: this.hyperdriveLogId,
+      hyperdriveLog: this.hyperdriveLog ? { ...this.hyperdriveLog } : null,
       position: { x: this.ship.position.x, y: this.ship.position.y, z: this.ship.position.z },
       speed: this.state.speed,
       heading: { x: this.vectors.forward.x, y: this.vectors.forward.y, z: this.vectors.forward.z },
@@ -1572,10 +1861,77 @@ export class GameManager {
     };
   }
 
+  _resolveHyperdriveAfterAlign(snap, pos, targetPos) {
+    const hyperLog = snap.hyperdriveLog;
+    if (!hyperLog) return;
+
+    this.isHyperdrive = true;
+    this.hyperdriveLog = hyperLog;
+    this.hyperdriveLogId = snap.hyperdriveLogId;
+    this.navTarget = targetPos.clone();
+    this.targetMarker.visible = true;
+    this.targetMarker.position.copy(this.navTarget);
+
+    const tSinceJump = (Date.now() - hyperLog.jump_start_at) / 1000;
+
+    if (tSinceJump >= hyperLog.flight_duration) {
+      this.ship.position.set(hyperLog.target.x, hyperLog.target.y, hyperLog.target.z);
+      this.state.speed = 0;
+      this.state.desiredSpeed = 0;
+      this.clearTarget("hyperdrive complete", true);
+    } else if (tSinceJump >= 0) {
+      this.hyperdriveLog.committed = true;
+      this.state.autopilotPhase = "warping";
+      this.state.speed = 0;
+      this.state.desiredSpeed = 0;
+      this.ship.position.copy(this.computeHyperdrivePositionAtTime(hyperLog, tSinceJump));
+      void this.worldDataManager.updateNavLog(snap.hyperdriveLogId, { committed: true });
+    } else {
+      this.state.autopilotPhase = "cooldown";
+      this.state.speed = 0;
+      this.state.desiredSpeed = 0;
+    }
+  }
+
+  _resolveHyperdriveCooldownSnapshot(snap) {
+    const hyperLog = snap.hyperdriveLog;
+    if (!hyperLog) return;
+
+    this.isHyperdrive = true;
+    this.hyperdriveLog = hyperLog;
+    this.hyperdriveLogId = snap.hyperdriveLogId;
+    this.ship.position.set(snap.position.x, snap.position.y, snap.position.z);
+    this.ship.quaternion.set(snap.qx, snap.qy, snap.qz, snap.qw).normalize();
+    this.state.speed = 0;
+    this.state.desiredSpeed = 0;
+    this.navTarget = new THREE.Vector3(snap.targetPos.x, snap.targetPos.y, snap.targetPos.z);
+    this.targetMarker.visible = true;
+    this.targetMarker.position.copy(this.navTarget);
+
+    const tSinceJump = (Date.now() - hyperLog.jump_start_at) / 1000;
+
+    if (tSinceJump >= hyperLog.flight_duration) {
+      this.ship.position.set(hyperLog.target.x, hyperLog.target.y, hyperLog.target.z);
+      this.clearTarget("hyperdrive complete", true);
+    } else if (tSinceJump >= 0) {
+      this.hyperdriveLog.committed = true;
+      this.state.autopilotPhase = "warping";
+      this.ship.position.copy(this.computeHyperdrivePositionAtTime(hyperLog, tSinceJump));
+      void this.worldDataManager.updateNavLog(snap.hyperdriveLogId, { committed: true });
+    } else {
+      this.state.autopilotPhase = "cooldown";
+    }
+  }
+
   _resolvePreflightSnapshot() {
     const snap = this._preflightSnapshot;
     if (!snap) return;
     this._preflightSnapshot = null;
+
+    if (snap.isHyperdrive && snap.phase === "cooldown") {
+      this._resolveHyperdriveCooldownSnapshot(snap);
+      return;
+    }
 
     const { decelerationRate, accelerationRate, pitchRate, yawRate } = this.shipStats;
     let remainingElapsed = (Date.now() - snap.savedAt) / 1000;
@@ -1649,7 +2005,13 @@ export class GameManager {
 
     const effectiveDist = toTarget.length() - this.shipStats.arrivalRadius;
     if (effectiveDist <= 0) {
+      if (snap.isHyperdrive) this.isHyperdrive = false;
       this.clearTarget("arrived", true);
+      return;
+    }
+
+    if (snap.isHyperdrive) {
+      this._resolveHyperdriveAfterAlign(snap, pos, targetPos);
       return;
     }
 
@@ -1679,26 +2041,28 @@ export class GameManager {
     // _snapToActiveNavLog() runs after this and advances position/phase based on flightStartAt
   }
 
-  _commitDeactivationNavLog(overrideStartAt = null) {
+  _commitDeactivationNavLog(overrideStartAt = null, overrideDesiredSpeed = null) {
+    if (this.isHyperdrive && this.state.autopilotPhase === "warping") return;
     if (this.state.autopilotPhase !== null || this.state.speed === 0) return;
 
     const { decelerationRate, accelerationRate, deactivationCoastDuration } = this.shipStats;
     const v0 = this.state.speed;
-    const vd = this.state.desiredSpeed;
+    const vd = overrideDesiredSpeed !== null ? overrideDesiredSpeed : this.state.desiredSpeed;
+    const coastDuration = vd === 0 ? 0 : deactivationCoastDuration;
 
     this.ship.getWorldDirection(this.vectors.forward).normalize();
     const dir = this.vectors.forward.clone();
     const from = { x: this.ship.position.x, y: this.ship.position.y, z: this.ship.position.z };
 
     const { speed: speedAtCoastEnd } = this._deactivationKinematics(
-      v0, vd, accelerationRate, decelerationRate, deactivationCoastDuration, deactivationCoastDuration
+      v0, vd, accelerationRate, decelerationRate, coastDuration, coastDuration
     );
     const stopRate = speedAtCoastEnd > 0 ? decelerationRate : accelerationRate;
     const flightDuration = speedAtCoastEnd === 0
       ? (Math.abs(vd - v0) > 0.001 ? Math.abs(vd - v0) / (vd < v0 ? decelerationRate : accelerationRate) : 0)
-      : deactivationCoastDuration + Math.abs(speedAtCoastEnd) / stopRate;
+      : coastDuration + Math.abs(speedAtCoastEnd) / stopRate;
     const { dist: totalDist } = this._deactivationKinematics(
-      v0, vd, accelerationRate, decelerationRate, deactivationCoastDuration, flightDuration
+      v0, vd, accelerationRate, decelerationRate, coastDuration, flightDuration
     );
     const stopPos = this.ship.position.clone().addScaledVector(dir, totalDist);
 
@@ -1710,7 +2074,7 @@ export class GameManager {
       flight_start_at: overrideStartAt ?? Date.now(),
       peak_speed: v0,
       desired_speed: vd,
-      coast_duration: deactivationCoastDuration,
+      coast_duration: coastDuration,
       flight_duration: flightDuration,
       status: "active"
     };
@@ -1907,8 +2271,31 @@ export class GameManager {
       this.ship.quaternion.slerp(this.quaternions.desired, Math.min(1, Math.min(this.shipStats.pitchRate, this.shipStats.yawRate) * dt)).normalize();
       this.ship.getWorldDirection(this.vectors.forward);
       if (this.vectors.forward.dot(direction) > 0.99999) {
-        this.state.autopilotPhase = "accelerating";
+        this.state.autopilotPhase = this.isHyperdrive ? "cooldown" : "accelerating";
       }
+
+    } else if (phase === "cooldown") {
+      this.setSpeed(0);
+      this.state.desiredSpeed = 0;
+      if (!this.hyperdriveLog || Date.now() >= this.hyperdriveLog.jump_start_at) {
+        this._commitHyperdrive();
+      }
+
+    } else if (phase === "warping") {
+      this.state.speed = 0;
+      this.state.desiredSpeed = 0;
+      const hyperLog = this.hyperdriveLog;
+      if (!hyperLog) {
+        this.clearTarget("hyperdrive error");
+        return;
+      }
+      const tSec = (Date.now() - hyperLog.jump_start_at) / 1000;
+      if (tSec >= hyperLog.flight_duration) {
+        this.ship.position.set(hyperLog.target.x, hyperLog.target.y, hyperLog.target.z);
+        this.clearTarget("hyperdrive complete", true);
+        return;
+      }
+      this.ship.position.copy(this.computeHyperdrivePositionAtTime(hyperLog, tSec));
 
     } else if (phase === "accelerating") {
       this.setSpeed(this.state.autopilotPeakSpeed);
@@ -2251,7 +2638,10 @@ export class GameManager {
       position: this.ship.position,
       heading: this.vectors.forward,
       target: this.navTarget,
-      autopilot: this.state.autopilotPhase !== null
+      autopilot: this.state.autopilotPhase !== null && !this.isHyperdrive,
+      hyperdrivePhase: this.isHyperdrive ? this.state.autopilotPhase : null,
+      cooldownStartAt: this.isHyperdrive ? (this.hyperdriveLog?.cooldown_start_at ?? null) : null,
+      jumpStartAt: this.isHyperdrive ? (this.hyperdriveLog?.jump_start_at ?? null) : null
     });
     this.refreshWorldSummary();
   }
@@ -2282,7 +2672,11 @@ export class GameManager {
     this.updateSpeed(dt);
     if (this.state.autopilotPhase === null) {
       this.updateManualRotation(dt);
-    } else if (this.state.autopilotPhase !== "aligning" && this.state.autopilotPhase !== "stopping") {
+    } else if (
+      this.state.autopilotPhase !== "aligning" &&
+      this.state.autopilotPhase !== "stopping" &&
+      this.state.autopilotPhase !== "warping"
+    ) {
       this.updateAutopilotRollOnly(dt);
     }
     this.updatePosition(dt);
@@ -2607,6 +3001,11 @@ export class GameManager {
     this.setTarget(object.target);
   }
 
+  hyperdriveToWorldObject(object) {
+    if (!object?.target) return;
+    this.initiateHyperdrive(object.target);
+  }
+
   async processBetaVoidFromUi(object) {
     if (!object?.id || object.kind !== "betaVoid") return;
     if (!this.worldDataManager.db) {
@@ -2683,7 +3082,7 @@ export class GameManager {
     if (
       this.state.phase === "running" &&
       this.state.autopilotPhase === null &&
-      this.state.speed > 0 &&
+      this.state.speed !== 0 &&
       frameGapMs > this.config.gapDetectionThresholdMs &&
       !this._deactivationLog &&
       gapStartAt > this._lastDeactivationResolvedAt
@@ -2691,6 +3090,7 @@ export class GameManager {
       this.activeActions.clear();
       this._commitDeactivationNavLog(nowMs - frameGapMs);
       this._resolveDeactivationNavLog();
+      try { localStorage.removeItem("vz_deactivation_snapshot"); } catch (_) {}
     }
 
     const dt = Math.min(this.clock.getDelta(), 0.05);
@@ -2705,10 +3105,15 @@ export class GameManager {
     this.updateShipEngineOutput();
     this.updateHud();
     this.updateTargetingOverlay();
+
+    const warpVisualState = this.getHyperdriveWarpVisualState();
+    this.hyperdriveWarpLayer?.update(dt, warpVisualState);
+
     if (this.renderPipeline) {
       this.renderPipeline.render();
     } else {
       this.renderer.render(this.scene, this.camera);
+      this.hyperdriveWarpLayer?.render(this.camera);
     }
     this.animationFrameId = requestAnimationFrame(() => this.animate());
   }
@@ -3406,7 +3811,7 @@ export class GameManager {
     nextActions.forEach((action) => {
       const isNewAction = !previousActions.has(action);
       if (isNewAction && this.state.autopilotPhase !== null && this.shouldAutopilotCancelOnKey(action)) {
-        this.clearTarget("autopilot cancelled");
+        this.clearTarget(this.isHyperdrive ? "hyperdrive cancelled" : "autopilot cancelled");
       }
     });
 
@@ -3443,12 +3848,13 @@ export class GameManager {
 
   shouldAutopilotCancelOnKey(action) {
     if (action === "cameraToggle") return false;
+    const phase = this.state.autopilotPhase;
+    if (phase === "warping") return false;
     const isFlightKey = action === "throttleUp" || action === "throttleDown" ||
       action === "maxSpeed" || action === "stopSpeed" ||
       this.isManualControlAction(action);
     if (!isFlightKey) return false;
-    const phase = this.state.autopilotPhase;
-    if (phase === "stopping" || phase === "aligning") return true;
+    if (phase === "stopping" || phase === "aligning" || phase === "cooldown") return true;
     return action !== "rollLeft" && action !== "rollRight";
   }
 
@@ -3462,7 +3868,7 @@ export class GameManager {
     this.activeActions.add(action);
 
     if (this.state.autopilotPhase !== null && this.shouldAutopilotCancelOnKey(action)) {
-      this.clearTarget("autopilot cancelled");
+      this.clearTarget(this.isHyperdrive ? "hyperdrive cancelled" : "autopilot cancelled");
     }
 
     if (action === "throttleUp" || action === "throttleDown") {
@@ -3551,6 +3957,7 @@ export class GameManager {
     this.resourceManager.dispose();
     this.shipVisualManager?.disposeShipState(this.playerShipVisualState);
     this.shipVisualManager?.dispose();
+    this.hyperdriveWarpLayer?.dispose();
     this.renderPipeline?.dispose();
     if (this.shipReflectionTexture) {
       this.shipReflectionTexture.dispose();
