@@ -1,6 +1,5 @@
 import * as THREE from "three";
-import { ASSETS } from "./config.js";
-import { BUILDING_DEFINITIONS, RESOURCE_DEFINITIONS, WORLD_CONFIG } from "./worldDefinitions.js";
+import { WORLD_CONFIG } from "./worldDefinitions.js";
 
 const DEFAULT_WORLD_MAP_VISUALS = {
   bounds: {
@@ -48,16 +47,26 @@ export class WorldMapManager {
   constructor({
     scene,
     camera = null,
-    renderScale = WORLD_CONFIG.renderScale,
+    worldConfig = WORLD_CONFIG,
+    renderScale = null,
     renderResolutionScale = 1,
     environmentVisuals = DEFAULT_WORLD_MAP_VISUALS,
+    buildingDefinitions = null,
+    resourceDefinitions = null,
+    assetRegistry = null,
+    assetBaseUrl = null,
     onRenderMutation = null
   }) {
     this.scene = scene;
     this.camera = camera;
-    this.renderScale = renderScale;
+    this.worldConfig = worldConfig || WORLD_CONFIG;
+    this.renderScale = renderScale ?? this.worldConfig.renderScale;
     this.renderResolutionScale = renderResolutionScale;
     this.environmentVisuals = environmentVisuals;
+    this.buildingDefinitions = buildingDefinitions || {};
+    this.resourceDefinitions = resourceDefinitions || {};
+    this.assetRegistry = assetRegistry;
+    this.assetBaseUrl = assetBaseUrl;
     this.onRenderMutation = onRenderMutation;
     this.root = new THREE.Group();
     this.root.name = "world-map";
@@ -70,6 +79,7 @@ export class WorldMapManager {
     this.objectsGroup.name = "world-objects";
     this.root.add(this.sectorBoundsGroup, this.chunkBoundsGroup, this.objectsGroup);
     this.modelCache = new Map();
+    this.animationsCache = new Map();
     this.animatedObjects = [];
     this.snapshot = null;
     this.chunkBoundsMode = "all";
@@ -86,18 +96,27 @@ export class WorldMapManager {
   }
 
   async loadAssets(resourceManager) {
-    const modelEntries = Object.entries(ASSETS.worldModels);
+    const registry = this.assetRegistry?.models;
+    if (!registry) return [];
+
+    const baseUrl = this.assetBaseUrl;
+    const modelEntries = Object.entries(registry);
     const results = await Promise.allSettled(
-      modelEntries.map(([id, source]) => resourceManager.loadObjModel(`world:${id}`, source, {
-        label: `${id}.obj`,
-        targetSize: 1
-      }))
+      modelEntries.map(([id, path]) => {
+        const url = baseUrl ? new URL(path, baseUrl).href : path;
+        return resourceManager.loadGlbModel(`world:${id}`, { glb: url }, { label: `${id}.glb`, targetSize: 1 });
+      })
     );
 
     results.forEach((result, index) => {
       const id = modelEntries[index][0];
       if (result.status === "fulfilled") {
         this.modelCache.set(id, result.value.object);
+        if (result.value.animations?.length) {
+          this.animationsCache.set(id, result.value.animations);
+        }
+      } else {
+        console.warn(`[world-assets] ${id} rejected:`, result.reason?.message ?? result.reason);
       }
     });
 
@@ -181,7 +200,7 @@ export class WorldMapManager {
 
     const chunk = this.getChunkAtDataPosition(dataPosition);
     const chunkId = this.getChunkId(chunk);
-    const radius = WORLD_CONFIG.renderChunkRadius ?? 1;
+    const radius = this.worldConfig.renderChunkRadius ?? 1;
     if (!force && this.lastVisibleChunkId === chunkId && this.lastVisibleChunkRadius === radius) {
       return this.visibleChunkIds.size;
     }
@@ -335,9 +354,10 @@ export class WorldMapManager {
   }
 
   createResourceMesh(resourceNode) {
-    const definition = RESOURCE_DEFINITIONS[resourceNode.resource_id || resourceNode.type];
+    const definition = this.resourceDefinitions[resourceNode.resource_id || resourceNode.type];
     if (!definition) return null;
     const object = this.createVisualObject(resourceNode.model_id, definition.visual);
+    const mixer = object.userData.__mixer || null;
     const cachedPosition = this.getFixedObjectPosition(resourceNode.resource_instance_id);
     object.position.copy(cachedPosition.renderPosition);
     object.userData = {
@@ -351,14 +371,15 @@ export class WorldMapManager {
       chunk_center_position: cachedPosition.chunkCenterPosition,
       chunk_center_relative_position: cachedPosition.chunkCenterRelativePosition
     };
-    this.animatedObjects.push({ object, spin: 0.08 + this.animatedObjects.length * 0.012 });
+    this.animatedObjects.push({ object, spin: 0.08 + this.animatedObjects.length * 0.012, mixer });
     return object;
   }
 
   createBuildingMesh(building) {
-    const definition = BUILDING_DEFINITIONS[building.building_id];
+    const definition = this.buildingDefinitions[building.building_id];
     if (!definition) return null;
     const object = this.createVisualObject(building.model_id, definition.visual);
+    const mixer = object.userData.__mixer || null;
     const cachedPosition = this.getFixedObjectPosition(building.building_instance_id);
     object.position.copy(cachedPosition.renderPosition);
     object.userData = {
@@ -372,6 +393,7 @@ export class WorldMapManager {
       chunk_center_position: cachedPosition.chunkCenterPosition,
       chunk_center_relative_position: cachedPosition.chunkCenterRelativePosition
     };
+    if (mixer) this.animatedObjects.push({ object, spin: 0, mixer });
     return object;
   }
 
@@ -750,23 +772,23 @@ export class WorldMapManager {
 
   getChunkCenterFromPosition(position, chunk) {
     const chunkPosition = chunk || {
-      x: Math.floor(position.x / WORLD_CONFIG.chunkSize.x),
-      y: Math.floor(position.y / WORLD_CONFIG.chunkSize.y),
-      z: Math.floor(position.z / WORLD_CONFIG.chunkSize.z)
+      x: Math.floor(position.x / this.worldConfig.chunkSize.x),
+      y: Math.floor(position.y / this.worldConfig.chunkSize.y),
+      z: Math.floor(position.z / this.worldConfig.chunkSize.z)
     };
 
     return {
-      x: chunkPosition.x * WORLD_CONFIG.chunkSize.x + WORLD_CONFIG.chunkSize.x / 2,
-      y: chunkPosition.y * WORLD_CONFIG.chunkSize.y + WORLD_CONFIG.chunkSize.y / 2,
-      z: chunkPosition.z * WORLD_CONFIG.chunkSize.z + WORLD_CONFIG.chunkSize.z / 2
+      x: chunkPosition.x * this.worldConfig.chunkSize.x + this.worldConfig.chunkSize.x / 2,
+      y: chunkPosition.y * this.worldConfig.chunkSize.y + this.worldConfig.chunkSize.y / 2,
+      z: chunkPosition.z * this.worldConfig.chunkSize.z + this.worldConfig.chunkSize.z / 2
     };
   }
 
   getChunkAtDataPosition(position) {
     return {
-      x: Math.floor(position.x / WORLD_CONFIG.chunkSize.x),
-      y: Math.floor(position.y / WORLD_CONFIG.chunkSize.y),
-      z: Math.floor(position.z / WORLD_CONFIG.chunkSize.z)
+      x: Math.floor(position.x / this.worldConfig.chunkSize.x),
+      y: Math.floor(position.y / this.worldConfig.chunkSize.y),
+      z: Math.floor(position.z / this.worldConfig.chunkSize.z)
     };
   }
 
@@ -787,6 +809,14 @@ export class WorldMapManager {
     });
     object.scale.setScalar(visual.scale);
     this.applyMaterial(object, visual);
+
+    const clips = this.animationsCache.get(modelId);
+    if (clips?.length) {
+      const mixer = new THREE.AnimationMixer(object);
+      clips.forEach((clip) => mixer.clipAction(clip).play());
+      object.userData.__mixer = mixer;
+    }
+
     return object;
   }
 
@@ -952,6 +982,7 @@ export class WorldMapManager {
 
     for (const item of this.animatedObjects) {
       item.object.rotation.y += dt * item.spin;
+      item.mixer?.update(dt);
       if (!item.betaVoidMaterials) continue;
       const time = performance.now() * 0.001;
       item.betaVoidMaterials.forEach((material) => {

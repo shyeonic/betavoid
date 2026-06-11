@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "effects": {
+    "engine_light_default": {
+      "id": "engine_light_default",
+      "kind": "emissive_light",
+      "label": "Engine Light",
+      "settings": {
+        "color": "#9b9bff",
+        "emissiveIntensity": 12,
+        "lightRangeScale": 2,
+        "minLightRange": 0.18,
+        "maxLightRange": 0.95,
+        "glowSpriteSpreadScale": 1.5,
+        "glowSpriteOpacity": 0.58,
+        "pointLightEnabled": true,
+        "pointIntensity": 0.72,
+        "pointRangeScale": 0.86
+      }
+    },
+    "head_light_default": {
+      "id": "head_light_default",
+      "kind": "emissive_light",
+      "label": "Head Light",
+      "settings": {
+        "color": "#ff0000",
+        "emissiveIntensity": 12,
+        "lightRangeScale": 2,
+        "minLightRange": 0.52,
+        "maxLightRange": 1.45,
+        "glowSpriteSpreadScale": 1.2,
+        "glowSpriteOpacity": 0.38,
+        "pointLightEnabled": false,
+        "pointIntensity": 0.52,
+        "pointRangeScale": 0.82
+      }
+    },
+    "aux_light_default": {
+      "id": "aux_light_default",
+      "kind": "emissive_light",
+      "label": "Aux Light",
+      "settings": {
+        "color": "#9b9bff",
+        "emissiveIntensity": 3,
+        "lightRangeScale": 2,
+        "minLightRange": 0.52,
+        "maxLightRange": 1.45,
+        "glowSpriteSpreadScale": 0.8,
+        "glowSpriteOpacity": 0.28,
+        "pointLightEnabled": false,
+        "pointIntensity": 0.2,
+        "pointRangeScale": 0.2
+      }
+    }
+  }
+}

@@ -1,0 +1,231 @@
+{
+  "version": 1,
+  "resources": {
+    "rss_001": {
+      "id": "rss_001",
+      "producesItemId": "item_001",
+      "nodeType": "PERMANENT",
+      "totalCapacity": 1000000,
+      "spawnLimitPerCycle": 200000,
+      "nodeCapacityRange": [
+        10000,
+        20000
+      ],
+      "sectorRatio": 0.3,
+      "baseYieldPerSec": 5,
+      "visual": {
+        "category": "hydrite_mineral",
+        "modelId": "water_01",
+        "color": "#ffffff",
+        "emissive": "#17345e",
+        "emissiveIntensity": 0.08,
+        "scale": 5
+      }
+    },
+    "rss_002": {
+      "id": "rss_002",
+      "producesItemId": "item_002",
+      "nodeType": "PERMANENT",
+      "totalCapacity": 600000,
+      "spawnLimitPerCycle": 120000,
+      "nodeCapacityRange": [
+        4000,
+        8000
+      ],
+      "sectorRatio": 0.4,
+      "baseYieldPerSec": 4,
+      "visual": {
+        "category": "mineral",
+        "modelId": "ore_01",
+        "color": "#ffffff",
+        "emissive": "#17345e",
+        "emissiveIntensity": 0.08,
+        "scale": 5
+      }
+    },
+    "rss_003": {
+      "id": "rss_003",
+      "producesItemId": "item_003",
+      "nodeType": "PERMANENT",
+      "totalCapacity": 400000,
+      "spawnLimitPerCycle": 80000,
+      "nodeCapacityRange": [
+        3000,
+        6000
+      ],
+      "sectorRatio": 0.4,
+      "baseYieldPerSec": 6,
+      "visual": {
+        "category": "mineral",
+        "modelId": "ore_01",
+        "color": "#ffffff",
+        "emissive": "#17345e",
+        "emissiveIntensity": 0.08,
+        "scale": 5
+      }
+    },
+    "rss_004": {
+      "id": "rss_004",
+      "producesItemId": "item_004",
+      "nodeType": "PERMANENT",
+      "totalCapacity": 600000,
+      "spawnLimitPerCycle": 120000,
+      "nodeCapacityRange": [
+        5000,
+        10000
+      ],
+      "sectorRatio": 0.5,
+      "baseYieldPerSec": 7,
+      "visual": {
+        "category": "mineral",
+        "modelId": "ore_01",
+        "color": "#ffffff",
+        "emissive": "#17345e",
+        "emissiveIntensity": 0.08,
+        "scale": 5
+      }
+    },
+    "rss_005": {
+      "id": "rss_005",
+      "producesItemId": "item_005",
+      "nodeType": "PERMANENT",
+      "totalCapacity": 300000,
+      "spawnLimitPerCycle": 30000,
+      "nodeCapacityRange": [
+        6000,
+        10000
+      ],
+      "sectorRatio": 0.2,
+      "baseYieldPerSec": 2,
+      "visual": {
+        "category": "mineral",
+        "modelId": "ore_01",
+        "color": "#ffffff",
+        "emissive": "#17345e",
+        "emissiveIntensity": 0.08,
+        "scale": 5
+      }
+    },
+    "rss_006": {
+      "id": "rss_006",
+      "producesItemId": "item_006",
+      "nodeType": "PERMANENT",
+      "totalCapacity": 200000,
+      "spawnLimitPerCycle": 40000,
+      "nodeCapacityRange": [
+        3000,
+        6000
+      ],
+      "sectorRatio": 0.3,
+      "baseYieldPerSec": 5.5,
+      "visual": {
+        "category": "mineral",
+        "modelId": "ore_01",
+        "color": "#ffffff",
+        "emissive": "#17345e",
+        "emissiveIntensity": 0.08,
+        "scale": 5
+      }
+    },
+    "rss_007": {
+      "id": "rss_007",
+      "producesItemId": "item_007",
+      "nodeType": "DECAYING",
+      "totalCapacity": 800000,
+      "spawnLimitPerCycle": 40000,
+      "nodeCapacityRange": [
+        3000,
+        6000
+      ],
+      "sectorRatio": 0.4,
+      "baseYieldPerSec": 8,
+      "visual": {
+        "category": "gas",
+        "modelId": "gas_01",
+        "color": "#ffffff",
+        "emissive": "#17345e",
+        "emissiveIntensity": 0.08,
+        "scale": 5
+      },
+      "lifetimeRange": [
+        432000000,
+        864000000
+      ]
+    },
+    "rss_008": {
+      "id": "rss_008",
+      "producesItemId": "item_008",
+      "nodeType": "DECAYING",
+      "totalCapacity": 600000,
+      "spawnLimitPerCycle": 35000,
+      "nodeCapacityRange": [
+        2000,
+        4000
+      ],
+      "sectorRatio": 0.2,
+      "baseYieldPerSec": 7.5,
+      "visual": {
+        "category": "gas",
+        "modelId": "gas_01",
+        "color": "#ffffff",
+        "emissive": "#17345e",
+        "emissiveIntensity": 0.08,
+        "scale": 5
+      },
+      "lifetimeRange": [
+        432000000,
+        864000000
+      ]
+    },
+    "rss_009": {
+      "id": "rss_009",
+      "producesItemId": "item_009",
+      "nodeType": "DECAYING",
+      "totalCapacity": 300000,
+      "spawnLimitPerCycle": 30000,
+      "nodeCapacityRange": [
+        2000,
+        4000
+      ],
+      "sectorRatio": 0.1,
+      "baseYieldPerSec": 3,
+      "visual": {
+        "category": "gas",
+        "modelId": "gas_01",
+        "color": "#ffffff",
+        "emissive": "#17345e",
+        "emissiveIntensity": 0.08,
+        "scale": 5
+      },
+      "lifetimeRange": [
+        259200000,
+        518400000
+      ]
+    },
+    "rss_010": {
+      "id": "rss_010",
+      "producesItemId": "item_010",
+      "nodeType": "DECAYING",
+      "totalCapacity": 100000,
+      "spawnLimitPerCycle": 20000,
+      "nodeCapacityRange": [
+        2000,
+        2000
+      ],
+      "sectorRatio": 0.1,
+      "baseYieldPerSec": 1.5,
+      "visual": {
+        "category": "gas",
+        "modelId": "gas_01",
+        "color": "#ffffff",
+        "emissive": "#17345e",
+        "emissiveIntensity": 0.08,
+        "scale": 5
+      },
+      "lifetimeRange": [
+        259200000,
+        518400000
+      ]
+    }
+  }
+}

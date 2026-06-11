@@ -1613,6 +1613,195 @@
       text-transform: uppercase;
     }
 
+    .readout-location {
+      min-width: 10vh;
+      max-width: 26vh;
+      font-size: 1.3vh;
+      text-transform: uppercase;
+    }
+
+    .minimap-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 16;
+      display: none;
+      place-items: center;
+      padding: clamp(1.6vh, 4vw, 4vh);
+      background: var(--backdrop-bg);
+      backdrop-filter: blur(var(--backdrop-blur));
+      pointer-events: auto;
+    }
+
+    .minimap-backdrop.open {
+      display: grid;
+    }
+
+    .minimap-panel {
+      position: relative;
+      width: min(110vh, 100%);
+      height: 72vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 0;
+      border: 0.12vh solid var(--line);
+      border-radius: 1.1vh;
+      background: var(--panel-strong);
+      box-shadow: 0 2.4vh 7vh var(--list-panel-shadow);
+    }
+
+    .minimap-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.2vh;
+      min-height: 5.6vh;
+      padding: 1vh 1.2vh 1vh 1.6vh;
+    }
+
+    .minimap-title {
+      margin: 0;
+      color: var(--line);
+      font-size: 2.4vh;
+      font-weight: normal;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .minimap-stage {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .minimap-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      opacity: 1;
+      transition: opacity 260ms ease;
+      will-change: opacity;
+    }
+
+    .minimap-stage.map-fading .minimap-canvas {
+      opacity: 0;
+    }
+
+    .minimap-stage.map-transitioning .minimap-canvas {
+      pointer-events: none;
+    }
+
+    .minimap-topbar {
+      position: absolute;
+      top: 1.2vh;
+      left: 1.2vh;
+      right: 1.2vh;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1vh;
+      pointer-events: none;
+    }
+
+    .minimap-nav-strip,
+    .minimap-view-strip {
+      display: flex;
+      align-items: center;
+      gap: 0.8vh;
+      min-height: 3.4vh;
+      padding: 0 1vh;
+      border: none;
+      background: var(--panel);
+      pointer-events: auto;
+    }
+
+    .minimap-nav-strip button,
+    .minimap-view-strip button {
+      min-height: 2.6vh;
+      padding: 0 1vh;
+      border: 0.12vh solid var(--line);
+      border-radius: 0.6vh;
+      background: transparent;
+      color: var(--muted);
+      font-size: 1.1vh;
+      font-weight: 800;
+    }
+
+    .minimap-view-strip button {
+      width: 5vh;
+      padding: 0;
+    }
+
+    .minimap-view-strip button.active {
+      border-color: var(--navigate-border);
+      background: var(--navigate-bg);
+      color: var(--text);
+    }
+
+    .minimap-mode-label {
+      max-width: 30vh;
+      overflow: hidden;
+      color: var(--text);
+      font-size: 1.25vh;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .minimap-object-toast {
+      position: absolute;
+      z-index: 3;
+      left: 50%;
+      bottom: 1.6vh;
+      min-width: 26vh;
+      max-width: calc(100% - 4.4vh);
+      min-height: 4.4vh;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.2vh;
+      padding: 0.7vh 0.7vh 0.7vh 1.3vh;
+      border: 0.12vh solid var(--bubble-border);
+      border-radius: 1.1vh;
+      background: var(--bubble-bg);
+      box-shadow: 0 1.1vh 3.2vh rgba(66, 139, 190, 0.2);
+      opacity: 0;
+      transform: translateX(-50%) translateY(1.1vh);
+      transition: opacity 180ms ease, transform 180ms ease;
+      pointer-events: none;
+    }
+
+    .minimap-object-toast.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+      pointer-events: auto;
+    }
+
+    .minimap-toast-name {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--text);
+      font-size: 1.35vh;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .minimap-toast-actions {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 0.6vh;
+    }
+
+    .minimap-toast-actions .object-bubble-button {
+      height: 3vh;
+      padding: 0 1.2vh;
+      font-size: 1.2vh;
+    }
+
     .object-list-close {
       width: 3.8vh;
       height: 3.8vh;
@@ -2337,18 +2526,9 @@
       </div>
     </div>
 
-    <div class="readout" role="button" tabindex="0" aria-live="polite" aria-controls="targetForm" aria-expanded="false">
+    <div class="readout" role="button" tabindex="0" aria-live="polite" aria-controls="minimapPopup" aria-expanded="false">
       <div class="readout-row">
-        <span class="readout-axis">X</span>
-        <span class="readout-value" id="positionXValue">0</span>
-      </div>
-      <div class="readout-row">
-        <span class="readout-axis">Y</span>
-        <span class="readout-value" id="positionYValue">0</span>
-      </div>
-      <div class="readout-row">
-        <span class="readout-axis">Z</span>
-        <span class="readout-value" id="positionZValue">0</span>
+        <span class="readout-value readout-location" id="locationValue">UNKNOWN</span>
       </div>
     </div>
 
@@ -2492,6 +2672,41 @@
               <span class="player-ship-card-label" data-i18n="ui.settings.gameplay.ship02">Ship II</span>
               <span class="player-ship-card-id">ship_02</span>
             </button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="minimap-backdrop" id="minimapPopup" aria-hidden="true" hidden inert>
+      <section class="minimap-panel" role="dialog" aria-modal="true" aria-labelledby="minimapTitle">
+        <header class="minimap-header">
+          <h2 class="minimap-title" id="minimapTitle" data-i18n="ui.map.title">Map</h2>
+          <button class="object-list-close" id="minimapCloseButton" type="button" aria-label="Close" title="Close">
+            <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
+          </button>
+        </header>
+        <div class="minimap-stage" id="minimapStage">
+          <canvas class="minimap-canvas" id="minimapCanvas"></canvas>
+          <div class="minimap-topbar">
+            <div class="minimap-nav-strip">
+              <button id="minimapBackButton" type="button" disabled data-i18n="ui.map.back">Back</button>
+              <span class="minimap-mode-label" id="minimapModeLabel" data-i18n="ui.map.galaxy">Galaxy</span>
+            </div>
+            <div class="minimap-view-strip" id="minimapViewStrip" role="group" aria-label="Map view">
+              <button type="button" data-minimap-view="iso" class="active">ISO</button>
+              <button type="button" data-minimap-view="top">TOP</button>
+              <button type="button" data-minimap-view="front">FRONT</button>
+              <button type="button" data-minimap-view="side">SIDE</button>
+            </div>
+          </div>
+          <div class="minimap-object-toast" id="minimapObjectToast" aria-hidden="true">
+            <div class="minimap-toast-name" id="minimapToastName"></div>
+            <div class="minimap-toast-actions">
+              <button class="object-bubble-button object-select-button" id="minimapToastSelectButton" type="button"
+                data-i18n="ui.scanner.select">Select</button>
+              <button class="object-bubble-button" id="minimapToastDetailButton" type="button"
+                data-i18n="ui.scanner.detail">Detail</button>
+            </div>
           </div>
         </div>
       </section>

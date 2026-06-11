@@ -1,5 +1,17 @@
 import { ASSETS } from "./config.js";
 
+function resolveAudioSource(source, baseUrl) {
+  try {
+    return new URL(source, baseUrl).href;
+  } catch {
+    return source;
+  }
+}
+
+function inferAudioMode(id) {
+  return id.startsWith("bgm_") ? "media" : "buffer";
+}
+
 class SoundAsset {
   constructor({ id, source, mode, audio = null, buffer = null }) {
     this.id = id;
@@ -139,7 +151,11 @@ class BufferSoundInstance {
 }
 
 export class SoundManager {
-  constructor(resourceManager, { volume = 0.55 } = {}) {
+  constructor(resourceManager, {
+    volume = 0.55,
+    audioRegistry = {},
+    assetBaseUrl = typeof window !== "undefined" ? window.location.href : import.meta.url
+  } = {}) {
     this.resourceManager = resourceManager;
     this.volume = volume;
     this.assets = new Map();
@@ -149,7 +165,8 @@ export class SoundManager {
     this.preloadPromise = null;
     this.playPromise = null;
     this.currentBgmId = null;
-    this.pendingBgmId = null;
+    this.desiredBgmId = null;
+    this._bgmTransition = null;
     this.disposed = false;
     this.catalog = new Map([
       ["bgm_main_01", {
@@ -169,12 +186,26 @@ export class SoundManager {
         mode: "buffer"
       }]
     ]);
+    this.applyAudioRegistry(audioRegistry, assetBaseUrl);
     this.state = {
       ready: false,
       playing: false,
       muted: true,
       error: null
     };
+  }
+
+  applyAudioRegistry(audioRegistry, assetBaseUrl) {
+    if (!audioRegistry || typeof audioRegistry !== "object") return;
+
+    for (const [id, source] of Object.entries(audioRegistry)) {
+      if (!id || !source) continue;
+      const current = this.catalog.get(id);
+      this.catalog.set(id, {
+        source: resolveAudioSource(source, assetBaseUrl),
+        mode: current?.mode || inferAudioMode(id)
+      });
+    }
   }
 
   async preload() {
@@ -292,12 +323,26 @@ export class SoundManager {
     return this.setBgm(id, { restart: true });
   }
 
-  async setBgm(id = "bgm_main_01", { restart = true } = {}) {
-    if (this.disposed) return false;
-    if (this.currentBgmId === id && this.bgmInstance?.playing) return true;
-    if (this.pendingBgmId === id && this.playPromise) return this.playPromise;
+  setBgm(id = "bgm_main_01", { restart = true } = {}) {
+    if (this.disposed) return Promise.resolve(false);
 
-    this.pendingBgmId = id;
+    // 단일 진실 공급원: 가장 최근에 요청된 BGM이 항상 목표가 된다.
+    this.desiredBgmId = id;
+
+    // 전이를 단일 프로미스 체인으로 직렬화한다. 동시에 두 개의 play()가
+    // 뜨지 않으므로 서로 다른 <audio> 엘리먼트가 중첩 재생되는 경합이 사라진다.
+    this._bgmTransition = (this._bgmTransition ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => this._applyBgm({ restart }));
+
+    return this._bgmTransition;
+  }
+
+  async _applyBgm({ restart = true } = {}) {
+    if (this.disposed) return false;
+
+    const id = this.desiredBgmId;                       // 큐가 풀리는 시점의 최신 목표
+    if (this.currentBgmId === id && this.bgmInstance?.playing) return true;
 
     try {
       const previousInstance = this.bgmInstance;
@@ -309,8 +354,17 @@ export class SoundManager {
         exclusive: true
       });
       if (!instance) return false;
+
+      // await 도중 목표가 또 바뀌었다면 이 인스턴스는 즉시 폐기한다(supersede).
+      if (this.disposed || this.desiredBgmId !== id) {
+        instance.dispose();
+        return false;
+      }
+
       if (previousInstance && previousInstance !== instance) previousInstance.dispose();
       this.bgmInstance = instance;
+      // 배타성 불변식: 어떤 경로로든 다른 BGM 인스턴스가 남아 있으면 모두 정리한다.
+      this._enforceSingleBgm(instance);
       window.__voidZeroActiveBgm = instance;
       window.__voidZeroActiveBgmId = id;
       this.currentBgmId = id;
@@ -322,8 +376,13 @@ export class SoundManager {
       this.state.playing = false;
       this.state.error = error instanceof Error ? error.message : String(error);
       return false;
-    } finally {
-      if (this.pendingBgmId === id) this.pendingBgmId = null;
+    }
+  }
+
+  _enforceSingleBgm(keep) {
+    for (const instance of Array.from(this.instances)) {
+      if (instance === keep) continue;
+      if (instance instanceof MediaSoundInstance) instance.dispose();
     }
   }
 
@@ -405,7 +464,8 @@ export class SoundManager {
 
     this.bgmInstance = null;
     this.currentBgmId = null;
-    this.pendingBgmId = null;
+    this.desiredBgmId = null;
+    this._bgmTransition = null;
     this.preloadPromise = null;
     this.playPromise = null;
     this.state.ready = false;

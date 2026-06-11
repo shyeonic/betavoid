@@ -1,0 +1,2062 @@
+<!DOCTYPE html>
+<html lang="en" data-environment-mode="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Void Zero Minimap UX Test</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    :root {
+      color-scheme: dark;
+      --bg: #030811;
+      --panel: rgba(5, 13, 25, 0.9);
+      --panel-soft: rgba(11, 24, 42, 0.74);
+      --line: rgba(124, 197, 255, 0.2);
+      --line-strong: rgba(124, 197, 255, 0.4);
+      --text: #d8edff;
+      --muted: #7da6bf;
+      --accent: #63d2ff;
+      --accent-soft: rgba(99, 210, 255, 0.12);
+      --danger: #ff4d9a;
+      --ok: #7ee081;
+      --shadow: rgba(0, 0, 0, 0.42);
+    }
+
+    :root[data-environment-mode="light"] {
+      color-scheme: light;
+      --bg: #f3fbff;
+      --panel: rgba(244, 250, 255, 0.92);
+      --panel-soft: rgba(255, 255, 255, 0.74);
+      --line: rgba(44, 106, 146, 0.22);
+      --line-strong: rgba(44, 106, 146, 0.38);
+      --text: #10283c;
+      --muted: #587385;
+      --accent: #117fae;
+      --accent-soft: rgba(17, 127, 174, 0.1);
+      --danger: #c22368;
+      --ok: #1b9052;
+      --shadow: rgba(74, 126, 164, 0.22);
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 12px;
+      letter-spacing: 0;
+    }
+
+    button,
+    input {
+      font: inherit;
+      color: inherit;
+    }
+
+    button {
+      min-height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-soft);
+      color: var(--text);
+      cursor: pointer;
+      transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+    }
+
+    button:hover:not(:disabled) {
+      border-color: var(--line-strong);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    button:disabled {
+      opacity: 0.42;
+      cursor: not-allowed;
+    }
+
+    input[type="checkbox"] {
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      accent-color: var(--accent);
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 270px minmax(0, 1fr) 270px;
+      width: 100%;
+      height: 100%;
+      background:
+        radial-gradient(circle at 50% 44%, rgba(99, 210, 255, 0.08), transparent 34%),
+        var(--bg);
+    }
+
+    .side {
+      position: relative;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 20px 60px var(--shadow);
+    }
+
+    .side.left {
+      border-right: 1px solid var(--line);
+    }
+
+    .side.right {
+      border-left: 1px solid var(--line);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 54px;
+      padding: 0 15px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand-title {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .brand-title strong {
+      overflow: hidden;
+      color: var(--accent);
+      font-size: 13px;
+      letter-spacing: 0.14em;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .brand-title span {
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 10px;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .icon-button {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      flex: 0 0 30px;
+      font-weight: 800;
+    }
+
+    .panel-scroll {
+      min-height: 0;
+      overflow: auto;
+      padding: 15px;
+    }
+
+    .panel-scroll::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .panel-scroll::-webkit-scrollbar-thumb {
+      background: var(--line-strong);
+      border-radius: 99px;
+    }
+
+    .section {
+      padding: 0 0 16px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .section:last-child {
+      border-bottom: 0;
+      margin-bottom: 0;
+    }
+
+    .section-title {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      margin-bottom: 7px;
+    }
+
+    .wide-button {
+      width: 100%;
+      color: var(--accent);
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .toggle-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 26px;
+    }
+
+    .toggle span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .sector-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .sector-button {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 34px;
+      padding: 0 9px;
+      text-align: left;
+    }
+
+    .sector-button span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .sector-button.active {
+      border-color: var(--line-strong);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .count-pill {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      font-size: 10px;
+    }
+
+    .stage {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    #minimap-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      opacity: 1;
+      transition: opacity 260ms ease;
+      will-change: opacity;
+    }
+
+    .stage.map-fading #minimap-canvas {
+      opacity: 0;
+    }
+
+    .stage.map-transitioning #minimap-canvas {
+      pointer-events: none;
+    }
+
+    .topbar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .status-strip,
+    .view-strip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 16px 42px var(--shadow);
+      pointer-events: auto;
+    }
+
+    .view-strip button {
+      width: 46px;
+      height: 26px;
+      min-height: 26px;
+      padding: 0;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .view-strip button.active {
+      border-color: var(--line-strong);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 14px var(--accent);
+      flex: 0 0 7px;
+    }
+
+    #status-text {
+      overflow: hidden;
+      max-width: min(52vw, 520px);
+      color: var(--muted);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .hud {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      z-index: 2;
+      max-width: calc(100% - 24px);
+      min-height: 34px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--muted);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 16px 42px var(--shadow);
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 11px;
+      pointer-events: none;
+    }
+
+    .hud strong {
+      color: var(--accent);
+      font-weight: 800;
+    }
+
+    .loading {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      display: grid;
+      place-items: center;
+      background: rgba(1, 5, 12, 0.82);
+      backdrop-filter: blur(8px);
+      transition: opacity 180ms ease, visibility 180ms ease;
+    }
+
+    .loading.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .loading-inner {
+      display: grid;
+      gap: 12px;
+      justify-items: center;
+      color: var(--accent);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .loader-ring {
+      width: 44px;
+      height: 44px;
+      border: 1px solid rgba(99, 210, 255, 0.22);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 900ms linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .stat {
+      min-width: 0;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+    }
+
+    .stat-label {
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      margin-top: 4px;
+      overflow: hidden;
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .detail {
+      display: grid;
+      gap: 10px;
+    }
+
+    .detail-row {
+      display: grid;
+      grid-template-columns: 86px minmax(0, 1fr);
+      gap: 8px;
+      min-height: 18px;
+      align-items: start;
+    }
+
+    .detail-key {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .detail-value {
+      min-width: 0;
+      color: var(--text);
+      word-break: break-word;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      max-width: 100%;
+      padding: 0 7px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--accent-soft);
+      color: var(--text);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 1100px) {
+      .app {
+        grid-template-columns: 250px minmax(0, 1fr);
+      }
+
+      .side.right {
+        position: absolute;
+        right: 0;
+        top: 54px;
+        bottom: 0;
+        width: min(270px, 42vw);
+      }
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(0, 1fr) auto;
+      }
+
+      .side.left {
+        grid-row: 2;
+        max-height: 42vh;
+        border-top: 1px solid var(--line);
+        border-right: 0;
+      }
+
+      .side.right {
+        display: none;
+      }
+
+      .brand {
+        min-height: 44px;
+      }
+
+      .panel-scroll {
+        padding: 12px;
+      }
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="app">
+    <aside class="side left">
+      <header class="brand">
+        <div class="brand-title">
+          <strong>Void Zero</strong>
+          <span id="mode-label">Galaxy sectors</span>
+        </div>
+        <button id="theme-toggle" class="icon-button" type="button" title="Theme">L</button>
+      </header>
+
+      <div class="panel-scroll">
+        <section class="section">
+          <h2 class="section-title">Navigation</h2>
+          <div class="button-row">
+            <button id="back-button" type="button" disabled>Back</button>
+            <button id="fit-button" type="button">Fit</button>
+          </div>
+          <button id="home-button" class="wide-button" type="button">Galaxy Map</button>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">View</h2>
+          <div class="toggle-list">
+            <label class="toggle"><span>Labels</span><input id="toggle-labels" type="checkbox" /></label>
+            <label class="toggle"><span>Bounds</span><input id="toggle-bounds" type="checkbox" checked /></label>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">Sector Objects</h2>
+          <div class="toggle-list">
+            <label class="toggle"><span>Buildings</span><input id="toggle-buildings" type="checkbox" checked /></label>
+            <label class="toggle"><span>Resources</span><input id="toggle-resources" type="checkbox" checked /></label>
+            <label class="toggle"><span>Anomalies</span><input id="toggle-anomalies" type="checkbox" checked /></label>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">Sectors</h2>
+          <div id="sector-list" class="sector-list"></div>
+        </section>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <div class="topbar">
+        <div class="status-strip">
+          <span class="status-dot"></span>
+          <span id="status-text">Loading game data</span>
+        </div>
+        <div class="view-strip">
+          <button type="button" data-view="iso" class="active">ISO</button>
+          <button type="button" data-view="top">TOP</button>
+          <button type="button" data-view="front">FRONT</button>
+          <button type="button" data-view="side">SIDE</button>
+        </div>
+      </div>
+
+      <canvas id="minimap-canvas"></canvas>
+      <div id="cursor-hud" class="hud"><strong>...</strong></div>
+      <div id="loading" class="loading">
+        <div class="loading-inner">
+          <div class="loader-ring"></div>
+          <div id="loading-text">Loading game data</div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="side right">
+      <header class="brand">
+        <div class="brand-title">
+          <strong>Intel</strong>
+          <span id="dataset-label">gamedata</span>
+        </div>
+      </header>
+
+      <div class="panel-scroll">
+        <section class="section">
+          <h2 class="section-title">Counts</h2>
+          <div class="stat-grid">
+            <div class="stat"><div class="stat-label">Sectors</div><div id="stat-sectors" class="stat-value">-</div></div>
+            <div class="stat"><div class="stat-label">Visible</div><div id="stat-visible" class="stat-value">-</div></div>
+            <div class="stat"><div class="stat-label">Buildings</div><div id="stat-buildings" class="stat-value">-</div></div>
+            <div class="stat"><div class="stat-label">Resources</div><div id="stat-resources" class="stat-value">-</div></div>
+            <div class="stat"><div class="stat-label">Anomaly</div><div id="stat-anomalies" class="stat-value">-</div></div>
+            <div class="stat"><div class="stat-label">Clusters</div><div id="stat-clusters" class="stat-value">-</div></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">Selection</h2>
+          <div id="selection-detail" class="detail"></div>
+        </section>
+      </div>
+    </aside>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { loadGameData } from "../js/GameDataLoader.js";
+    import { WorldDataManager } from "../js/WorldDataManager.js";
+    import { SPACE_ENVIRONMENT_PRESETS } from "../js/definitions/environmentDefinitions.js";
+
+    const TEST_WORLD_DB_NAME = "void-zero-minimap-test";
+    const TEST_WORLD_SEED = 20260607;
+    const GALAXY_SCALE = 4.8;
+    const SECTOR_MAP_SIZE = 150;
+    const MAP_FRAME_PADDING = 1.08;
+    const ISO_POLAR_ANGLE = Math.acos(1 / Math.sqrt(3));
+    const ISO_DEFAULT_AZIMUTH = Math.PI / 4;
+    const ISO_DRAG_ROTATION_SPEED = 0.006;
+    const MARKER_COLOR = "#c8f5ff";
+    const SELECTED_COLOR = "#63d2ff";
+    const MUTED_COLOR = "#39586c";
+
+    const canvas = document.getElementById("minimap-canvas");
+    const stage = canvas.parentElement;
+    const loading = document.getElementById("loading");
+    const loadingText = document.getElementById("loading-text");
+    const statusText = document.getElementById("status-text");
+    const cursorHud = document.getElementById("cursor-hud");
+    const selectionDetail = document.getElementById("selection-detail");
+    const sectorList = document.getElementById("sector-list");
+
+    const state = {
+      data: null,
+      worldManager: null,
+      snapshot: null,
+      mode: "galaxy",
+      view: "iso",
+      currentClusterId: null,
+      currentSectorId: null,
+      selected: null,
+      hovered: null,
+      showLabels: false,
+      showBounds: true,
+      showBuildings: true,
+      showResources: true,
+      showAnomalies: true,
+      theme: "dark",
+      baseOrthoSize: 180,
+      focus: {
+        center: new THREE.Vector3(),
+        radius: 120
+      }
+    };
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -2400, 2400);
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: false,
+      preserveDrawingBuffer: true
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    let isoAzimuth = ISO_DEFAULT_AZIMUTH;
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = false;
+    controls.enableRotate = false;
+    controls.enableZoom = false;
+    controls.enablePan = false;
+    configureControlsForView();
+
+    const root = new THREE.Group();
+    const boundsGroup = new THREE.Group();
+    const markerGroup = new THREE.Group();
+    const labelGroup = new THREE.Group();
+    root.add(boundsGroup, markerGroup, labelGroup);
+    scene.add(root);
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const pickables = [];
+    let resizeQueued = false;
+    let cameraAnim = null;
+    let cameraInitialized = false;
+    let mapTransitioning = false;
+    let isoDrag = null;
+    let suppressNextClick = false;
+    let zoomAnim = null;
+    let wheelNavCooldown = false;
+
+    // 줌인 시 진입할 기본 대상 인덱스 (함선 데이터 없을 때 사용; 추후 함선 위치로 대체)
+    const DEFAULT_ZOOM_CLUSTER_INDEX = 1;  // 0-based (1 = 두 번째 클러스터 = "2번")
+    const DEFAULT_ZOOM_SECTOR_INDEX = 0;   // 0 = 첫 번째 섹터
+
+    const materials = {
+      marker: new THREE.MeshBasicMaterial({
+        color: MARKER_COLOR,
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: false,
+        toneMapped: false
+      }),
+      muted: new THREE.MeshBasicMaterial({
+        color: MUTED_COLOR,
+        transparent: true,
+        opacity: 0.38,
+        depthWrite: false,
+        toneMapped: false
+      }),
+      selected: new THREE.MeshBasicMaterial({
+        color: SELECTED_COLOR,
+        transparent: true,
+        opacity: 1,
+        depthWrite: false,
+        toneMapped: false
+      }),
+    };
+
+    init();
+
+    async function init() {
+      bindUi();
+      applyTheme("dark");
+      updateSelectionDetail(null);
+      requestResize();
+
+      try {
+        setLoading("Loading gamedata");
+        state.data = await loadGameData();
+        document.getElementById("dataset-label").textContent = state.data.dataSetName || "gamedata";
+
+        setLoading("Creating minimap world");
+        state.worldManager = await createTestWorldManager(state.data);
+        state.snapshot = await state.worldManager.createNewWorld({ seed: TEST_WORLD_SEED });
+
+        buildSectorList();
+        renderGalaxy();
+        loading.classList.add("hidden");
+      } catch (error) {
+        console.error(error);
+        setStatus("Minimap load failed");
+        loadingText.textContent = error.message || String(error);
+      }
+
+      animate();
+    }
+
+    async function createTestWorldManager(gameData) {
+      const config = structuredCloneSafe(gameData.worldConfig || {});
+      config.dbName = TEST_WORLD_DB_NAME;
+      const manager = new WorldDataManager({ gameData, config });
+      return manager.init();
+    }
+
+    function bindUi() {
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        applyTheme(state.theme === "dark" ? "light" : "dark");
+      });
+      document.getElementById("back-button").addEventListener("click", navigateBack);
+      document.getElementById("home-button").addEventListener("click", renderGalaxy);
+      document.getElementById("fit-button").addEventListener("click", () => fitCamera({ duration: 700 }));
+
+      bindToggle("toggle-labels", "showLabels", () => {
+        labelGroup.visible = state.showLabels;
+      });
+      bindToggle("toggle-bounds", "showBounds", () => {
+        boundsGroup.visible = state.showBounds;
+      });
+      bindToggle("toggle-buildings", "showBuildings", () => {
+        if (state.mode === "sector") renderSector(state.currentSectorId, { preserveSelection: true });
+      });
+      bindToggle("toggle-resources", "showResources", () => {
+        if (state.mode === "sector") renderSector(state.currentSectorId, { preserveSelection: true });
+      });
+      bindToggle("toggle-anomalies", "showAnomalies", () => {
+        if (state.mode === "sector") renderSector(state.currentSectorId, { preserveSelection: true });
+      });
+
+      document.querySelectorAll(".view-strip button").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll(".view-strip button").forEach((item) => item.classList.toggle("active", item === button));
+          state.view = button.dataset.view;
+          if (state.view === "iso") isoAzimuth = ISO_DEFAULT_AZIMUTH;
+          fitCamera({ duration: 520 });
+        });
+      });
+
+      canvas.addEventListener("pointerdown", onCanvasPointerDown);
+      canvas.addEventListener("pointermove", onCanvasPointerMove);
+      canvas.addEventListener("pointerup", onCanvasPointerUp);
+      canvas.addEventListener("pointercancel", onCanvasPointerUp);
+      canvas.addEventListener("pointerleave", () => {
+        if (isoDrag) return;
+        state.hovered = null;
+        updateCursorHud(null);
+      });
+      canvas.addEventListener("click", onCanvasClick);
+      canvas.addEventListener("wheel", onCanvasWheel, { passive: false });
+      window.addEventListener("resize", requestResize);
+    }
+
+    function bindToggle(id, key, onChange) {
+      const input = document.getElementById(id);
+      input.addEventListener("change", () => {
+        state[key] = input.checked;
+        onChange();
+      });
+    }
+
+    function navigateBack() {
+      if (state.mode === "sector" && state.currentClusterId) {
+        returnToClusterFromSector(state.currentClusterId, state.currentSectorId);
+        return;
+      }
+      renderGalaxy();
+    }
+
+    function renderGalaxy() {
+      state.mode = "galaxy";
+      state.currentClusterId = null;
+      state.currentSectorId = null;
+      state.selected = null;
+      clearMap();
+      document.getElementById("mode-label").textContent = "Galaxy sectors";
+      document.getElementById("back-button").disabled = true;
+
+      buildGalaxyBounds();
+      for (const sector of getSectors()) {
+        addSectorMarker(sector);
+      }
+
+      setFocusFromClusters(getEnabledClusters());
+      updateSectorListActive();
+      updateStats();
+      updateSelectionDetail(null);
+      setStatus("Galaxy map: sector anchors only");
+      fitCamera({ duration: 920 });
+    }
+
+    function renderCluster(clusterId, { focusSectorId = null, instant = false } = {}) {
+      const cluster = getCluster(clusterId);
+      if (!cluster) return;
+      state.mode = "cluster";
+      state.currentClusterId = clusterId;
+      state.currentSectorId = focusSectorId;
+      state.selected = focusSectorId ? { kind: "sector", sectorId: focusSectorId } : { kind: "cluster", clusterId };
+      clearMap();
+
+      document.getElementById("mode-label").textContent = cluster.name || "Cluster";
+      document.getElementById("back-button").disabled = false;
+
+      addClusterBox(cluster, { selected: true, interactive: false });
+      for (const sector of getSectorsInCluster(clusterId)) {
+        addSectorMarker(sector);
+      }
+
+      const focusSector = focusSectorId ? getSector(focusSectorId) : null;
+      if (focusSector && getClusterIdForSector(focusSector) === clusterId) {
+        setFocusFromSectorInCluster(cluster, focusSector);
+      } else {
+        setFocusFromClusters([cluster]);
+      }
+      updateSectorListActive();
+      updateStats();
+      updateSelectionDetail(state.selected);
+      setStatus(`Cluster map: ${cluster.name || clusterId}`);
+      updateHoverMaterials();
+      fitCamera({ duration: instant ? 0 : 880, instant });
+    }
+
+    function renderSector(sectorId, { preserveSelection = false, instant = false } = {}) {
+      const sector = getSector(sectorId);
+      if (!sector) return;
+      const previousSelection = preserveSelection ? state.selected : null;
+      state.mode = "sector";
+      state.currentClusterId = getClusterIdForSector(sector) || state.currentClusterId;
+      state.currentSectorId = sectorId;
+      state.selected = previousSelection?.sectorId === sectorId ? previousSelection : { kind: "sector", sectorId };
+      clearMap();
+
+      document.getElementById("mode-label").textContent = sector.name || sectorId;
+      document.getElementById("back-button").disabled = false;
+
+      buildSectorBounds();
+      addSectorInternalObjects(sector);
+
+      state.focus = { center: new THREE.Vector3(), radius: 92 };
+      updateSectorListActive();
+      updateStats();
+      updateSelectionDetail(state.selected);
+      setStatus(`Sector map: ${sector.name || sectorId}`);
+      updateHoverMaterials();
+      fitCamera({ duration: instant ? 0 : 960, instant });
+    }
+
+    function clearMap() {
+      pickables.length = 0;
+      disposeGroup(boundsGroup);
+      disposeGroup(markerGroup);
+      disposeGroup(labelGroup);
+      boundsGroup.visible = state.showBounds;
+      labelGroup.visible = state.showLabels;
+    }
+
+    function buildGalaxyBounds() {
+      for (const cluster of getEnabledClusters()) addClusterBox(cluster);
+    }
+
+
+    function addClusterBox(cluster, { selected = false, interactive = true } = {}) {
+      const box = createGalaxyClusterBox(cluster.bounds, { selected });
+      box.line.userData = {
+        kind: "cluster",
+        clusterId: cluster.id,
+        label: cluster.name || cluster.id
+      };
+      box.pick.userData = box.line.userData;
+      boundsGroup.add(box.line);
+      if (interactive) {
+        markerGroup.add(box.pick);
+        pickables.push(box.pick);
+      } else {
+        disposeObject(box.pick);
+      }
+    }
+
+    function addSectorMarker(sector) {
+      const group = new THREE.Group();
+      const marker = new THREE.Mesh(new THREE.SphereGeometry(1.85, 12, 8), materials.marker.clone());
+      const pick = new THREE.Mesh(
+        new THREE.SphereGeometry(6.2, 16, 10),
+        new THREE.MeshBasicMaterial({
+          color: MARKER_COLOR,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          toneMapped: false
+        })
+      );
+
+      group.position.copy(galaxyPositionForSector(sector));
+      group.userData = {
+        kind: "sector",
+        sectorId: sector.sector_id,
+        label: sector.name || sector.sector_id
+      };
+      marker.userData = group.userData;
+      pick.userData = { ...group.userData, pickOnly: true };
+      pickables.push(pick);
+      group.add(marker, pick);
+      markerGroup.add(group);
+
+      addLabel(sector.sector_id, group.position.clone().add(new THREE.Vector3(0, 5.4, 0)), 0.72);
+    }
+
+    function buildSectorBounds() {
+      const geometry = new THREE.BoxGeometry(SECTOR_MAP_SIZE, SECTOR_MAP_SIZE, SECTOR_MAP_SIZE);
+      const edges = new THREE.EdgesGeometry(geometry);
+      const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({
+        color: SELECTED_COLOR,
+        transparent: true,
+        opacity: 0.36,
+        depthWrite: false,
+        toneMapped: false
+      }));
+      line.userData = { kind: "sector-bounds" };
+      boundsGroup.add(line);
+    }
+
+    function addSectorInternalObjects(sector) {
+      if (state.showBuildings) {
+        for (const building of state.snapshot.buildings.filter((item) => item.sector_id === sector.sector_id)) {
+          addObjectMarker({
+            kind: "building",
+            id: building.building_instance_id,
+            sectorId: sector.sector_id,
+            label: buildingLabel(building),
+            position: sectorLocalPosition(sector, building.position),
+            data: building
+          });
+        }
+      }
+
+      if (state.showResources) {
+        for (const resource of state.snapshot.resourceNodes.filter((item) => item.sector_id === sector.sector_id)) {
+          addObjectMarker({
+            kind: "resource",
+            id: resource.resource_instance_id,
+            sectorId: sector.sector_id,
+            label: resourceLabel(resource),
+            position: sectorLocalPosition(sector, resource.position),
+            data: resource
+          });
+        }
+      }
+
+      if (state.showAnomalies) {
+        for (const anomaly of state.snapshot.betaVoids.filter((item) => item.sector_id === sector.sector_id && item.status === "active")) {
+          addObjectMarker({
+            kind: "anomaly",
+            id: anomaly.id,
+            sectorId: sector.sector_id,
+            label: "Beta Void",
+            position: sectorLocalPosition(sector, anomaly.position),
+            data: anomaly
+          });
+        }
+      }
+    }
+
+    function addObjectMarker({ kind, id, sectorId, label, position, data }) {
+      const url = getObjectIconUrl(kind, data?.building_id);
+      const sprite = new THREE.Sprite(getSvgSpriteMaterial(url));
+      sprite.scale.set(9, 9, 1);
+      sprite.position.copy(position);
+      sprite.userData = { kind, id, sectorId, label, data };
+      markerGroup.add(sprite);
+      pickables.push(sprite);
+
+      addLabel(label, position.clone().add(new THREE.Vector3(0, 6.5, 0)), 0.58);
+    }
+
+    function getObjectIconUrl(kind, buildingId) {
+      if (kind === "anomaly") return "../rss/svg/ind_void.svg";
+      if (kind === "resource") return "../rss/svg/ind_loot.svg";
+      if (kind === "building") {
+        const size = state.data.buildingDefinitions[buildingId]?.size || "M";
+        if (size === "EX") return "../rss/svg/ind_ex.svg";
+        if (size === "L")  return "../rss/svg/ind_large.svg";
+        if (size === "S")  return "../rss/svg/ind_small.svg";
+        return "../rss/svg/ind_medium.svg";
+      }
+      return "../rss/svg/ind_medium.svg";
+    }
+
+    const svgTextureCache = new Map();
+    function getSvgSpriteMaterial(url) {
+      let tex = svgTextureCache.get(url);
+      if (!tex) {
+        tex = new THREE.TextureLoader().load(url);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        svgTextureCache.set(url, tex);
+      }
+      return new THREE.SpriteMaterial({
+        map: tex,
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: false,
+        toneMapped: false,
+        color: MARKER_COLOR
+      });
+    }
+
+    function addLabel(text, position, scale) {
+      const label = createTextSprite(text);
+      label.position.copy(position);
+      label.scale.set(18 * scale, 5.2 * scale, 1);
+      labelGroup.add(label);
+    }
+
+    function createGalaxyClusterBox(bounds, { selected = false } = {}) {
+      const min = bounds?.min;
+      const max = bounds?.max;
+      if (!Array.isArray(min) || !Array.isArray(max)) {
+        return { line: new THREE.Group(), pick: new THREE.Mesh() };
+      }
+      const mn = galaxyPositionFromChunk({ x: min[0], y: min[1], z: min[2] });
+      const mx = galaxyPositionFromChunk({ x: max[0], y: max[1], z: max[2] });
+      const center = mn.clone().add(mx).multiplyScalar(0.5);
+      const size = new THREE.Vector3(
+        Math.max(1, Math.abs(mx.x - mn.x)),
+        Math.max(1, Math.abs(mx.y - mn.y)),
+        Math.max(1, Math.abs(mx.z - mn.z))
+      );
+      const geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+      const edges = new THREE.EdgesGeometry(geometry);
+      const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({
+        color: SELECTED_COLOR,
+        transparent: true,
+        opacity: selected ? 0.44 : 0.22,
+        depthWrite: false,
+        toneMapped: false
+      }));
+      line.position.copy(center);
+
+      const pick = new THREE.Mesh(geometry.clone(), new THREE.MeshBasicMaterial({
+        color: SELECTED_COLOR,
+        transparent: true,
+        opacity: 0.02,
+        depthWrite: false,
+        depthTest: false,
+        toneMapped: false
+      }));
+      pick.position.copy(center);
+      return { line, pick, center, size };
+    }
+
+    function galaxyPositionForSector(sector) {
+      return galaxyPositionFromChunk(sector.chunk);
+    }
+
+    function galaxyPositionFromChunk(chunk) {
+      const { gx, gy, gz } = state.data.gmapData;
+      return new THREE.Vector3(
+        (chunk.x - (gx - 1) / 2) * GALAXY_SCALE,
+        (chunk.y - (gy - 1) / 2) * GALAXY_SCALE,
+        (chunk.z - (gz - 1) / 2) * GALAXY_SCALE
+      );
+    }
+
+    function sectorLocalPosition(sector, position) {
+      const center = getBoundsCenter(sector.global_bounds);
+      const size = getBoundsSize(sector.global_bounds);
+      const scale = SECTOR_MAP_SIZE / Math.max(size.x, size.y, size.z, 1);
+      return new THREE.Vector3(
+        (position.x - center.x) * scale,
+        (position.y - center.y) * scale,
+        (position.z - center.z) * scale
+      );
+    }
+
+    function onCanvasPointerDown(event) {
+      if (event.button !== 0 || state.view !== "iso" || mapTransitioning) return;
+      isoDrag = {
+        pointerId: event.pointerId,
+        lastX: event.clientX,
+        moved: false
+      };
+      canvas.setPointerCapture?.(event.pointerId);
+    }
+
+    function onCanvasPointerMove(event) {
+      if (isoDrag?.pointerId === event.pointerId) {
+        const dx = event.clientX - isoDrag.lastX;
+        isoDrag.lastX = event.clientX;
+        if (Math.abs(dx) > 0.25) {
+          isoDrag.moved = true;
+          isoAzimuth -= dx * ISO_DRAG_ROTATION_SPEED;
+          cameraAnim = null;
+          applyIsoYawToCamera();
+          state.hovered = null;
+          updateCursorHud(null);
+        }
+        event.preventDefault();
+        return;
+      }
+      onPointerMove(event);
+    }
+
+    function onCanvasPointerUp(event) {
+      if (isoDrag?.pointerId !== event.pointerId) return;
+      suppressNextClick = isoDrag.moved;
+      if (suppressNextClick) {
+        setTimeout(() => {
+          suppressNextClick = false;
+        }, 80);
+      }
+      isoDrag = null;
+      canvas.releasePointerCapture?.(event.pointerId);
+    }
+
+    function applyIsoYawToCamera() {
+      const target = controls.target.clone();
+      const distance = Math.max(560, camera.position.distanceTo(target), state.baseOrthoSize * 4.2);
+      const direction = getIsoViewDirection();
+      camera.up.copy(getViewUp("iso"));
+      camera.position.copy(target.clone().add(direction.multiplyScalar(distance)));
+      camera.lookAt(target);
+      camera.updateProjectionMatrix();
+      camera.updateMatrixWorld(true);
+      camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+      renderer.render(scene, camera);
+    }
+
+    function onPointerMove(event) {
+      const hit = pickObject(event);
+      state.hovered = hit?.object?.userData || null;
+      updateCursorHud(state.hovered);
+      updateHoverMaterials();
+    }
+
+    function onCanvasClick(event) {
+      if (suppressNextClick) {
+        suppressNextClick = false;
+        return;
+      }
+      const hit = pickObject(event);
+      if (!hit) return;
+      const data = hit.object.userData;
+      if (data.kind === "cluster") {
+        renderCluster(data.clusterId);
+        return;
+      }
+      if (data.kind === "sector") {
+        enterSector(data.sectorId);
+        return;
+      }
+      if (["building", "resource", "anomaly"].includes(data.kind)) {
+        state.selected = data;
+        updateSelectionDetail(data);
+        updateHoverMaterials();
+      }
+    }
+
+    function onCanvasWheel(event) {
+      event.preventDefault();
+      if (mapTransitioning || wheelNavCooldown) return;
+
+      const zoomIn = event.deltaY < 0;
+
+      if (zoomIn) {
+        if (state.mode === "galaxy") {
+          const clusters = getEnabledClusters();
+          const target = clusters[DEFAULT_ZOOM_CLUSTER_INDEX];
+          if (!target) return;
+          startWheelNavCooldown();
+          renderCluster(target.id);
+        } else if (state.mode === "cluster") {
+          const sectors = getSectorsInCluster(state.currentClusterId);
+          const target = sectors[DEFAULT_ZOOM_SECTOR_INDEX];
+          if (!target) return;
+          startWheelNavCooldown();
+          enterSector(target.sector_id);
+        }
+        // sector = 가장 깊은 계층, 줌인 없음
+      } else {
+        if (state.mode === "galaxy") return;  // 가장 얕은 계층, 줌아웃 없음
+        startWheelNavCooldown();
+        navigateBack();
+      }
+    }
+
+    function startWheelNavCooldown() {
+      wheelNavCooldown = true;
+      setTimeout(() => { wheelNavCooldown = false; }, 1000);
+    }
+
+    function pickObject(event) {
+      if (!pickables.length) return null;
+      const rect = canvas.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      return raycaster.intersectObjects(pickables, false)[0] || null;
+    }
+
+    function updateHoverMaterials() {
+      markerGroup.traverse((object) => {
+        if ((!object.isMesh && !object.isSprite) || !object.material || !object.userData?.kind) return;
+        const data = object.userData;
+        if (data.pickOnly) {
+          if (object.isMesh) object.material.opacity = 0;
+          return;
+        }
+        const selected = state.selected && selectionKey(state.selected) === selectionKey(data);
+        const hovered = state.hovered && selectionKey(state.hovered) === selectionKey(data);
+        if (data.kind === "cluster") {
+          object.material.color.set(SELECTED_COLOR);
+          object.material.opacity = hovered || selected ? 0.06 : 0.02;
+        } else if (selected || hovered) {
+          object.material.color.set(SELECTED_COLOR);
+          object.material.opacity = selected ? 1 : 0.82;
+        } else {
+          object.material.color.set(MARKER_COLOR);
+          object.material.opacity = 0.92;
+        }
+      });
+    }
+
+    function selectionKey(data) {
+      if (!data) return "";
+      return `${data.kind}:${data.sectorId || ""}:${data.id || data.sectorId || ""}`;
+    }
+
+    function updateCursorHud(data) {
+      if (!data) {
+        cursorHud.innerHTML = "<strong>...</strong>";
+        return;
+      }
+      if (data.kind === "sector") {
+        const sector = getSector(data.sectorId);
+        cursorHud.innerHTML = `<strong>${sector?.name || data.sectorId}</strong> click to enter sector map`;
+        return;
+      }
+      if (data.kind === "cluster") {
+        cursorHud.innerHTML = `<strong>${data.label || data.clusterId}</strong> click to enter cluster map`;
+        return;
+      }
+      cursorHud.innerHTML = `<strong>${data.label || data.id}</strong> ${data.kind}`;
+    }
+
+    function updateSelectionDetail(data) {
+      if (!data) {
+        selectionDetail.innerHTML = detailRow("Selection", "None");
+        return;
+      }
+
+      if (data.kind === "cluster") {
+        const cluster = getCluster(data.clusterId);
+        const sectors = getSectorsInCluster(data.clusterId);
+        const counts = getObjectCountsForSectors(sectors.map((sector) => sector.sector_id));
+        selectionDetail.innerHTML = [
+          detailRow("Cluster", cluster?.name || data.clusterId),
+          detailRow("Sectors", `${sectors.length}`),
+          detailRow("Bounds", cluster ? `${vectorArrayText(cluster.bounds.min)} -> ${vectorArrayText(cluster.bounds.max)}` : "-"),
+          detailRow("Objects", `${counts.buildings} buildings, ${counts.resources} resources, ${counts.anomalies} anomalies`)
+        ].join("");
+        return;
+      }
+
+      if (data.kind === "sector") {
+        const sector = getSector(data.sectorId);
+        const counts = getSectorObjectCounts(data.sectorId);
+        selectionDetail.innerHTML = [
+          detailRow("Sector", `${sector?.name || data.sectorId} (${data.sectorId})`),
+          detailRow("Chunk", vectorText(sector?.chunk)),
+          detailRow("Theme", sector?.theme || "-"),
+          detailRow("Objects", `${counts.buildings} buildings, ${counts.resources} resources, ${counts.anomalies} anomalies`)
+        ].join("");
+        return;
+      }
+
+      const raw = data.data || {};
+      const sector = getSector(data.sectorId);
+      const local = raw.local_position || null;
+      selectionDetail.innerHTML = [
+        detailRow("Type", data.kind),
+        detailRow("Name", data.label || data.id),
+        detailRow("Sector", sector ? `${sector.name || sector.sector_id} (${sector.sector_id})` : "-"),
+        detailRow("Chunk", raw.chunk_id || "-"),
+        detailRow("Local", local ? vectorText(local) : "-")
+      ].join("");
+    }
+
+    function updateStats() {
+      const sectorCount = getSectors().length;
+      let visibleCount = sectorCount;
+      let currentObjects = {
+        buildings: state.snapshot.buildings.length,
+        resources: state.snapshot.resourceNodes.length,
+        anomalies: state.snapshot.betaVoids.filter((item) => item.status === "active").length
+      };
+
+      if (state.mode === "cluster" && state.currentClusterId) {
+        const sectors = getSectorsInCluster(state.currentClusterId);
+        visibleCount = sectors.length;
+        currentObjects = getObjectCountsForSectors(sectors.map((sector) => sector.sector_id));
+      } else if (state.mode === "sector" && state.currentSectorId) {
+        currentObjects = getSectorObjectCounts(state.currentSectorId);
+        visibleCount = currentObjects.buildings + currentObjects.resources + currentObjects.anomalies;
+      }
+
+      document.getElementById("stat-sectors").textContent = formatNumber(sectorCount);
+      document.getElementById("stat-visible").textContent = formatNumber(visibleCount);
+      document.getElementById("stat-buildings").textContent = formatNumber(currentObjects.buildings);
+      document.getElementById("stat-resources").textContent = formatNumber(currentObjects.resources);
+      document.getElementById("stat-anomalies").textContent = formatNumber(currentObjects.anomalies);
+      document.getElementById("stat-clusters").textContent = formatNumber(
+        Object.values(state.data.chunkMap.clusters || {}).filter((cluster) => cluster.enabled).length
+      );
+    }
+
+    function buildSectorList() {
+      sectorList.innerHTML = "";
+      for (const sector of getSectors()) {
+        const counts = getSectorObjectCounts(sector.sector_id);
+        const button = document.createElement("button");
+        button.className = "sector-button";
+        button.type = "button";
+        button.dataset.sectorId = sector.sector_id;
+        button.innerHTML = `
+          <span>${sector.name || sector.sector_id}</span>
+          <span class="count-pill">${counts.buildings + counts.resources + counts.anomalies}</span>
+        `;
+        button.addEventListener("click", () => enterSector(sector.sector_id));
+        sectorList.appendChild(button);
+      }
+      updateSectorListActive();
+    }
+
+    function updateSectorListActive() {
+      sectorList.querySelectorAll(".sector-button").forEach((button) => {
+        button.classList.toggle("active", button.dataset.sectorId === state.currentSectorId);
+      });
+    }
+
+    function getObjectCountsForSectors(sectorIds) {
+      const sectorIdSet = new Set(sectorIds);
+      return {
+        buildings: state.snapshot.buildings.filter((item) => sectorIdSet.has(item.sector_id)).length,
+        resources: state.snapshot.resourceNodes.filter((item) => sectorIdSet.has(item.sector_id)).length,
+        anomalies: state.snapshot.betaVoids.filter((item) => sectorIdSet.has(item.sector_id) && item.status === "active").length
+      };
+    }
+
+    function getSectorObjectCounts(sectorId) {
+      return {
+        buildings: state.snapshot.buildings.filter((item) => item.sector_id === sectorId).length,
+        resources: state.snapshot.resourceNodes.filter((item) => item.sector_id === sectorId).length,
+        anomalies: state.snapshot.betaVoids.filter((item) => item.sector_id === sectorId && item.status === "active").length
+      };
+    }
+
+    function getSectors() {
+      return [...(state.snapshot?.sectors || [])].sort((a, b) => a.sector_id.localeCompare(b.sector_id));
+    }
+
+    function getSector(sectorId) {
+      return state.snapshot?.sectors?.find((sector) => sector.sector_id === sectorId) || null;
+    }
+
+    function getEnabledClusters() {
+      return Object.values(state.data.chunkMap.clusters || {}).filter((cluster) => cluster.enabled);
+    }
+
+    function getCluster(clusterId) {
+      return state.data.chunkMap.clusters?.[clusterId] || null;
+    }
+
+    function getClusterIdForSector(sector) {
+      if (!sector?.chunk) return null;
+      const key = `${sector.chunk.x}:${sector.chunk.y}:${sector.chunk.z}`;
+      const index = state.data.clusterData.chunkToCluster?.[key];
+      return Number.isInteger(index) ? state.data.clusterData.clusterIds[index] : null;
+    }
+
+    function getSectorsInCluster(clusterId) {
+      return getSectors().filter((sector) => getClusterIdForSector(sector) === clusterId);
+    }
+
+    async function enterSector(sectorId) {
+      const sector = getSector(sectorId);
+      if (!sector) return;
+      if (!["galaxy", "cluster"].includes(state.mode)) {
+        renderSector(sectorId);
+        return;
+      }
+      if (mapTransitioning) return;
+      mapTransitioning = true;
+
+      state.selected = {
+        kind: "sector",
+        sectorId,
+        label: sector.name || sectorId
+      };
+      updateSelectionDetail(state.selected);
+      updateSectorListActive();
+      updateHoverMaterials();
+      setStatus(`Entering sector: ${sector.name || sectorId}`);
+
+      try {
+        await runZoomAnim(1, 7, 460, easeInCubic, galaxyPositionForSector(sector));
+        await _fadeAndSwap(() => renderSector(sectorId, { instant: true }));
+      } finally {
+        camera.zoom = 1;
+        camera.updateProjectionMatrix();
+        mapTransitioning = false;
+      }
+    }
+
+    async function returnToClusterFromSector(clusterId, sectorId) {
+      if (mapTransitioning) return;
+      mapTransitioning = true;
+
+      const sector = getSector(sectorId);
+      setStatus(`Returning to cluster: ${getCluster(clusterId)?.name || clusterId}`);
+
+      try {
+        await runZoomAnim(1, 0.3, 350, easeOutCubic);
+        await _fadeAndSwap(() => renderCluster(clusterId, {
+          focusSectorId: sector ? sectorId : null,
+          instant: true
+        }));
+      } finally {
+        camera.zoom = 1;
+        camera.updateProjectionMatrix();
+        mapTransitioning = false;
+      }
+    }
+
+    function runZoomAnim(fromZoom, toZoom, duration, easingFn, endTarget = null) {
+      if (cameraAnim?.resolve) cameraAnim.resolve(false);
+      cameraAnim = null;
+      zoomAnim = null;
+      const startTarget = endTarget ? controls.target.clone() : null;
+      const camDist = camera.position.distanceTo(controls.target);
+      return new Promise((resolve) => {
+        zoomAnim = { startTime: performance.now(), duration, fromZoom, toZoom, easing: easingFn, resolve, startTarget, endTarget, camDist };
+      });
+    }
+
+    function setFocusFromSectorInCluster(cluster, sector) {
+      const clusterFocus = getClusterBoxFocus(cluster.bounds);
+      state.focus = {
+        min: clusterFocus?.min?.clone?.(),
+        max: clusterFocus?.max?.clone?.(),
+        center: galaxyPositionForSector(sector),
+        radius: clusterFocus?.radius || 120
+      };
+    }
+
+    async function _fadeAndSwap(renderNext) {
+      stage.classList.add("map-transitioning");
+      let faded = false;
+      try {
+        await setMapFaded(true, 240);
+        faded = true;
+        renderNext();
+        state.hovered = null;
+        updateCursorHud(null);
+        await nextFrame();
+        await setMapFaded(false, 300);
+        faded = false;
+      } finally {
+        if (faded) stage.classList.remove("map-fading");
+        stage.classList.remove("map-transitioning");
+      }
+    }
+
+    async function fadeSwapMap(renderNext) {
+      if (mapTransitioning) return false;
+      mapTransitioning = true;
+      try {
+        await _fadeAndSwap(renderNext);
+        return true;
+      } finally {
+        mapTransitioning = false;
+      }
+    }
+
+    function setMapFaded(faded, duration) {
+      const alreadySet = stage.classList.contains("map-fading") === faded;
+      if (alreadySet) return delay(duration);
+
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          canvas.removeEventListener("transitionend", onTransitionEnd);
+          resolve();
+        };
+        const onTransitionEnd = (event) => {
+          if (event.target === canvas && event.propertyName === "opacity") finish();
+        };
+        const timer = setTimeout(finish, duration + 80);
+        canvas.addEventListener("transitionend", onTransitionEnd);
+        requestAnimationFrame(() => {
+          stage.classList.toggle("map-fading", faded);
+        });
+      });
+    }
+
+    function nextFrame() {
+      return new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+
+    function delay(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function buildingLabel(building) {
+      const definition = state.data.buildingDefinitions[building.building_id];
+      const key = definition?.id || building.building_id;
+      return titleFromId(key);
+    }
+
+    function resourceLabel(resource) {
+      const definition = state.data.resourceDefinitions[resource.resource_id || resource.type];
+      const item = state.data.itemDefinitions[definition?.produces_item_id];
+      return item?.label_key ? titleFromId(definition?.id || resource.resource_id || "resource") : resource.resource_id || "Resource";
+    }
+
+    function titleFromId(id) {
+      return String(id || "")
+        .split(/[_-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+    }
+
+    function fitCamera({ duration = 820, instant = false } = {}) {
+      const pose = getCameraPose({
+        view: state.view,
+        focus: state.focus
+      });
+      return animateCameraTo(pose, {
+        duration,
+        instant: instant || !cameraInitialized
+      });
+    }
+
+    function getCameraPose({ view, focus }) {
+      const safeFocus = focus || { center: new THREE.Vector3(), radius: 120 };
+      const direction = getViewDirection(view);
+      const frame = getStageFrame(safeFocus);
+      const baseOrthoSize = getFixedOrthoSize(frame, view);
+      const distance = Math.max(560, baseOrthoSize * 4.2);
+      const center = (safeFocus.min && safeFocus.max)
+        ? frame.min.clone().add(frame.max).multiplyScalar(0.5)
+        : safeFocus.center.clone();
+      return {
+        position: center.clone().add(direction.multiplyScalar(distance)),
+        target: center,
+        baseOrthoSize,
+        zoom: 1,
+        up: getViewUp(view)
+      };
+    }
+
+    function getViewDirection(view) {
+      if (view === "top") return new THREE.Vector3(0, 1, 0);
+      if (view === "front") return new THREE.Vector3(0, 0, 1);
+      if (view === "side") return new THREE.Vector3(1, 0, 0);
+      return getIsoViewDirection();
+    }
+
+    function getViewUp(view) {
+      if (view === "top") return new THREE.Vector3(0, 0, -1);
+      return new THREE.Vector3(0, 1, 0);
+    }
+
+    function getIsoViewDirection() {
+      const horizontal = Math.sin(ISO_POLAR_ANGLE);
+      return new THREE.Vector3(
+        Math.sin(isoAzimuth) * horizontal,
+        Math.cos(ISO_POLAR_ANGLE),
+        Math.cos(isoAzimuth) * horizontal
+      ).normalize();
+    }
+
+    function configureControlsForView() {
+      const isIso = state.view === "iso";
+      controls.enableRotate = false;
+      controls.enableZoom = false;
+      controls.enablePan = false;
+      controls.minAzimuthAngle = -Infinity;
+      controls.maxAzimuthAngle = Infinity;
+      controls.minPolarAngle = isIso ? ISO_POLAR_ANGLE : 0;
+      controls.maxPolarAngle = isIso ? ISO_POLAR_ANGLE : Math.PI;
+    }
+
+    function getStageFrame(focus) {
+      if (focus?.min && focus?.max) {
+        return {
+          min: focus.min.clone(),
+          max: focus.max.clone()
+        };
+      }
+
+      if (state.mode === "sector") {
+        const half = SECTOR_MAP_SIZE * 0.5;
+        return {
+          min: new THREE.Vector3(-half, -half, -half),
+          max: new THREE.Vector3(half, half, half)
+        };
+      }
+
+      const center = focus?.center?.clone?.() || new THREE.Vector3();
+      const radius = Math.max(1, Number(focus?.radius) || 120);
+      return {
+        min: center.clone().addScalar(-radius),
+        max: center.clone().addScalar(radius)
+      };
+    }
+
+    function getFixedOrthoSize(frame, view) {
+      const aspect = getStageAspect();
+      const basis = getViewBasis(view);
+      const corners = getFrameCorners(frame);
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+
+      for (const corner of corners) {
+        const x = corner.dot(basis.right);
+        const y = corner.dot(basis.up);
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+      }
+
+      const width = Math.max(1, maxX - minX);
+      const height = Math.max(1, maxY - minY);
+      return Math.max(height, width / aspect) * MAP_FRAME_PADDING;
+    }
+
+    function getViewBasis(view) {
+      const direction = getViewDirection(view).normalize();
+      const upHint = getViewUp(view).normalize();
+      const right = new THREE.Vector3().crossVectors(upHint, direction).normalize();
+      const up = new THREE.Vector3().crossVectors(direction, right).normalize();
+      return { right, up };
+    }
+
+    function getFrameCorners(frame) {
+      const { min, max } = frame;
+      return [
+        new THREE.Vector3(min.x, min.y, min.z),
+        new THREE.Vector3(min.x, min.y, max.z),
+        new THREE.Vector3(min.x, max.y, min.z),
+        new THREE.Vector3(min.x, max.y, max.z),
+        new THREE.Vector3(max.x, min.y, min.z),
+        new THREE.Vector3(max.x, min.y, max.z),
+        new THREE.Vector3(max.x, max.y, min.z),
+        new THREE.Vector3(max.x, max.y, max.z)
+      ];
+    }
+
+    function getStageAspect() {
+      return Math.max(0.1, (stage.clientWidth || 1) / (stage.clientHeight || 1));
+    }
+
+    function animateCameraTo(pose, { duration = 820, instant = false } = {}) {
+      if (cameraAnim?.resolve) {
+        cameraAnim.resolve(false);
+      }
+      configureControlsForView();
+      if (instant || duration <= 0) {
+        cameraAnim = null;
+        applyCameraPose(pose);
+        cameraInitialized = true;
+        return Promise.resolve(true);
+      }
+
+      cameraInitialized = true;
+      return new Promise((resolve) => {
+        cameraAnim = {
+          startTime: performance.now(),
+          duration,
+          startPosition: camera.position.clone(),
+          endPosition: pose.position.clone(),
+          startTarget: controls.target.clone(),
+          endTarget: pose.target.clone(),
+          startBaseOrthoSize: state.baseOrthoSize,
+          endBaseOrthoSize: pose.baseOrthoSize,
+          startZoom: camera.zoom,
+          endZoom: pose.zoom,
+          startUp: camera.up.clone(),
+          endUp: pose.up.clone(),
+          resolve
+        };
+      });
+    }
+
+    function applyCameraPose(pose) {
+      state.baseOrthoSize = pose.baseOrthoSize;
+      camera.zoom = pose.zoom;
+      camera.up.copy(pose.up);
+      camera.position.copy(pose.position);
+      controls.target.copy(pose.target);
+      camera.lookAt(controls.target);
+      resizeRenderer();
+      camera.updateProjectionMatrix();
+      configureControlsForView();
+      camera.updateMatrixWorld(true);
+    }
+
+    function updateCameraAnimation(now) {
+      if (!cameraAnim) return;
+      const t = Math.min(1, (now - cameraAnim.startTime) / cameraAnim.duration);
+      const eased = easeInOutCubic(t);
+      camera.position.lerpVectors(cameraAnim.startPosition, cameraAnim.endPosition, eased);
+      controls.target.lerpVectors(cameraAnim.startTarget, cameraAnim.endTarget, eased);
+      camera.up.copy(cameraAnim.startUp).lerp(cameraAnim.endUp, eased).normalize();
+      state.baseOrthoSize = lerp(cameraAnim.startBaseOrthoSize, cameraAnim.endBaseOrthoSize, eased);
+      camera.zoom = lerp(cameraAnim.startZoom, cameraAnim.endZoom, eased);
+      camera.lookAt(controls.target);
+      resizeRenderer();
+      camera.updateProjectionMatrix();
+      if (t >= 1) {
+        const completed = cameraAnim;
+        cameraAnim = null;
+        completed.resolve?.(true);
+      }
+    }
+
+    function setFocusFromClusters(clusters) {
+      const boxes = clusters
+        .map((cluster) => getClusterBoxFocus(cluster.bounds))
+        .filter(Boolean);
+      if (!boxes.length) {
+        state.focus = { center: new THREE.Vector3(), radius: 120 };
+        return;
+      }
+
+      if (boxes.length === 1) {
+        state.focus = boxes[0];
+        return;
+      }
+
+      const min = new THREE.Vector3(Infinity, Infinity, Infinity);
+      const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+      boxes.forEach((box) => {
+        min.min(box.min);
+        max.max(box.max);
+      });
+      const center = min.clone().add(max).multiplyScalar(0.5);
+      const radius = Math.max(40, max.clone().sub(min).length() * 0.5);
+      state.focus = { min, max, center, radius };
+    }
+
+    function getClusterBoxFocus(bounds) {
+      const min = bounds?.min;
+      const max = bounds?.max;
+      if (!Array.isArray(min) || !Array.isArray(max)) return null;
+      const mn = galaxyPositionFromChunk({ x: min[0], y: min[1], z: min[2] });
+      const mx = galaxyPositionFromChunk({ x: max[0], y: max[1], z: max[2] });
+      const center = mn.clone().add(mx).multiplyScalar(0.5);
+      const radius = Math.max(34, mx.clone().sub(mn).length() * 0.5);
+      return { min: mn, max: mx, center, radius };
+    }
+
+    function requestResize() {
+      if (resizeQueued) return;
+      resizeQueued = true;
+      requestAnimationFrame(() => {
+        resizeQueued = false;
+        if (cameraInitialized && state.snapshot) {
+          fitCamera({ instant: true });
+        } else {
+          resizeRenderer();
+        }
+      });
+    }
+
+    function resizeRenderer() {
+      const width = stage.clientWidth;
+      const height = stage.clientHeight;
+      if (width < 1 || height < 1) return;
+      renderer.setSize(width, height, false);
+      const aspect = width / height;
+      const ortho = state.baseOrthoSize || 180;
+      camera.left = -ortho * aspect * 0.5;
+      camera.right = ortho * aspect * 0.5;
+      camera.top = ortho * 0.5;
+      camera.bottom = -ortho * 0.5;
+      const clipDist = Math.max(2400, ortho * 6.4);
+      camera.near = -clipDist;
+      camera.far = clipDist;
+      camera.updateProjectionMatrix();
+    }
+
+    function applyTheme(theme) {
+      state.theme = theme;
+      document.documentElement.setAttribute("data-environment-mode", theme);
+      document.getElementById("theme-toggle").textContent = theme === "dark" ? "L" : "D";
+      const preset = SPACE_ENVIRONMENT_PRESETS[theme] || SPACE_ENVIRONMENT_PRESETS.dark;
+      scene.background = new THREE.Color(preset.scene.background);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const now = performance.now();
+
+      if (zoomAnim) {
+        const t = Math.min(1, (now - zoomAnim.startTime) / zoomAnim.duration);
+        const eased = zoomAnim.easing(t);
+        const Z = lerp(zoomAnim.fromZoom, zoomAnim.toZoom, eased);
+        camera.zoom = Z;
+        if (zoomAnim.startTarget && zoomAnim.endTarget) {
+          // T = P + (T0 - P) / Z  →  lerpVectors(P, T0, 1/Z)
+          // Z가 pan을 직접 결정: Z가 클수록 T가 P에 수렴 → P가 화면 중앙으로 이동
+          controls.target.lerpVectors(zoomAnim.endTarget, zoomAnim.startTarget, 1 / Z);
+          const dir = getViewDirection(state.view).normalize();
+          camera.position.copy(controls.target.clone().add(dir.multiplyScalar(zoomAnim.camDist)));
+          camera.lookAt(controls.target);
+        }
+        camera.updateProjectionMatrix();
+        if (t >= 1) {
+          const done = zoomAnim;
+          zoomAnim = null;
+          done.resolve();
+        }
+      }
+
+      if (!zoomAnim) updateCameraAnimation(now);
+      renderer.render(scene, camera);
+    }
+
+    function createTextSprite(text) {
+      const canvasEl = document.createElement("canvas");
+      canvasEl.width = 384;
+      canvasEl.height = 96;
+      const ctx = canvasEl.getContext("2d");
+      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+      ctx.font = "700 30px Segoe UI, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = SELECTED_COLOR;
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = MARKER_COLOR;
+      ctx.fillText(String(text).slice(0, 24), 192, 48);
+      const texture = new THREE.CanvasTexture(canvasEl);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      return new THREE.Sprite(new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
+        toneMapped: false
+      }));
+    }
+
+    function getBoundsCenter(bounds) {
+      return {
+        x: (bounds.min.x + bounds.max.x) / 2,
+        y: (bounds.min.y + bounds.max.y) / 2,
+        z: (bounds.min.z + bounds.max.z) / 2
+      };
+    }
+
+    function getBoundsSize(bounds) {
+      return {
+        x: Math.abs(bounds.max.x - bounds.min.x),
+        y: Math.abs(bounds.max.y - bounds.min.y),
+        z: Math.abs(bounds.max.z - bounds.min.z)
+      };
+    }
+
+    function vectorText(vector) {
+      if (!vector) return "-";
+      return `${Math.round(vector.x)}, ${Math.round(vector.y)}, ${Math.round(vector.z)}`;
+    }
+
+    function vectorArrayText(vector) {
+      if (!Array.isArray(vector)) return "-";
+      return vector.map((value) => Math.round(Number(value) || 0)).join(", ");
+    }
+
+    function detailRow(key, value) {
+      return `
+        <div class="detail-row">
+          <div class="detail-key">${key}</div>
+          <div class="detail-value">${value}</div>
+        </div>
+      `;
+    }
+
+    function setLoading(text) {
+      loadingText.textContent = text;
+      setStatus(text);
+    }
+
+    function setStatus(text) {
+      statusText.textContent = text;
+    }
+
+    function disposeGroup(group) {
+      while (group.children.length > 0) {
+        const child = group.children.pop();
+        disposeObject(child);
+      }
+    }
+
+    function disposeObject(object) {
+      object.traverse((child) => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(disposeMaterial);
+          } else {
+            disposeMaterial(child.material);
+          }
+        }
+      });
+    }
+
+    function disposeMaterial(material) {
+      if (material.map) material.map.dispose();
+      material.dispose();
+    }
+
+    function seededRandom(seed) {
+      let value = seed >>> 0;
+      return () => {
+        value += 0x6D2B79F5;
+        let next = value;
+        next = Math.imul(next ^ (next >>> 15), next | 1);
+        next ^= next + Math.imul(next ^ (next >>> 7), next | 61);
+        return ((next ^ (next >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function easeInOutCubic(t) {
+      return t < 0.5
+        ? 4 * t * t * t
+        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    function easeInCubic(t) {
+      return t * t * t;
+    }
+
+    function easeOutCubic(t) {
+      return 1 - Math.pow(1 - t, 3);
+    }
+
+    function lerp(start, end, t) {
+      return start + (end - start) * t;
+    }
+
+    function structuredCloneSafe(value) {
+      if (typeof structuredClone === "function") return structuredClone(value);
+      return JSON.parse(JSON.stringify(value));
+    }
+
+    function formatNumber(value) {
+      return Number(value || 0).toLocaleString("en-US");
+    }
+  </script>
+</body>
+</html>

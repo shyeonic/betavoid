@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en" data-environment-mode="dark">
+<head>
+  <meta charset="utf-8">
+  <title>Minimap popup smoke test</title>
+  <style>
+    :root {
+      --ui_target_color: #00ff66;
+      --text: #c4e2f6;
+      --muted: #4e7a94;
+      --line: rgba(60, 128, 190, 0.28);
+      --panel: rgba(10, 20, 36, 0.86);
+      --panel-strong: #0a1624;
+      --backdrop-bg: rgba(4, 10, 20, 0.60);
+      --backdrop-blur: 0.6vh;
+      --list-panel-shadow: rgba(0, 30, 70, 0.50);
+      --navigate-border: rgba(60, 180, 255, 0.55);
+      --navigate-bg: rgba(60, 180, 255, 0.14);
+    }
+
+    html, body { width: 100%; height: 100%; margin: 0; }
+    .minimap-backdrop { position: fixed; inset: 0; display: none; place-items: center; }
+    .minimap-backdrop.open { display: grid; }
+    .minimap-panel { width: 800px; height: 520px; display: flex; flex-direction: column; }
+    .minimap-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+    .minimap-canvas { display: block; width: 100%; height: 100%; opacity: 1; transition: opacity 260ms ease; }
+    .minimap-stage.map-fading .minimap-canvas { opacity: 0; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="minimap-backdrop" id="minimapPopup" aria-hidden="true" hidden inert>
+    <section class="minimap-panel" role="dialog">
+      <header class="minimap-header">
+        <h2 class="minimap-title" id="minimapTitle">Map</h2>
+        <button id="minimapCloseButton" type="button">X</button>
+      </header>
+      <div class="minimap-stage" id="minimapStage">
+        <canvas class="minimap-canvas" id="minimapCanvas"></canvas>
+        <div class="minimap-topbar">
+          <div class="minimap-nav-strip">
+            <button id="minimapBackButton" type="button" disabled>Back</button>
+            <span class="minimap-mode-label" id="minimapModeLabel">Galaxy</span>
+          </div>
+          <div class="minimap-view-strip" id="minimapViewStrip">
+            <button type="button" data-minimap-view="iso" class="active">ISO</button>
+            <button type="button" data-minimap-view="top">TOP</button>
+            <button type="button" data-minimap-view="front">FRONT</button>
+            <button type="button" data-minimap-view="side">SIDE</button>
+          </div>
+        </div>
+        <div class="minimap-object-toast" id="minimapObjectToast" aria-hidden="true">
+          <div class="minimap-toast-name" id="minimapToastName"></div>
+          <div class="minimap-toast-actions">
+            <button class="object-bubble-button object-select-button" id="minimapToastSelectButton" type="button">Select</button>
+            <button class="object-bubble-button" id="minimapToastDetailButton" type="button">Detail</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <pre id="smokeLog"></pre>
+  <script>
+    window.addEventListener("error", (event) => {
+      document.getElementById("smokeLog").textContent += `\n[window-error] ${event.message} @ ${event.filename}:${event.lineno}`;
+    });
+    window.addEventListener("unhandledrejection", (event) => {
+      document.getElementById("smokeLog").textContent += `\n[unhandled-rejection] ${event.reason?.stack || event.reason}`;
+    });
+  </script>
+  <script type="module">
+    const smokeLog = (...args) => {
+      const line = args.map((value) => typeof value === "string" ? value : JSON.stringify(value)).join(" ");
+      console.log(line);
+      document.getElementById("smokeLog").textContent += `
+${line}`;
+    };
+    import { loadGameData } from "../js/GameDataLoader.js";
+    import { WorldDataManager } from "../js/WorldDataManager.js";
+    import { MinimapManager } from "../js/MinimapManager.js";
+    import { createI18n } from "../js/i18n/i18n.js";
+
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    try {
+      smokeLog("[smoke] boot");
+      const gameData = await loadGameData();
+      smokeLog("[smoke] gamedata loaded");
+      const config = structuredClone(gameData.worldConfig || {});
+      config.dbName = "void-zero-minimap-smoke";
+      const worldDataManager = await new WorldDataManager({ gameData, config }).init();
+      await worldDataManager.createNewWorld({ seed: 4242 });
+      const i18n = createI18n({ messages: gameData.messages });
+
+      let ship = { x: 120, y: 0, z: 120 };
+      const firstSector = worldDataManager.snapshot.sectors[0];
+      if (firstSector) {
+        const bounds = firstSector.global_bounds;
+        ship = {
+          x: (bounds.min.x + bounds.max.x) / 2,
+          y: (bounds.min.y + bounds.max.y) / 2,
+          z: (bounds.min.z + bounds.max.z) / 2
+        };
+      }
+      const minimap = new MinimapManager({
+        gameData,
+        worldDataManager,
+        i18n,
+        getShipDataPosition: () => ship,
+        getEnvironmentMode: () => "dark",
+        onVisibilityChange: (visible) => smokeLog("[smoke] visibility:", visible),
+        onSelectObject: (payload) => smokeLog("[smoke] selected:", payload),
+        onShowObjectDetail: (ref) => smokeLog("[smoke] detail:", ref)
+      });
+
+      minimap.open();
+      await wait(1100);
+      smokeLog("[smoke] open:",
+        "mode=", minimap.state.mode,
+        "view=", minimap.state.view,
+        "pickables=", minimap.pickables.length,
+        "markers=", minimap.markerGroup.children.length,
+        "bounds=", minimap.boundsGroup.children.length,
+        "shipVisible=", minimap.shipMarker.visible,
+        "accent=", minimap.colors.accent);
+
+      const shipClusterId = minimap.getShipClusterId();
+      const clusterId = shipClusterId || minimap.getEnabledClusters()[0]?.id;
+      smokeLog("[smoke] ship cluster:", shipClusterId, "→ entering", clusterId);
+      minimap.renderCluster(clusterId);
+      await wait(1000);
+      smokeLog("[smoke] cluster:", "mode=", minimap.state.mode, "label=", document.getElementById("minimapModeLabel").textContent);
+
+      const sectors = minimap.getSectorsInCluster(minimap.state.currentClusterId);
+      smokeLog("[smoke] sectors in cluster:", sectors.length);
+      if (sectors.length) {
+        const bounds = sectors[0].global_bounds;
+        ship = {
+          x: (bounds.min.x + bounds.max.x) / 2,
+          y: (bounds.min.y + bounds.max.y) / 2,
+          z: (bounds.min.z + bounds.max.z) / 2
+        };
+        await minimap.enterSector(sectors[0].sector_id);
+        await wait(400);
+        smokeLog("[smoke] sector:",
+          "mode=", minimap.state.mode,
+          "label=", document.getElementById("minimapModeLabel").textContent,
+          "objects=", minimap.markerGroup.children.length,
+          "shipVisible=", minimap.shipMarker.visible);
+
+        const toast = document.getElementById("minimapObjectToast");
+        const sprite = minimap.markerGroup.children.find((child) => child.isSprite);
+        if (sprite) {
+          minimap.showObjectToast(sprite.userData);
+          await wait(100);
+          smokeLog("[smoke] toast:",
+            "visible=", toast.classList.contains("visible"),
+            "name=", document.getElementById("minimapToastName").textContent);
+
+          document.getElementById("minimapToastDetailButton").click();
+          await wait(100);
+
+          minimap.navigateBack();
+          await wait(1600);
+          smokeLog("[smoke] after back:",
+            "mode=", minimap.state.mode,
+            "toastVisible=", toast.classList.contains("visible"),
+            "popupOpen=", minimap.isOpen);
+
+          await minimap.enterSector(sectors[0].sector_id);
+          await wait(300);
+          smokeLog("[smoke] re-enter:", "mode=", minimap.state.mode);
+          const sprite2 = minimap.markerGroup.children.find((child) => child.isSprite);
+          minimap.showObjectToast(sprite2.userData);
+          await wait(100);
+          document.getElementById("minimapToastSelectButton").click();
+          await wait(100);
+          smokeLog("[smoke] after select:",
+            "popupOpen=", minimap.isOpen,
+            "toastVisible=", toast.classList.contains("visible"));
+        } else {
+          smokeLog("[smoke] no sprite to test toast");
+        }
+      }
+
+      minimap.close();
+      smokeLog("[smoke] PASS");
+    } catch (error) {
+      smokeLog("[smoke] FAIL", error?.stack || error);
+    }
+  </script>
+</body>
+</html>

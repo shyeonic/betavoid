@@ -89,6 +89,13 @@ export const en = {
         status: "Status",
         type: "Type"
       }
+    },
+    map: {
+      title: "Map",
+      back: "Back",
+      galaxy: "Galaxy",
+      unnamedSpace: "Unnamed Space",
+      voidSpace: "Void Space"
     }
   },
   betaVoid: {

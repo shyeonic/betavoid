@@ -1,8 +1,12 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 import { ASSETS } from "./config.js";
+
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath("https://unpkg.com/three@0.165.0/examples/jsm/libs/draco/gltf/");
 
 export class ResourceManager {
   constructor({ onChange } = {}) {
@@ -76,9 +80,7 @@ export class ResourceManager {
 
   getShipSources(shipId = "ship_01") {
     const ship = ASSETS.ships[shipId] || ASSETS.ships["ship_01"];
-    const sources = [ship.local];
-    if (ship.remoteFallback) sources.push(ship.remoteFallback);
-    return sources;
+    return [ship.local];
   }
 
   looksLikeObjFile(text) {
@@ -236,8 +238,55 @@ export class ResourceManager {
 
   async loadGlbObject(source) {
     const loader = new GLTFLoader();
+    loader.setDRACOLoader(dracoLoader);
     const gltf = await loader.loadAsync(source);
     return gltf.scene;
+  }
+
+  async loadGlbModel(id, source, options = {}) {
+    if (this.disposed) throw new Error("ResourceManager has been disposed.");
+    if (this.loadedResources.has(id)) return this.loadedResources.get(id);
+    if (this.pendingLoads.has(id)) return this.pendingLoads.get(id);
+
+    const task = this.fetchGlbModel(id, source, options);
+    this.pendingLoads.set(id, task);
+    try {
+      return await task;
+    } finally {
+      this.pendingLoads.delete(id);
+    }
+  }
+
+  async fetchGlbModel(id, source, options = {}) {
+    if (this.disposed) throw new Error("ResourceManager has been disposed.");
+    const url = new URL(typeof source === "string" ? source : source.glb).href;
+    this.begin(id, options.label || id, url);
+
+    try {
+      const loader = new GLTFLoader();
+      loader.setDRACOLoader(dracoLoader);
+      const gltf = await loader.loadAsync(url);
+      const object = gltf.scene;
+
+      let hasMesh = false;
+      object.traverse((c) => { if (c.isMesh) hasMesh = true; });
+      if (!hasMesh) throw new Error("GLB contained no renderable meshes.");
+      if (this.disposed) throw new Error("ResourceManager has been disposed.");
+
+      const resource = {
+        id,
+        source: url,
+        object: this.normalizeWorldModel(object, options.targetSize ?? 1),
+        animations: gltf.animations || []
+      };
+      this.loadedResources.set(id, resource);
+      this.complete(id, url);
+      return resource;
+    } catch (error) {
+      console.warn(`[glb-load] ${id} failed (${url}):`, error?.message ?? error);
+      this.fail(id, error);
+      throw error;
+    }
   }
 
   async loadObjObject(source) {
@@ -281,7 +330,7 @@ export class ResourceManager {
       }
     }
 
-    const error = new Error(`ship model "${shipId}" could not be loaded from local GLB or remote OBJ sources.`);
+    const error = new Error(`ship model "${shipId}" could not be loaded from configured local sources.`);
     if (!silent) this.fail(id, error);
     throw error;
   }

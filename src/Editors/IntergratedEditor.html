@@ -1,0 +1,3605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Void Zero Integrated Editor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    :root {
+      --bg: #0d0f10;
+      --panel: #151819;
+      --panel-2: #1b2021;
+      --panel-3: #222829;
+      --line: rgba(195, 210, 200, 0.16);
+      --line-strong: rgba(195, 210, 200, 0.28);
+      --text: #d9e3dd;
+      --muted: #8b9b94;
+      --quiet: #64716c;
+      --accent: #44d7b6;
+      --accent-2: #f4b35e;
+      --danger: #f05d5e;
+      --warn: #e9c46a;
+      --info: #7cb7ff;
+      --ok: #5dd39e;
+      --field: #0f1213;
+      --shadow: rgba(0, 0, 0, 0.35);
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, "Segoe UI", system-ui, sans-serif;
+      font-size: 12px;
+      overflow: hidden;
+    }
+
+    button, input, select, textarea {
+      font: inherit;
+    }
+
+    button {
+      height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-3);
+      color: var(--text);
+      padding: 0 10px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button:hover:not(:disabled) {
+      border-color: var(--line-strong);
+      background: #293031;
+    }
+
+    button:disabled {
+      opacity: 0.42;
+      cursor: default;
+    }
+
+    .btn-primary {
+      border-color: rgba(68, 215, 182, 0.42);
+      background: rgba(68, 215, 182, 0.12);
+      color: var(--accent);
+    }
+
+    .btn-warn {
+      border-color: rgba(244, 179, 94, 0.42);
+      background: rgba(244, 179, 94, 0.10);
+      color: var(--accent-2);
+    }
+
+    .btn-danger {
+      border-color: rgba(240, 93, 94, 0.42);
+      background: rgba(240, 93, 94, 0.10);
+      color: #ff9a9a;
+    }
+
+    .btn-small {
+      height: 26px;
+      padding: 0 8px;
+      font-size: 11px;
+    }
+
+    input, select, textarea {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--field);
+      color: var(--text);
+      min-height: 30px;
+      padding: 6px 8px;
+      outline: none;
+      width: 100%;
+    }
+
+    input[type="color"] {
+      padding: 2px;
+      min-height: 30px;
+    }
+
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      min-height: 16px;
+      accent-color: var(--accent);
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(68, 215, 182, 0.62);
+    }
+
+    textarea {
+      min-height: 92px;
+      resize: vertical;
+      line-height: 1.45;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 11px;
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: 84px 1fr;
+      width: 100%;
+      height: 100%;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-rows: 36px 48px;
+      background: #111414;
+      border-bottom: 1px solid var(--line);
+      box-shadow: 0 10px 26px var(--shadow);
+      z-index: 10;
+    }
+
+    .window-titlebar {
+      display: grid;
+      grid-template-columns: 260px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      padding: 0 14px;
+      border-bottom: 1px solid rgba(195, 210, 200, 0.08);
+    }
+
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .brand-title {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      color: var(--accent);
+    }
+
+    .brand-sub {
+      font-size: 11px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .project-file {
+      min-width: 120px;
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--quiet);
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 11px;
+    }
+
+    .capsule-strip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .capsule-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 22px;
+      padding: 0 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.03);
+      white-space: nowrap;
+      font-size: 11px;
+    }
+
+    .pill.ok { color: var(--ok); border-color: rgba(93, 211, 158, 0.34); }
+    .pill.warn { color: var(--warn); border-color: rgba(233, 196, 106, 0.36); }
+    .pill.err { color: #ff9a9a; border-color: rgba(240, 93, 94, 0.42); }
+
+    .command-bar {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      min-width: 0;
+      overflow-x: auto;
+      padding: 6px 10px;
+      background: #151819;
+    }
+
+    .command-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      padding: 0 10px;
+      border-right: 1px solid var(--line);
+    }
+
+    .command-group:first-child {
+      padding-left: 0;
+    }
+
+    .command-spacer {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .command-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-left: 10px;
+      color: var(--quiet);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 210px 1fr;
+      min-height: 0;
+    }
+
+    .nav {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 10px;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      overflow: auto;
+    }
+
+    .tab-btn {
+      display: grid;
+      grid-template-columns: 24px 1fr auto;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      height: 38px;
+      border-radius: 6px;
+      background: transparent;
+      text-align: left;
+      color: var(--muted);
+    }
+
+    .tab-btn:hover {
+      background: var(--panel-2);
+    }
+
+    .tab-btn.active {
+      background: rgba(68, 215, 182, 0.10);
+      border-color: rgba(68, 215, 182, 0.34);
+      color: var(--text);
+    }
+
+    .tab-index {
+      color: var(--quiet);
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tab-count {
+      color: var(--quiet);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .content {
+      min-width: 0;
+      min-height: 0;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    .tab-page {
+      display: none;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .tab-page.active {
+      display: block;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 46px;
+      padding: 0 14px;
+      background: #111414;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 760;
+      color: var(--text);
+    }
+
+    .section-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .map-shell {
+      display: grid;
+      grid-template-columns: 270px minmax(340px, 1fr) 330px;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .side {
+      background: var(--panel);
+      overflow: auto;
+      min-height: 0;
+    }
+
+    .side.left {
+      border-right: 1px solid var(--line);
+    }
+
+    .side.right {
+      border-left: 1px solid var(--line);
+    }
+
+    .panel-block {
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-title {
+      margin-bottom: 8px;
+      color: var(--quiet);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+    }
+
+    .stack {
+      display: grid;
+      gap: 8px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .row > * {
+      min-width: 0;
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .segmented button {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--muted);
+    }
+
+    .segmented button.active {
+      background: rgba(68, 215, 182, 0.12);
+      color: var(--accent);
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px 10px;
+    }
+
+    .metric {
+      display: grid;
+      gap: 2px;
+    }
+
+    .metric span {
+      color: var(--quiet);
+      font-size: 10px;
+    }
+
+    .metric b {
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+    }
+
+    .drop-zone {
+      display: grid;
+      place-items: center;
+      min-height: 76px;
+      border: 1px dashed rgba(68, 215, 182, 0.32);
+      border-radius: 8px;
+      color: var(--muted);
+      cursor: pointer;
+      background: rgba(68, 215, 182, 0.04);
+      text-align: center;
+      line-height: 1.55;
+    }
+
+    .drop-zone.drag-over {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: rgba(68, 215, 182, 0.10);
+    }
+
+    .cluster-list {
+      display: grid;
+      gap: 4px;
+      max-height: 260px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .cluster-row {
+      display: grid;
+      grid-template-columns: 18px 30px 1fr auto;
+      align-items: center;
+      gap: 6px;
+      min-height: 38px;
+      padding: 5px 7px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .cluster-row input {
+      width: 16px;
+      height: 16px;
+      min-height: 16px;
+      cursor: pointer;
+    }
+
+    .cluster-row:hover {
+      background: var(--panel-2);
+    }
+
+    .cluster-row.enabled {
+      border-color: rgba(217, 227, 221, 0.24);
+    }
+
+    .cluster-row.active {
+      border-color: rgba(217, 227, 221, 0.38);
+      background: rgba(217, 227, 221, 0.08);
+      color: var(--text);
+    }
+
+    .cluster-main {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .cluster-title,
+    .cluster-sub {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .cluster-title {
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .cluster-sub {
+      color: var(--quiet);
+      font-size: 10px;
+    }
+
+    .cluster-state {
+      color: var(--quiet);
+      font-size: 10px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      background: #050606;
+    }
+
+    #three-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .map-hud {
+      position: absolute;
+      top: 10px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: rgba(217, 227, 221, 0.56);
+      pointer-events: none;
+      font-size: 11px;
+    }
+
+    .map-footer {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-top: 1px solid var(--line);
+      background: rgba(13, 15, 16, 0.86);
+      backdrop-filter: blur(8px);
+      overflow-x: auto;
+    }
+
+    .map-footer > * {
+      flex: 0 0 auto;
+    }
+
+    .coord-input {
+      width: 58px;
+      text-align: right;
+    }
+
+    .empty-state {
+      display: grid;
+      place-items: center;
+      min-height: 140px;
+      color: var(--quiet);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .entity-layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .entity-list-panel {
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      min-height: 0;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .entity-list {
+      overflow: auto;
+      padding: 8px;
+      display: grid;
+      align-content: start;
+      gap: 4px;
+    }
+
+    .entity-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 44px;
+      padding: 7px 8px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .entity-item:hover {
+      background: var(--panel-2);
+    }
+
+    .entity-item.active {
+      border-color: rgba(68, 215, 182, 0.34);
+      background: rgba(68, 215, 182, 0.08);
+      color: var(--text);
+    }
+
+    .entity-main {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+      text-align: left;
+    }
+
+    .entity-id {
+      display: block;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 11px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .entity-name {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--quiet);
+      margin-top: 2px;
+    }
+
+    .entity-meta {
+      color: var(--quiet);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .detail-panel {
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      background: var(--bg);
+    }
+
+    .form-wrap {
+      max-width: 1180px;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .form-section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .form-section h3 {
+      margin: 0;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .form-grid.two {
+      grid-template-columns: repeat(2, minmax(180px, 1fr));
+    }
+
+    .form-grid.three {
+      grid-template-columns: repeat(3, minmax(160px, 1fr));
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .field label {
+      color: var(--quiet);
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .field.inline {
+      grid-template-columns: auto 1fr;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .field.inline label {
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 12px;
+    }
+
+    .json-error {
+      color: #ff9a9a;
+      font-size: 11px;
+      min-height: 16px;
+      padding: 0 12px 10px;
+    }
+
+    .asset-table, .issue-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .asset-table th, .asset-table td,
+    .issue-table th, .issue-table td {
+      border-bottom: 1px solid var(--line);
+      padding: 8px;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    .asset-table th, .issue-table th {
+      color: var(--quiet);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: #111414;
+    }
+
+    .severity {
+      display: inline-flex;
+      justify-content: center;
+      min-width: 64px;
+      padding: 3px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+    }
+
+    .severity.error {
+      color: #ffb2b2;
+      background: rgba(240, 93, 94, 0.12);
+      border: 1px solid rgba(240, 93, 94, 0.34);
+    }
+
+    .severity.warning {
+      color: #ffe1a3;
+      background: rgba(233, 196, 106, 0.12);
+      border: 1px solid rgba(233, 196, 106, 0.34);
+    }
+
+    .severity.info {
+      color: #b9d8ff;
+      background: rgba(124, 183, 255, 0.12);
+      border: 1px solid rgba(124, 183, 255, 0.34);
+    }
+
+    .mono {
+      font-family: "Cascadia Mono", Consolas, monospace;
+    }
+
+    .swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      flex: 0 0 auto;
+    }
+
+    @media (max-width: 1120px) {
+      .window-titlebar {
+        grid-template-columns: 1fr auto;
+      }
+
+      .capsule-strip {
+        display: none;
+      }
+
+      .workspace {
+        grid-template-columns: 176px 1fr;
+      }
+
+      .map-shell {
+        grid-template-columns: 240px 1fr;
+      }
+
+      .side.right {
+        display: none;
+      }
+
+      .form-grid,
+      .form-grid.three,
+      .form-grid.two {
+        grid-template-columns: repeat(2, minmax(140px, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        grid-template-rows: auto 1fr;
+      }
+
+      .topbar {
+        grid-template-rows: auto auto;
+      }
+
+      .window-titlebar {
+        grid-template-columns: 1fr;
+        align-items: start;
+        gap: 6px;
+        min-width: 0;
+        padding: 8px 10px;
+      }
+
+      .command-bar {
+        justify-content: flex-start;
+        width: 100%;
+        padding: 6px 10px;
+      }
+
+      .command-group {
+        padding: 0 8px;
+      }
+
+      .project-file,
+      .command-meta {
+        display: none;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .nav {
+        display: none;
+      }
+
+      .map-shell,
+      .entity-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .side.left,
+      .entity-list-panel {
+        display: none;
+      }
+
+      .form-grid,
+      .form-grid.three,
+      .form-grid.two {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="window-titlebar">
+        <div class="brand">
+          <div class="brand-title">VOID ZERO</div>
+          <div class="brand-sub">Integrated Editor</div>
+        </div>
+        <div class="capsule-strip">
+          <span id="capsule-name" class="capsule-name">Untitled Project</span>
+          <span id="capsule-version" class="pill">0.0.0</span>
+          <span id="capsule-status" class="pill ok">Clean</span>
+          <span id="validation-pill" class="pill ok">0 issues</span>
+        </div>
+        <span id="project-file-name" class="project-file">No file</span>
+      </div>
+      <div class="command-bar" role="toolbar" aria-label="Project file commands">
+        <div class="command-group">
+          <button id="btn-new-project">New Project</button>
+          <button id="btn-open-project">Open</button>
+          <button id="btn-save-project" class="btn-primary">Save</button>
+        </div>
+        <div class="command-group">
+          <button id="btn-export-all" class="btn-warn">Export Game Data</button>
+        </div>
+        <div class="command-spacer"></div>
+        <div class="command-meta">
+          <span class="pill">Project .ged</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <nav class="nav" id="tab-nav">
+        <button class="tab-btn active" data-tab="map"><span class="tab-index">01</span><span>Galaxy Map</span><span class="tab-count" id="count-map">0</span></button>
+        <button class="tab-btn" data-tab="sectors"><span class="tab-index">02</span><span>Sectors</span><span class="tab-count" id="count-sectors">0</span></button>
+        <button class="tab-btn" data-tab="resources"><span class="tab-index">03</span><span>Resources</span><span class="tab-count" id="count-resources">0</span></button>
+        <button class="tab-btn" data-tab="items"><span class="tab-index">04</span><span>Items</span><span class="tab-count" id="count-items">0</span></button>
+        <button class="tab-btn" data-tab="buildings"><span class="tab-index">05</span><span>Buildings</span><span class="tab-count" id="count-buildings">0</span></button>
+        <button class="tab-btn" data-tab="ships"><span class="tab-index">06</span><span>Ships</span><span class="tab-count" id="count-ships">0</span></button>
+        <button class="tab-btn" data-tab="ship-visuals"><span class="tab-index">07</span><span>Ship Visuals</span><span class="tab-count" id="count-ship-visuals">0</span></button>
+        <button class="tab-btn" data-tab="vfx"><span class="tab-index">08</span><span>VFX</span><span class="tab-count" id="count-vfx">0</span></button>
+        <button class="tab-btn" data-tab="assets"><span class="tab-index">09</span><span>Assets</span><span class="tab-count" id="count-assets">0</span></button>
+        <button class="tab-btn" data-tab="integrity"><span class="tab-index">10</span><span>Integrity</span><span class="tab-count" id="count-integrity">0</span></button>
+      </nav>
+
+      <main class="content">
+        <section id="tab-map" class="tab-page active">
+          <div class="map-shell">
+            <aside class="side left">
+              <div class="panel-block">
+                <div class="panel-title">GMAP</div>
+                <div id="drop-gmap" class="drop-zone">Drop or load .gmap</div>
+                <div class="stack" style="margin-top:8px">
+                  <button id="btn-load-gmap">Load .gmap</button>
+                </div>
+              </div>
+
+              <div class="panel-block">
+                <div class="panel-title">Mode</div>
+                <div class="segmented">
+                  <button id="map-mode-edit" class="active">Edit</button>
+                  <button id="map-mode-view">View</button>
+                </div>
+                <div class="segmented" style="margin-top:8px">
+                  <button id="map-tool-select" class="active">Select</button>
+                  <button id="map-tool-erase">Erase</button>
+                </div>
+                <label class="field inline" style="margin-top:8px">
+                  <input type="checkbox" id="map-show-unplaced" checked />
+                  <span>Show Unplaced</span>
+                </label>
+              </div>
+
+              <div class="panel-block">
+                <div class="panel-title">Stats</div>
+                <div class="metric-grid">
+                  <div class="metric"><span>File</span><b id="map-file-name">None</b></div>
+                  <div class="metric"><span>Grid</span><b id="map-grid">-</b></div>
+                  <div class="metric"><span>Chunks</span><b id="map-chunks">0</b></div>
+                  <div class="metric"><span>Clusters</span><b id="map-clusters">0</b></div>
+                  <div class="metric"><span>Enabled Clusters</span><b id="map-enabled-clusters">0</b></div>
+                  <div class="metric"><span>Sectors</span><b id="map-sector-count">0</b></div>
+                  <div class="metric"><span>Resource Chunks</span><b id="map-resource-count">0</b></div>
+                  <div class="metric"><span>Beta Void</span><b id="map-betavoid-count">0</b></div>
+                  <div class="metric"><span>Allocated</span><b id="map-allocated">0</b></div>
+                </div>
+              </div>
+
+              <div class="panel-block">
+                <div class="panel-title">Clusters</div>
+                <div id="cluster-list" class="cluster-list"></div>
+              </div>
+            </aside>
+
+            <div class="canvas-wrap" id="view3d">
+              <canvas id="three-canvas"></canvas>
+              <div class="map-hud">
+                <span id="cursor-info"></span>
+                <span id="active-cluster-label">No map loaded</span>
+              </div>
+              <div class="map-footer">
+                <span class="mono">X</span><input id="goto-x" class="coord-input" type="number" />
+                <span class="mono">Y</span><input id="goto-y" class="coord-input" type="number" />
+                <span class="mono">Z</span><input id="goto-z" class="coord-input" type="number" />
+                <button id="btn-goto" class="btn-small">Go</button>
+                <button id="btn-overview" class="btn-small btn-primary">Overview</button>
+                <span id="goto-msg" style="color:#ff9a9a"></span>
+              </div>
+            </div>
+
+            <aside class="side right">
+              <div class="panel-block">
+                <div class="panel-title">Chunk</div>
+                <div id="chunk-panel" class="empty-state">No chunk selected</div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="tab-sectors" class="tab-page"></section>
+        <section id="tab-resources" class="tab-page"></section>
+        <section id="tab-items" class="tab-page"></section>
+        <section id="tab-buildings" class="tab-page"></section>
+        <section id="tab-ships" class="tab-page"></section>
+        <section id="tab-ship-visuals" class="tab-page"></section>
+        <section id="tab-vfx" class="tab-page"></section>
+
+        <section id="tab-assets" class="tab-page">
+          <div class="section-head">
+            <div class="section-title">Assets</div>
+            <div class="section-actions"><button id="btn-sync-assets" class="btn-small btn-primary">Sync References</button></div>
+          </div>
+          <div class="detail-panel"><div id="assets-root" class="form-wrap"></div></div>
+        </section>
+
+        <section id="tab-integrity" class="tab-page">
+          <div class="section-head">
+            <div class="section-title">Integrity</div>
+            <div class="section-actions"><button id="btn-run-validation" class="btn-small btn-primary">Run</button></div>
+          </div>
+          <div class="detail-panel"><div id="integrity-root" class="form-wrap"></div></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <input id="file-gmap" type="file" accept=".gmap" hidden />
+  <input id="file-project" type="file" accept=".ged" hidden />
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+const clone = (value) => JSON.parse(JSON.stringify(value));
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+const FILES = {
+  assetRegistry: "asset_registry.json",
+  itemDefs: "item_defs.json",
+  resourceDefs: "resource_defs.json",
+  buildingDefs: "building_defs.json",
+  sectorDefs: "sector_defs.json",
+  shipDefs: "ship_defs.json",
+  vfxDefs: "vfx_defs.json",
+  i18n: "i18n.json",
+  chunkMap: "chunk_map.gmapdata"
+};
+const GAME_GMAP_FILE = "galaxyMapData.gmap";
+const PROJECT_FORMAT = "void-zero-galaxy-editor-save";
+const PROJECT_VERSION = 1;
+const PROJECT_SAVE_COUNTER_KEY = "void-zero-galaxy-editor-save-counter";
+
+const RESOURCE_CATEGORIES = ["hydrite_mineral", "mineral", "gas"];
+const ITEM_TYPES = ["hydrite_mineral", "mineral", "gas"];
+const NODE_TYPES = ["PERMANENT", "DECAYING"];
+const PLACEMENT_TYPES = ["sector_anchor", "free_space", "resource_node"];
+const PRODUCTION_KINDS = ["NONE", "SELF", "RESOURCE_EXTRACTOR", "FACTORY"];
+const BUILDING_SIZES = ["EX", "L", "M", "S"];
+const BUILDING_CATEGORIES = [
+  "defense_turret", "factory", "habitation", "headquarters", "hyperdrive_energy",
+  "outpost", "power_plant", "resource_production", "shipyard", "trade_port"
+];
+
+const SECTOR_COLORS = ["#ff6b35", "#ffd450", "#ff4466", "#63d2ff", "#aa88ff", "#ff9944", "#ffee44", "#88ddff", "#44dd88", "#cc88cc"];
+const DEFAULT_SHIP_ID = "ship_01";
+const DEFAULT_SHIP_LIGHT_SETTINGS = {
+  color: "#9b9bff",
+  emissiveIntensity: 3,
+  lightRangeScale: 2,
+  minLightRange: 0.52,
+  maxLightRange: 1.45,
+  glowSpriteSpreadScale: 0.8,
+  glowSpriteOpacity: 0.28,
+  pointLightEnabled: false,
+  pointIntensity: 0.2,
+  pointRangeScale: 0.2
+};
+const SHIP_COMPONENT_KINDS = ["engine", "head_light", "emissive_light"];
+const VFX_EFFECT_KINDS = ["emissive_light"];
+
+function makeEmptyI18n() {
+  const buckets = { item: {}, resource: {}, building: {}, sector: {}, ship: {} };
+  return {
+    version: 1,
+    system: { ko: {}, en: {} },
+    content: { ko: clone(buckets), en: clone(buckets) }
+  };
+}
+
+function makeEmptyCapsule() {
+  return {
+    assetRegistry: { version: 1, models: {}, audio: {} },
+    itemDefs: { version: 1, items: {} },
+    resourceDefs: { version: 1, resources: {} },
+    buildingDefs: { version: 1, buildings: {} },
+    sectorDefs: { version: 1, sectors: {} },
+    shipDefs: { version: 1, ships: {} },
+    vfxDefs: { version: 1, effects: {} },
+    i18n: makeEmptyI18n(),
+    chunkMap: { version: 2, sourceGmap: "", clusters: {}, chunks: {} }
+  };
+}
+
+function makeShip(id, highlightColor) {
+  const specs = {
+    maxSpeed: 100,
+    minSpeed: -20,
+    accelerationRate: 24,
+    decelerationRate: 32,
+    throttleAdjustRate: 36,
+    arrivalRadius: 10,
+    deactivationCoastDuration: 600,
+    pitchRate: 1.45,
+    yawRate: 1.55,
+    rollRate: 1.8,
+    strafeRate: 45,
+    verticalRate: 45
+  };
+  const hyperdriveSpecs = {
+    cooldownDuration: 5,
+    warpEntryDuration: 0.6,
+    warpExitDuration: 0.6,
+    warpMinFlightDuration: 5,
+    warpFlightSpeed: 4000
+  };
+  return {
+    id,
+    labelKey: `ui.settings.gameplay.${id}`,
+    fallbackLabel: id,
+    specs,
+    hyperdriveSpecs,
+    visual: createDefaultShipVisual(id, { highlightColor })
+  };
+}
+
+function createDefaultShipVisual(id, visual = {}) {
+  const modelId = visual.modelId || id;
+  const reflectionIntensity = Number(visual.materials?.reflectionIntensity ?? visual.reflectionIntensity ?? 0.32);
+  const highlightColor = normalizeColorString(visual.highlightColor || firstHighlightColor(visual) || (id === "ship_02" ? "#286d4d" : "#ff97c2"));
+  const bindingColor = "#9b9bff";
+  const effectBindings = Array.isArray(visual.effectBindings)
+    ? normalizeShipEffectBindings(visual.effectBindings)
+    : createDefaultShipComponents(id, bindingColor);
+
+  return {
+    modelId,
+    reflectionIntensity,
+    highlightColor,
+    effectBindings,
+    materials: {
+      reflectionIntensity,
+      emissiveSurface: {
+        materialName: "EmissiveMTL_light",
+        fallbackColor: "#ffffff"
+      },
+      highlights: {
+        highlight_01: {
+          id: "highlight_01",
+          label: "Highlight_01",
+          materialName: "Highlight_01",
+          defaultColor: highlightColor
+        }
+      }
+    }
+  };
+}
+
+function createDefaultShipComponents(id, bindingColor = "#9b9bff") {
+  const engineId = id === "ship_02" ? "vfx_light_02_engine_001" : "vfx_light_engine_001";
+  const components = [
+    createShipComponent({
+      id: engineId,
+      kind: "engine",
+      label: `EmissivePlate_${id}.001`,
+      effectId: "engine_light_default",
+      objectMatches: [`EmissivePlate_${id}.001`],
+      engineOutput: true,
+      overrides: { color: bindingColor }
+    })
+  ];
+
+  if (id !== "ship_02") {
+    components.push(createShipComponent({
+      id: "vfx_light_head_001",
+      kind: "head_light",
+      label: "EmissivePlate_ship_01.002",
+      effectId: "head_light_default",
+      objectMatches: ["EmissivePlate_ship_01.002"],
+      defaultLight: true
+    }));
+  }
+
+  const auxPrefix = id === "ship_02" ? "vfx_light_02_aux_" : "vfx_light_aux_";
+  const auxLabels = id === "ship_02" ? ["002", "003", "004", "005", "006", "007"] : ["003", "004", "005", "006"];
+  for (const label of auxLabels) {
+    components.push(createShipComponent({
+      id: `${auxPrefix}${label}`,
+      kind: "emissive_light",
+      label: `EmissivePlate_${id}.${label}`,
+      effectId: "aux_light_default",
+      objectMatches: [`EmissivePlate_${id}.${label}`],
+      overrides: { color: bindingColor }
+    }));
+  }
+
+  return components;
+}
+
+function createShipComponent({
+  id,
+  kind = "emissive_light",
+  label = id,
+  effectId = "aux_light_default",
+  objectMatches = [],
+  materialMatches = [],
+  engineOutput = false,
+  defaultLight = false,
+  overrides = {}
+}) {
+  return {
+    id,
+    kind,
+    label,
+    effectId,
+    target: {
+      objectMatches: [...objectMatches],
+      materialMatches: [...materialMatches]
+    },
+    engineOutput,
+    defaultLight,
+    overrides: { ...overrides }
+  };
+}
+
+function firstHighlightColor(visual = {}) {
+  const first = Object.values(visual.materials?.highlights || {})[0];
+  return first?.defaultColor || null;
+}
+
+function normalizeColorString(value) {
+  if (typeof value === "string") return value;
+  const color = Number(value);
+  if (!Number.isFinite(color)) return "#ffffff";
+  return `#${Math.max(0, Math.min(0xffffff, color)).toString(16).padStart(6, "0")}`;
+}
+
+function makeEmptySelection() {
+  return { sectors: null, resources: null, items: null, buildings: null, ships: null, vfx: null };
+}
+
+let capsule = makeEmptyCapsule();
+let dirty = false;
+let activeTab = "map";
+let selected = makeEmptySelection();
+let issues = [];
+let projectFileName = "";
+
+const entityConfig = {
+  sectors: { label: "Sectors", singular: "sector", collection: () => capsule.sectorDefs.sectors, make: makeNewSector, render: renderSectorDetail },
+  resources: { label: "Resources", singular: "resource", collection: () => capsule.resourceDefs.resources, make: makeNewResource, render: renderResourceDetail },
+  items: { label: "Items", singular: "item", collection: () => capsule.itemDefs.items, make: makeNewItem, render: renderItemDetail },
+  buildings: { label: "Buildings", singular: "building", collection: () => capsule.buildingDefs.buildings, make: makeNewBuilding, render: renderBuildingDetail },
+  ships: { label: "Ships", singular: "ship", collection: () => capsule.shipDefs.ships, make: makeNewShip, render: renderShipDetail }
+};
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/`/g, "&#96;");
+}
+
+function toNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function pathGet(obj, path) {
+  return path.split(".").reduce((cur, part) => cur?.[part], obj);
+}
+
+function pathSet(obj, path, value) {
+  const parts = path.split(".");
+  let cur = obj;
+  while (parts.length > 1) {
+    const part = parts.shift();
+    if (!cur[part] || typeof cur[part] !== "object") cur[part] = {};
+    cur = cur[part];
+  }
+  cur[parts[0]] = value;
+}
+
+function options(values, current) {
+  return values.map((value) => `<option value="${escapeAttr(value)}" ${value === current ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+}
+
+function idOptions(collection, current, emptyLabel = null) {
+  const ids = Object.keys(collection).sort();
+  const rows = emptyLabel ? [`<option value="">${escapeHtml(emptyLabel)}</option>`] : [];
+  rows.push(...ids.map((id) => `<option value="${escapeAttr(id)}" ${id === current ? "selected" : ""}>${escapeHtml(id)}</option>`));
+  return rows.join("");
+}
+
+function field(label, html) {
+  return `<div class="field"><label>${escapeHtml(label)}</label>${html}</div>`;
+}
+
+function input(path, value, type = "text", extra = "") {
+  return `<input type="${type}" data-path="${escapeAttr(path)}" value="${escapeAttr(value ?? "")}" ${extra} />`;
+}
+
+function numberInput(path, value, step = "1", extra = "") {
+  return input(path, value ?? 0, "number", `step="${step}" ${extra}`);
+}
+
+function selectInput(path, value, values, extra = "") {
+  return `<select data-path="${escapeAttr(path)}" ${extra}>${options(values, value)}</select>`;
+}
+
+function checkboxInput(path, checked) {
+  return `<label class="field inline"><input type="checkbox" data-path="${escapeAttr(path)}" ${checked ? "checked" : ""} /><span>Enabled</span></label>`;
+}
+
+function jsonField(label, path, value) {
+  return `<div class="form-section"><h3>${escapeHtml(label)}</h3><textarea data-json-path="${escapeAttr(path)}">${escapeHtml(JSON.stringify(value ?? {}, null, 2))}</textarea><div class="json-error" data-json-error="${escapeAttr(path)}"></div></div>`;
+}
+
+function i18nFields(kind, id) {
+  const ko = contentEntry(kind, id, "ko");
+  const en = contentEntry(kind, id, "en");
+  return `
+    <div class="form-section">
+      <h3>I18n Content</h3>
+      <div class="form-grid two">
+        ${field("KO Name", `<input data-i18n-lang="ko" data-i18n-field="name" value="${escapeAttr(ko.name ?? "")}" />`)}
+        ${field("EN Name", `<input data-i18n-lang="en" data-i18n-field="name" value="${escapeAttr(en.name ?? "")}" />`)}
+        ${field(kind === "sector" ? "KO Theme" : "KO Description", `<textarea data-i18n-lang="ko" data-i18n-field="${kind === "sector" ? "theme" : "description"}">${escapeHtml(ko[kind === "sector" ? "theme" : "description"] ?? "")}</textarea>`)}
+        ${field(kind === "sector" ? "EN Theme" : "EN Description", `<textarea data-i18n-lang="en" data-i18n-field="${kind === "sector" ? "theme" : "description"}">${escapeHtml(en[kind === "sector" ? "theme" : "description"] ?? "")}</textarea>`)}
+      </div>
+    </div>
+  `;
+}
+
+function contentEntry(kind, id, lang) {
+  capsule.i18n.content ??= {};
+  capsule.i18n.content[lang] ??= {};
+  capsule.i18n.content[lang][kind] ??= {};
+  capsule.i18n.content[lang][kind][id] ??= kind === "sector" ? { name: id, theme: "" } : { name: id, description: "" };
+  return capsule.i18n.content[lang][kind][id];
+}
+
+function entityName(kind, id) {
+  return contentEntry(kind, id, "en").name || contentEntry(kind, id, "ko").name || id;
+}
+
+function setDirty(value = true) {
+  dirty = value;
+  updateHeader();
+}
+
+function updateHeader() {
+  $("#capsule-name").textContent = projectFileName ? projectFileName.replace(/\.ged$/i, "") : "Untitled Project";
+  $("#capsule-version").textContent = `GED v${PROJECT_VERSION}`;
+  $("#project-file-name").textContent = projectFileName || "No file";
+  $("#project-file-name").title = projectFileName || "";
+  const status = $("#capsule-status");
+  status.textContent = dirty ? "Dirty" : "Clean";
+  status.className = `pill ${dirty ? "warn" : "ok"}`;
+  const err = issues.filter((i) => i.level === "ERROR").length;
+  const warn = issues.filter((i) => i.level === "WARNING").length;
+  const pill = $("#validation-pill");
+  pill.textContent = err ? `${err} errors` : warn ? `${warn} warnings` : `${issues.length} issues`;
+  pill.className = `pill ${err ? "err" : warn ? "warn" : "ok"}`;
+}
+
+function countValues() {
+  $("#count-map").textContent = Object.keys(capsule.chunkMap.chunks || {}).length;
+  $("#count-sectors").textContent = Object.keys(capsule.sectorDefs.sectors || {}).length;
+  $("#count-resources").textContent = Object.keys(capsule.resourceDefs.resources || {}).length;
+  $("#count-items").textContent = Object.keys(capsule.itemDefs.items || {}).length;
+  $("#count-buildings").textContent = Object.keys(capsule.buildingDefs.buildings || {}).length;
+  $("#count-ships").textContent = Object.keys(capsule.shipDefs.ships || {}).length;
+  $("#count-ship-visuals").textContent = Object.keys(capsule.shipDefs.ships || {}).length;
+  $("#count-vfx").textContent = Object.keys(capsule.vfxDefs.effects || {}).length;
+  const refs = collectAssetRefs();
+  $("#count-assets").textContent = refs.models.size + refs.audio.size;
+  $("#count-integrity").textContent = issues.length;
+}
+
+function rerender() {
+  for (const kind of Object.keys(entityConfig)) renderEntityPage(kind);
+  renderShipVisualPage();
+  renderVfxPage();
+  renderAssets();
+  runValidation();
+  renderIntegrity();
+  refreshMapStats();
+  renderChunkPanel(selectedKey);
+  updateMapColors();
+  countValues();
+  updateHeader();
+}
+
+function setActiveTab(tab) {
+  activeTab = $(`#tab-${tab}`) ? tab : "map";
+  $$(".tab-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === activeTab));
+  $$(".tab-page").forEach((page) => page.classList.toggle("active", page.id === `tab-${activeTab}`));
+  if (activeTab === "map") resizeRenderer();
+  if (activeTab === "ship-visuals") renderShipVisualPage();
+  if (activeTab === "vfx") renderVfxPage();
+}
+
+$("#tab-nav").addEventListener("click", (event) => {
+  const btn = event.target.closest(".tab-btn");
+  if (btn) setActiveTab(btn.dataset.tab);
+});
+
+function renderEntityPage(kind) {
+  const cfg = entityConfig[kind];
+  const root = $(`#tab-${kind}`);
+  const collection = cfg.collection();
+  const ids = Object.keys(collection).sort();
+  if (!selected[kind] || !collection[selected[kind]]) selected[kind] = ids[0] || null;
+  root.innerHTML = `
+    <div class="entity-layout">
+      <aside class="entity-list-panel">
+        <div class="section-head">
+          <div class="section-title">${escapeHtml(cfg.label)}</div>
+          <button class="btn-small btn-primary" data-add-kind="${kind}">Add</button>
+        </div>
+        <div class="panel-block"><input type="search" data-search-kind="${kind}" placeholder="Filter" /></div>
+        <div class="entity-list" data-list-kind="${kind}">
+          ${ids.map((id) => entityListItem(kind, id, collection[id])).join("")}
+        </div>
+      </aside>
+      <main class="detail-panel" id="${kind}-detail"></main>
+    </div>
+  `;
+  const detail = $(`#${kind}-detail`);
+  if (!selected[kind]) {
+    detail.innerHTML = `<div class="empty-state">No ${escapeHtml(cfg.singular)} selected</div>`;
+  } else {
+    cfg.render(detail, selected[kind], collection[selected[kind]]);
+  }
+}
+
+function renderShipVisualPage() {
+  const root = $("#tab-ship-visuals");
+  const collection = capsule.shipDefs.ships || {};
+  const ids = Object.keys(collection).sort();
+  if (!selected.ships || !collection[selected.ships]) selected.ships = ids[0] || null;
+  root.innerHTML = `
+    <div class="entity-layout">
+      <aside class="entity-list-panel">
+        <div class="section-head">
+          <div class="section-title">Ship Visuals</div>
+        </div>
+        <div class="panel-block"><input type="search" data-search-kind="ship-visuals" placeholder="Filter" /></div>
+        <div class="entity-list" data-list-kind="ship-visuals">
+          ${ids.map((id) => shipVisualListItem(id, collection[id])).join("")}
+        </div>
+      </aside>
+      <main class="detail-panel" id="ship-visual-detail"></main>
+    </div>
+  `;
+  const detail = $("#ship-visual-detail");
+  if (!selected.ships) {
+    detail.innerHTML = `<div class="empty-state">No ship selected</div>`;
+  } else {
+    renderShipVisualDetail(detail, selected.ships, collection[selected.ships]);
+  }
+}
+
+function renderVfxPage() {
+  const root = $("#tab-vfx");
+  const effects = capsule.vfxDefs.effects || {};
+  const ids = Object.keys(effects).sort();
+  if (!selected.vfx || !effects[selected.vfx]) selected.vfx = ids[0] || null;
+  root.innerHTML = `
+    <div class="entity-layout">
+      <aside class="entity-list-panel">
+        <div class="section-head">
+          <div class="section-title">VFX</div>
+          <button class="btn-small btn-primary" data-add-vfx>Add</button>
+        </div>
+        <div class="panel-block"><input type="search" data-search-kind="vfx" placeholder="Filter" /></div>
+        <div class="entity-list" data-list-kind="vfx">
+          ${ids.map((id) => vfxListItem(id, effects[id])).join("")}
+        </div>
+      </aside>
+      <main class="detail-panel" id="vfx-detail"></main>
+    </div>
+  `;
+  const detail = $("#vfx-detail");
+  if (!selected.vfx) {
+    detail.innerHTML = `<div class="empty-state">No VFX selected</div>`;
+  } else {
+    renderVfxDetail(detail, selected.vfx, effects[selected.vfx]);
+  }
+}
+
+function entityListItem(kind, id, entity) {
+  const cfg = entityConfig[kind];
+  const meta = entity.type || entity.nodeType || entity.category || entity.theme || entity.size || "";
+  return `
+    <button class="entity-item ${selected[kind] === id ? "active" : ""}" data-select-kind="${kind}" data-id="${escapeAttr(id)}">
+      <span class="entity-main">
+        <span class="entity-id">${escapeHtml(id)}</span>
+        <span class="entity-name">${escapeHtml(entityName(cfg.singular, id))}</span>
+      </span>
+      <span class="entity-meta">${escapeHtml(meta)}</span>
+    </button>
+  `;
+}
+
+function vfxListItem(id, effect) {
+  return `
+    <button class="entity-item ${selected.vfx === id ? "active" : ""}" data-select-vfx="${escapeAttr(id)}">
+      <span class="entity-main">
+        <span class="entity-id">${escapeHtml(id)}</span>
+        <span class="entity-name">${escapeHtml(effect.label || id)}</span>
+      </span>
+      <span class="entity-meta">${escapeHtml(effect.kind || "vfx")}</span>
+    </button>
+  `;
+}
+
+function shipVisualListItem(id, ship) {
+  const visual = ship.visual || {};
+  const meta = visual.modelId || "";
+  return `
+    <button class="entity-item ${selected.ships === id ? "active" : ""}" data-select-ship-visual="${escapeAttr(id)}">
+      <span class="entity-main">
+        <span class="entity-id">${escapeHtml(id)}</span>
+        <span class="entity-name">${escapeHtml(meta || entityName("ship", id))}</span>
+      </span>
+      <span class="entity-meta">${escapeHtml((visual.effectBindings || []).length)} bindings</span>
+    </button>
+  `;
+}
+
+document.addEventListener("click", (event) => {
+  const vfxSelectBtn = event.target.closest("[data-select-vfx]");
+  if (vfxSelectBtn) {
+    selected.vfx = vfxSelectBtn.dataset.selectVfx;
+    renderVfxPage();
+    return;
+  }
+  const addVfxBtn = event.target.closest("[data-add-vfx]");
+  if (addVfxBtn) {
+    addVfxEffect();
+    return;
+  }
+  const deleteVfxBtn = event.target.closest("[data-delete-vfx]");
+  if (deleteVfxBtn) {
+    deleteVfxEffect(deleteVfxBtn.dataset.deleteVfx);
+    return;
+  }
+  const visualSelectBtn = event.target.closest("[data-select-ship-visual]");
+  if (visualSelectBtn) {
+    selected.ships = visualSelectBtn.dataset.selectShipVisual;
+    renderShipVisualPage();
+    return;
+  }
+  const selectBtn = event.target.closest("[data-select-kind]");
+  if (selectBtn) {
+    selected[selectBtn.dataset.selectKind] = selectBtn.dataset.id;
+    renderEntityPage(selectBtn.dataset.selectKind);
+    if (selectBtn.dataset.selectKind === "ships") renderShipVisualPage();
+    return;
+  }
+  const addBtn = event.target.closest("[data-add-kind]");
+  if (addBtn) {
+    addEntity(addBtn.dataset.addKind);
+    return;
+  }
+  const deleteBtn = event.target.closest("[data-delete-kind]");
+  if (deleteBtn) {
+    deleteEntity(deleteBtn.dataset.deleteKind, deleteBtn.dataset.id);
+  }
+});
+
+document.addEventListener("input", (event) => {
+  const search = event.target.closest("[data-search-kind]");
+  if (search) {
+    const kind = search.dataset.searchKind;
+    const term = search.value.toLowerCase();
+    $$(`[data-list-kind="${kind}"] .entity-item`).forEach((item) => {
+      item.style.display = item.textContent.toLowerCase().includes(term) ? "" : "none";
+    });
+  }
+});
+
+function bindDetail(detail, kind, id, obj, rerenderOnChange = false) {
+  const cfg = entityConfig[kind];
+  detail.querySelectorAll("[data-path]").forEach((el) => {
+    const eventName = el.type === "checkbox" || el.tagName === "SELECT" ? "change" : "input";
+    el.addEventListener(eventName, () => {
+      let value = el.type === "checkbox" ? el.checked : el.value;
+      if (el.type === "number") value = toNumber(value);
+      pathSet(obj, el.dataset.path, value);
+      if (el.dataset.normalize === "int") pathSet(obj, el.dataset.path, Math.round(toNumber(value)));
+      if (el.dataset.nullable === "true" && el.value === "") pathSet(obj, el.dataset.path, null);
+      setDirty();
+      if (rerenderOnChange || el.dataset.rerender === "true") {
+        renderEntityPage(kind);
+      } else {
+        runValidation();
+        renderIntegrity();
+        countValues();
+        updateMapColors();
+      }
+    });
+  });
+  detail.querySelectorAll("[data-json-path]").forEach((el) => {
+    el.addEventListener("input", () => {
+      const error = detail.querySelector(`[data-json-error="${CSS.escape(el.dataset.jsonPath)}"]`);
+      try {
+        const value = JSON.parse(el.value || "null");
+        pathSet(obj, el.dataset.jsonPath, value);
+        if (error) error.textContent = "";
+        setDirty();
+        runValidation();
+        renderIntegrity();
+      } catch (err) {
+        if (error) error.textContent = err.message;
+      }
+    });
+  });
+  detail.querySelectorAll("[data-i18n-lang]").forEach((el) => {
+    el.addEventListener("input", () => {
+      contentEntry(cfg.singular, id, el.dataset.i18nLang)[el.dataset.i18nField] = el.value;
+      setDirty();
+      runValidation();
+      renderIntegrity();
+      const activeItem = detail.closest(".entity-layout")?.querySelector(`.entity-item.active .entity-name`);
+      if (activeItem) activeItem.textContent = entityName(cfg.singular, id);
+    });
+  });
+}
+
+function detailHeader(kind, id) {
+  return `
+    <div class="section-head">
+      <div class="section-title">${escapeHtml(id)}</div>
+      <div class="section-actions">
+        <button class="btn-small btn-danger" data-delete-kind="${kind}" data-id="${escapeAttr(id)}">Delete</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderItemDetail(root, id, item) {
+  root.innerHTML = `${detailHeader("items", id)}
+    <div class="form-wrap">
+      <div class="form-section"><h3>Item Definition</h3><div class="form-grid">
+        ${field("ID", `<input value="${escapeAttr(item.id)}" disabled />`)}
+        ${field("Category", input("category", item.category))}
+        ${field("Type", selectInput("type", item.type, ITEM_TYPES))}
+        ${field("Mass", numberInput("mass", item.mass, "0.1"))}
+        ${field("Tradable", `<input value="${item.tradable ? "true" : "false"}" disabled />`)}
+        ${field("Stackable", `<input value="${item.stackable ? "true" : "false"}" disabled />`)}
+      </div></div>
+      ${i18nFields("item", id)}
+    </div>`;
+  bindDetail(root, "items", id, item);
+}
+
+function renderResourceDetail(root, id, res) {
+  root.innerHTML = `${detailHeader("resources", id)}
+    <div class="form-wrap">
+      <div class="form-section"><h3>Resource Definition</h3><div class="form-grid">
+        ${field("ID", `<input value="${escapeAttr(res.id)}" disabled />`)}
+        ${field("Produces Item", `<select data-path="producesItemId">${idOptions(capsule.itemDefs.items, res.producesItemId)}</select>`)}
+        ${field("Node Type", selectInput("nodeType", res.nodeType, NODE_TYPES, `data-rerender="true"`))}
+        ${field("Sector Ratio", numberInput("sectorRatio", res.sectorRatio, "0.01"))}
+        ${field("Total Capacity", numberInput("totalCapacity", res.totalCapacity, "1"))}
+        ${field("Spawn Limit", numberInput("spawnLimitPerCycle", res.spawnLimitPerCycle, "1"))}
+        ${field("Node Min", numberInput("nodeCapacityRange.0", res.nodeCapacityRange?.[0], "1"))}
+        ${field("Node Max", numberInput("nodeCapacityRange.1", res.nodeCapacityRange?.[1], "1"))}
+        ${field("Yield / Sec", numberInput("baseYieldPerSec", res.baseYieldPerSec, "0.1"))}
+        ${field("Lifetime Min", numberInput("lifetimeRange.0", res.lifetimeRange?.[0] ?? 0, "1", res.nodeType === "DECAYING" ? "" : "disabled"))}
+        ${field("Lifetime Max", numberInput("lifetimeRange.1", res.lifetimeRange?.[1] ?? 0, "1", res.nodeType === "DECAYING" ? "" : "disabled"))}
+      </div></div>
+      <div class="form-section"><h3>Visual</h3><div class="form-grid three">
+        ${field("Category", selectInput("visual.category", res.visual?.category, RESOURCE_CATEGORIES))}
+        ${field("Model ID", input("visual.modelId", res.visual?.modelId))}
+      </div></div>
+      ${i18nFields("resource", id)}
+    </div>`;
+  bindDetail(root, "resources", id, res);
+}
+
+function renderSectorDetail(root, id, sector) {
+  root.innerHTML = `${detailHeader("sectors", id)}
+    <div class="form-wrap">
+      <div class="form-section"><h3>Sector Definition</h3><div class="form-grid">
+        ${field("ID", `<input value="${escapeAttr(sector.id)}" disabled />`)}
+        ${field("Theme", input("theme", sector.theme))}
+        ${field("Theme Music", input("themeMusicId", sector.themeMusicId))}
+        ${field("Color", input("color", sector.color, "color"))}
+        ${field("GDP Coeff", numberInput("stats.base_gdp_coeff", sector.stats?.base_gdp_coeff, "0.1"))}
+        ${field("Admin Capacity", numberInput("stats.admin_capacity", sector.stats?.admin_capacity, "1"))}
+        ${field("Population Cap", numberInput("stats.population_cap", sector.stats?.population_cap, "1"))}
+        ${field("Mining Weight", numberInput("stats.environmental_weight.mining_efficiency", sector.stats?.environmental_weight?.mining_efficiency, "0.1"))}
+        ${field("Agriculture Weight", numberInput("stats.environmental_weight.agriculture_efficiency", sector.stats?.environmental_weight?.agriculture_efficiency, "0.1"))}
+        ${field("Beta Void Count", numberInput("betaVoidCount", sector.betaVoidCount ?? 1, "1", `min="0" data-normalize="int"`))}
+      </div></div>
+      ${jsonField("Resource Weights", "resourceWeights", sector.resourceWeights || {})}
+      ${jsonField("Initial Buildings", "initialBuildings", sector.initialBuildings || [])}
+      ${jsonField("Initial Resource Facilities", "initialResourceFacilities", sector.initialResourceFacilities || [])}
+      ${i18nFields("sector", id)}
+    </div>`;
+  bindDetail(root, "sectors", id, sector);
+}
+
+function renderBuildingDetail(root, id, b) {
+  root.innerHTML = `${detailHeader("buildings", id)}
+    <div class="form-wrap">
+      <div class="form-section"><h3>Identity</h3><div class="form-grid">
+        ${field("ID", `<input value="${escapeAttr(b.id)}" disabled />`)}
+        ${field("Size", selectInput("size", b.size, BUILDING_SIZES))}
+        ${field("Category", selectInput("category", b.category, BUILDING_CATEGORIES))}
+        ${field("HP", numberInput("hp", b.hp, "1"))}
+        ${field("Admin Cost", numberInput("adminCost", b.adminCost, "1"))}
+      </div></div>
+      <div class="form-section"><h3>Placement</h3><div class="form-grid three">
+        ${field("Type", selectInput("placement.type", b.placement?.type, PLACEMENT_TYPES, `data-rerender="true"`))}
+        ${field("Radius", numberInput("placement.radius", b.placement?.radius ?? "", "1", `data-nullable="true" ${b.placement?.type === "sector_anchor" ? "" : "disabled"}`))}
+        ${field("Required Resource", selectInput("placement.requiredResourceType", b.placement?.requiredResourceType || "mineral", RESOURCE_CATEGORIES, b.placement?.type === "resource_node" ? "" : "disabled"))}
+      </div></div>
+      <div class="form-section"><h3>Production</h3><div class="form-grid">
+        ${field("Kind", selectInput("production.kind", b.production?.kind || "NONE", PRODUCTION_KINDS, `data-rerender="true"`))}
+        ${field("Output Sink", input("production.outputSink", b.production?.outputSink || ""))}
+        ${field("Recipe ID", input("production.recipeId", b.production?.recipeId || "", "text", b.production?.kind === "FACTORY" ? "" : "disabled"))}
+        ${field("Depletes", checkboxInput("production.depletes", !!b.production?.depletes))}
+        ${field("Lock Expiry", checkboxInput("production.lockExpiry", !!b.production?.lockExpiry))}
+      </div></div>
+      <div class="form-section"><h3>Docking And Trade</h3><div class="form-grid">
+        ${field("Docking Capacity", numberInput("docking.capacity", b.docking?.capacity ?? "", "1", `data-nullable="true"`))}
+        ${field("Trade", checkboxInput("trade.enabled", !!b.trade?.enabled))}
+        ${field("Handling Speed", numberInput("trade.handling_speed", b.trade?.handling_speed ?? 0, "0.1"))}
+        ${field("Cargo Capacity", numberInput("trade.cargo_capacity", b.trade?.cargo_capacity ?? 0, "1"))}
+        ${field("Min Reputation", numberInput("trade.min_reputation", b.trade?.min_reputation ?? 0, "1"))}
+      </div></div>
+      <div class="form-section"><h3>Visual</h3><div class="form-grid">
+        ${field("Model ID", input("visual.modelId", b.visual?.modelId))}
+        ${field("Color", input("visual.color", b.visual?.color || "#ffffff", "color"))}
+        ${field("Emissive", input("visual.emissive", b.visual?.emissive || "#17345e", "color"))}
+        ${field("Emissive Intensity", numberInput("visual.emissiveIntensity", b.visual?.emissiveIntensity ?? 0, "0.01"))}
+        ${field("Scale", numberInput("visual.scale", b.visual?.scale ?? 1, "0.1"))}
+      </div></div>
+      ${jsonField("Initial Inventory", "initialInventory", b.initialInventory || {})}
+      ${i18nFields("building", id)}
+    </div>`;
+  bindDetail(root, "buildings", id, b);
+}
+
+function renderVfxEffectSettings(effectId, effect) {
+  const settings = effect.settings || {};
+  return `
+    <div class="form-section" data-vfx-card="${escapeAttr(effectId)}">
+      <h3>Effect Settings</h3>
+      <div class="form-grid">
+        ${field("Color", `<input type="color" data-vfx-path="settings.color" value="${escapeAttr(settings.color || "#9b9bff")}" />`)}
+        ${field("Emissive", `<input type="number" step="0.01" data-vfx-path="settings.emissiveIntensity" value="${escapeAttr(settings.emissiveIntensity ?? 1)}" />`)}
+        ${field("Range Scale", `<input type="number" step="0.01" data-vfx-path="settings.lightRangeScale" value="${escapeAttr(settings.lightRangeScale ?? 1)}" />`)}
+        ${field("Min Range", `<input type="number" step="0.01" data-vfx-path="settings.minLightRange" value="${escapeAttr(settings.minLightRange ?? 0.1)}" />`)}
+        ${field("Max Range", `<input type="number" step="0.01" data-vfx-path="settings.maxLightRange" value="${escapeAttr(settings.maxLightRange ?? 1)}" />`)}
+        ${field("Glow Spread", `<input type="number" step="0.01" data-vfx-path="settings.glowSpriteSpreadScale" value="${escapeAttr(settings.glowSpriteSpreadScale ?? 1)}" />`)}
+        ${field("Glow Opacity", `<input type="number" step="0.01" data-vfx-path="settings.glowSpriteOpacity" value="${escapeAttr(settings.glowSpriteOpacity ?? 0.1)}" />`)}
+        ${field("Point Light", `<label class="field inline"><input type="checkbox" data-vfx-path="settings.pointLightEnabled" ${settings.pointLightEnabled ? "checked" : ""} /><span>Enabled</span></label>`)}
+        ${field("Point Intensity", `<input type="number" step="0.01" data-vfx-path="settings.pointIntensity" value="${escapeAttr(settings.pointIntensity ?? 0)}" />`)}
+        ${field("Point Range", `<input type="number" step="0.01" data-vfx-path="settings.pointRangeScale" value="${escapeAttr(settings.pointRangeScale ?? 1)}" />`)}
+      </div>
+    </div>
+  `;
+}
+
+function renderShipBindingEditor(ship) {
+  const components = ship.visual?.effectBindings || [];
+  return `
+    <div class="form-section">
+      <div class="section-head">
+        <h3>GLB VFX Bindings</h3>
+        <button type="button" class="btn-small btn-primary" data-add-ship-component>Add Component</button>
+      </div>
+      ${components.length ? components.map((component, index) => renderShipComponentCard(component, index)).join("") : `<div class="empty-state">No GLB effect components</div>`}
+    </div>
+  `;
+}
+
+function renderShipComponentCard(component, index) {
+  const effects = capsule.vfxDefs.effects || {};
+  const target = component.target || {};
+  return `
+    <div class="panel-block" data-ship-component-card="${index}">
+      <div class="section-head">
+        <div class="panel-title">${escapeHtml(component.id || `component_${index + 1}`)}</div>
+        <button type="button" class="btn-small btn-danger" data-delete-ship-component="${index}">Delete</button>
+      </div>
+      <div class="form-grid">
+        ${field("Component ID", `<input data-ship-component="${index}" data-component-path="id" value="${escapeAttr(component.id || "")}" />`)}
+        ${field("Kind", `<select data-ship-component="${index}" data-component-path="kind">${options(SHIP_COMPONENT_KINDS, component.kind || "emissive_light")}</select>`)}
+        ${field("Label", `<input data-ship-component="${index}" data-component-path="label" value="${escapeAttr(component.label || "")}" />`)}
+        ${field("VFX", `<select data-ship-component="${index}" data-component-path="effectId">${idOptions(effects, component.effectId || "", "None")}</select>`)}
+        ${field("Engine Output", `<label class="field inline"><input type="checkbox" data-ship-component="${index}" data-component-path="engineOutput" ${component.engineOutput ? "checked" : ""} /><span>Enabled</span></label>`)}
+        ${field("Default Light", `<label class="field inline"><input type="checkbox" data-ship-component="${index}" data-component-path="defaultLight" ${component.defaultLight ? "checked" : ""} /><span>Enabled</span></label>`)}
+      </div>
+      <div class="form-grid two">
+        ${field("GLB Object Matches", `<textarea data-ship-component-lines="${index}" data-component-path="target.objectMatches">${escapeHtml((target.objectMatches || []).join("\n"))}</textarea>`)}
+        ${field("GLB Material Matches", `<textarea data-ship-component-lines="${index}" data-component-path="target.materialMatches">${escapeHtml((target.materialMatches || []).join("\n"))}</textarea>`)}
+      </div>
+      ${jsonField("Settings Override", `effectBindings.${index}.overrides`, component.overrides || {})}
+    </div>
+  `;
+}
+
+function renderShipDetail(root, id, ship) {
+  const specs = ship.specs || {};
+  const hyper = ship.hyperdriveSpecs || {};
+  root.innerHTML = `${detailHeader("ships", id)}
+    <div class="form-wrap">
+      <div class="form-section"><h3>Identity</h3><div class="form-grid">
+        ${field("ID", `<input value="${escapeAttr(ship.id)}" disabled />`)}
+        ${field("Label Key", input("labelKey", ship.labelKey || `ui.settings.gameplay.${id}`))}
+        ${field("Fallback Label", input("fallbackLabel", ship.fallbackLabel || id))}
+      </div></div>
+      <div class="form-section"><h3>Flight Specs</h3><div class="form-grid">
+        ${Object.entries(specs).map(([key, value]) => field(key, numberInput(`specs.${key}`, value, "0.01"))).join("")}
+      </div></div>
+      <div class="form-section"><h3>Hyperdrive</h3><div class="form-grid">
+        ${Object.entries(hyper).map(([key, value]) => field(key, numberInput(`hyperdriveSpecs.${key}`, value, "0.01"))).join("")}
+      </div></div>
+      ${i18nFields("ship", id)}
+    </div>`;
+  bindDetail(root, "ships", id, ship);
+}
+
+function renderShipVisualDetail(root, id, ship) {
+  ensureShipEditorShape(ship);
+  const visual = ship.visual || createDefaultShipVisual(id);
+  const materials = visual.materials || {};
+  const emissiveSurface = materials.emissiveSurface || {};
+  const highlightColor = visual.highlightColor || materials.highlights?.highlight_01?.defaultColor || "#ffffff";
+  root.innerHTML = `
+    <div class="section-head">
+      <div class="section-title">${escapeHtml(id)} Visuals</div>
+      <div class="section-actions">
+        <span class="pill">Ship Options</span>
+      </div>
+    </div>
+    <div class="form-wrap">
+      <div class="form-section"><h3>Visual Core</h3><div class="form-grid">
+        ${field("Model ID", input("visual.modelId", visual.modelId))}
+        ${field("Reflection", numberInput("visual.materials.reflectionIntensity", materials.reflectionIntensity ?? visual.reflectionIntensity ?? 0.32, "0.01"))}
+        ${field("Emissive Material", input("visual.materials.emissiveSurface.materialName", emissiveSurface.materialName || "EmissiveMTL_light"))}
+        ${field("Fallback Color", input("visual.materials.emissiveSurface.fallbackColor", emissiveSurface.fallbackColor || "#ffffff", "color"))}
+        ${field("Highlight Color", input("visual.highlightColor", highlightColor, "color"))}
+      </div></div>
+      ${jsonField("Highlight Components", "visual.materials.highlights", materials.highlights || {})}
+      ${renderShipBindingEditor(ship)}
+    </div>`;
+  bindDetail(root, "ships", id, ship);
+  bindShipBindingControls(root, id, ship);
+}
+
+function renderVfxDetail(root, id, effect) {
+  syncVfxEffect(effect);
+  root.innerHTML = `
+    <div class="section-head">
+      <div class="section-title">${escapeHtml(id)}</div>
+      <div class="section-actions">
+        <button class="btn-small btn-danger" data-delete-vfx="${escapeAttr(id)}">Delete</button>
+      </div>
+    </div>
+    <div class="form-wrap">
+      <div class="form-section"><h3>VFX Identity</h3><div class="form-grid">
+        ${field("ID", `<input value="${escapeAttr(effect.id || id)}" disabled />`)}
+        ${field("Label", `<input data-vfx-path="label" value="${escapeAttr(effect.label || id)}" />`)}
+        ${field("Kind", `<select data-vfx-path="kind">${options(VFX_EFFECT_KINDS, effect.kind || "emissive_light")}</select>`)}
+      </div></div>
+      ${renderVfxEffectSettings(id, effect)}
+    </div>`;
+  bindVfxDetail(root, effect);
+}
+
+function bindVfxDetail(root, effect) {
+  root.querySelectorAll("[data-vfx-path]").forEach((el) => {
+    const eventName = el.type === "checkbox" || el.tagName === "SELECT" ? "change" : "input";
+    el.addEventListener(eventName, () => {
+      let value = el.type === "checkbox" ? el.checked : el.value;
+      if (el.type === "number") value = toNumber(value);
+      pathSet(effect, el.dataset.vfxPath, value);
+      syncVfxEffect(effect);
+      setDirty();
+      runValidation();
+      renderIntegrity();
+      countValues();
+    });
+  });
+  root.querySelectorAll("[data-json-path]").forEach((el) => {
+    el.addEventListener("input", () => {
+      const error = root.querySelector(`[data-json-error="${CSS.escape(el.dataset.jsonPath)}"]`);
+      try {
+        pathSet(effect, el.dataset.jsonPath, JSON.parse(el.value || "null"));
+        if (error) error.textContent = "";
+        syncVfxEffect(effect);
+        setDirty();
+        runValidation();
+        renderIntegrity();
+      } catch (err) {
+        if (error) error.textContent = err.message;
+      }
+    });
+  });
+}
+
+function bindShipBindingControls(root, shipId, ship) {
+  root.querySelectorAll("[data-ship-component]").forEach((el) => {
+    const eventName = el.type === "checkbox" || el.tagName === "SELECT" ? "change" : "input";
+    el.addEventListener(eventName, () => {
+      const component = ship.visual?.effectBindings?.[Number(el.dataset.shipComponent)];
+      if (!component) return;
+      let value = el.type === "checkbox" ? el.checked : el.value;
+      if (el.type === "number") value = toNumber(value);
+      pathSet(component, el.dataset.componentPath, value);
+      if (el.dataset.componentPath === "engineOutput" && value === true) {
+        ship.visual.effectBindings.forEach((item) => { if (item !== component) item.engineOutput = false; });
+      }
+      if (el.dataset.componentPath === "defaultLight" && value === true) {
+        ship.visual.effectBindings.forEach((item) => { if (item !== component) item.defaultLight = false; });
+      }
+      syncShipVisual(ship);
+      setDirty();
+      runValidation();
+      renderIntegrity();
+    });
+  });
+
+  root.querySelectorAll("[data-ship-component-lines]").forEach((el) => {
+    el.addEventListener("input", () => {
+      const component = ship.visual?.effectBindings?.[Number(el.dataset.shipComponentLines)];
+      if (!component) return;
+      pathSet(component, el.dataset.componentPath, linesToArray(el.value));
+      syncShipVisual(ship);
+      setDirty();
+      runValidation();
+      renderIntegrity();
+    });
+  });
+
+  root.querySelector("[data-add-ship-component]")?.addEventListener("click", () => {
+    ship.visual ??= createDefaultShipVisual(shipId);
+    ship.visual.effectBindings ??= [];
+    const nextIndex = ship.visual.effectBindings.length + 1;
+    const id = prompt("New component id", `component_${nextIndex}`);
+    if (!id) return;
+    if (ship.visual.effectBindings.some((component) => component.id === id)) {
+      alert("Component ID already exists.");
+      return;
+    }
+    ship.visual.effectBindings.push(createShipComponent({
+      id,
+      kind: "emissive_light",
+      label: id,
+      effectId: Object.keys(capsule.vfxDefs.effects || {})[0] || "aux_light_default",
+      objectMatches: [],
+      materialMatches: []
+    }));
+    syncShipVisual(ship);
+    setDirty();
+    renderShipVisualPage();
+  });
+
+  root.querySelectorAll("[data-delete-ship-component]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = Number(button.dataset.deleteShipComponent);
+      if (!confirm(`Delete component ${ship.visual?.effectBindings?.[index]?.id || index}?`)) return;
+      ship.visual.effectBindings.splice(index, 1);
+      syncShipVisual(ship);
+      setDirty();
+      renderShipVisualPage();
+    });
+  });
+}
+
+function linesToArray(value) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function ensureShipEditorShape(ship) {
+  ship.visual = normalizeShipVisual(ship.id, ship.visual || {});
+  syncShipVisual(ship);
+  return ship;
+}
+
+function syncShipVisuals() {
+  for (const ship of Object.values(capsule.shipDefs.ships || {})) syncShipVisual(ship);
+}
+
+function syncShipVisual(ship) {
+  if (!ship?.visual) return;
+  ship.visual.reflectionIntensity = Number(ship.visual.materials?.reflectionIntensity ?? ship.visual.reflectionIntensity ?? 0.32);
+  ship.visual.highlightColor = ship.visual.highlightColor || firstHighlightColor(ship.visual) || "#ffffff";
+  ship.visual.effectBindings = normalizeShipEffectBindings(ship.visual.effectBindings || []);
+  ship.visual.materials ??= {};
+  ship.visual.materials.highlights ??= {};
+  ship.visual.materials.highlights.highlight_01 ??= {
+    id: "highlight_01",
+    label: "Highlight_01",
+    materialName: "Highlight_01",
+    defaultColor: ship.visual.highlightColor
+  };
+  ship.visual.materials.highlights.highlight_01.defaultColor = ship.visual.highlightColor;
+}
+
+function syncVfxDefs() {
+  capsule.vfxDefs.effects = normalizeVfxEffects(capsule.vfxDefs.effects || {});
+  capsule.vfxDefs.effects ??= {};
+  for (const [id, effect] of Object.entries(capsule.vfxDefs.effects)) {
+    effect.id = effect.id || id;
+    syncVfxEffect(effect);
+  }
+}
+
+function syncVfxEffect(effect) {
+  if (!effect) return;
+  effect.kind = effect.kind || "emissive_light";
+  effect.label = effect.label || effect.id || "VFX";
+  effect.settings = { ...DEFAULT_SHIP_LIGHT_SETTINGS, ...(effect.settings || {}) };
+}
+
+function buildShipVfxFromComponents(visual, effects) {
+  const components = visual.effectBindings || [];
+  const lightParts = components.map((component) => {
+    const effect = effects[component.effectId] || {};
+    const lightPart = {
+      id: component.id,
+      label: component.label || component.id,
+      objectMatches: [...(component.target?.objectMatches || [])],
+      settings: {
+        ...(effect.settings || {}),
+        ...(component.overrides || {})
+      }
+    };
+    const materialMatches = [...(component.target?.materialMatches || [])];
+    if (materialMatches.length) lightPart.materialMatches = materialMatches;
+    return lightPart;
+  });
+  const engineComponent = components.find((component) => component.engineOutput) || components[0] || null;
+  const defaultComponent = components.find((component) => component.defaultLight) || components.find((component) => component.kind === "head_light") || null;
+  return {
+    defaultLightType: defaultComponent?.id ?? null,
+    engineOutput: {
+      controlledLightType: engineComponent?.id || lightParts[0]?.id || null,
+      value: 100,
+      min: {
+        emissiveIntensity: 0.2,
+        glowSpriteOpacity: 0.04,
+        pointIntensity: 0.05
+      }
+    },
+    lightParts
+  };
+}
+
+function addVfxEffect() {
+  const id = prompt("New VFX id", `vfx_${Object.keys(capsule.vfxDefs.effects || {}).length + 1}`);
+  if (!id) return;
+  capsule.vfxDefs.effects ??= {};
+  if (capsule.vfxDefs.effects[id]) {
+    alert("VFX ID already exists.");
+    return;
+  }
+  capsule.vfxDefs.effects[id] = {
+    id,
+    label: id,
+    kind: "emissive_light",
+    settings: { ...DEFAULT_SHIP_LIGHT_SETTINGS }
+  };
+  selected.vfx = id;
+  syncVfxDefs();
+  setDirty();
+  renderVfxPage();
+  renderShipVisualPage();
+  runValidation();
+  renderIntegrity();
+}
+
+function deleteVfxEffect(id) {
+  if (!id || !capsule.vfxDefs.effects?.[id]) return;
+  if (!confirm(`Delete VFX ${id}?`)) return;
+  delete capsule.vfxDefs.effects[id];
+  for (const ship of Object.values(capsule.shipDefs.ships || {})) {
+    for (const binding of ship.visual?.effectBindings || []) {
+      if (binding.effectId === id) binding.effectId = "";
+    }
+  }
+  selected.vfx = Object.keys(capsule.vfxDefs.effects || {}).sort()[0] || null;
+  setDirty();
+  renderVfxPage();
+  renderShipVisualPage();
+  runValidation();
+  renderIntegrity();
+}
+
+function addEntity(kind) {
+  const cfg = entityConfig[kind];
+  const collection = cfg.collection();
+  const id = prompt(`New ${cfg.singular} id`);
+  if (!id) return;
+  if (collection[id]) {
+    alert("ID already exists.");
+    return;
+  }
+  collection[id] = cfg.make(id);
+  selected[kind] = id;
+  contentEntry(cfg.singular, id, "ko").name = id;
+  contentEntry(cfg.singular, id, "en").name = id;
+  setDirty();
+  rerender();
+  setActiveTab(kind);
+}
+
+function deleteEntity(kind, id) {
+  const cfg = entityConfig[kind];
+  const collection = cfg.collection();
+  if (!collection[id]) return;
+  if (!confirm(`Delete ${id}?`)) return;
+  delete collection[id];
+  const singular = cfg.singular;
+  for (const lang of ["ko", "en"]) delete capsule.i18n.content?.[lang]?.[singular]?.[id];
+  selected[kind] = Object.keys(collection).sort()[0] || null;
+  setDirty();
+  rerender();
+}
+
+function makeNewItem(id) {
+  return { id, category: "resource", type: "mineral", mass: 1, tradable: true, stackable: true };
+}
+
+function makeNewResource(id) {
+  return { id, producesItemId: Object.keys(capsule.itemDefs.items)[0] || "", nodeType: "PERMANENT", totalCapacity: 100000, spawnLimitPerCycle: 10000, nodeCapacityRange: [1000, 2000], sectorRatio: 0.2, baseYieldPerSec: 1, visual: { category: "mineral", modelId: "ore_01" } };
+}
+
+function makeNewSector(id) {
+  return { id, theme: "New_Sector", themeMusicId: "bgm_sector_01", color: "#44d7b6", betaVoidCount: 1, stats: { base_gdp_coeff: 1, admin_capacity: 100, population_cap: 100000, environmental_weight: { mining_efficiency: 1, agriculture_efficiency: 1 } }, resourceWeights: {}, initialBuildings: [], initialResourceFacilities: [] };
+}
+
+function makeNewBuilding(id) {
+  return { id, size: "M", category: "factory", hp: 1000, adminCost: 1, placement: { type: "free_space" }, production: { kind: "NONE", outputSink: "building_inventory" }, docking: { capacity: 0 }, trade: { enabled: false, handling_speed: 0, cargo_capacity: 0, min_reputation: 0 }, initialInventory: {}, visual: { modelId: "hq_01", color: "#ffffff", emissive: "#17345e", emissiveIntensity: 0.08, scale: 4 } };
+}
+
+function makeNewShip(id) {
+  return makeShip(id, "#44d7b6");
+}
+
+function collectAssetRefs() {
+  const models = new Set();
+  const audio = new Set();
+  for (const ship of Object.values(capsule.shipDefs.ships || {})) if (ship.visual?.modelId) models.add(ship.visual.modelId);
+  for (const res of Object.values(capsule.resourceDefs.resources || {})) if (res.visual?.modelId) models.add(res.visual.modelId);
+  for (const b of Object.values(capsule.buildingDefs.buildings || {})) if (b.visual?.modelId) models.add(b.visual.modelId);
+  for (const sector of Object.values(capsule.sectorDefs.sectors || {})) if (sector.themeMusicId) audio.add(sector.themeMusicId);
+  return { models, audio };
+}
+
+function renderAssets() {
+  const refs = collectAssetRefs();
+  const reg = capsule.assetRegistry;
+  reg.models ??= {};
+  reg.audio ??= {};
+  const modelIds = [...new Set([...Object.keys(reg.models), ...refs.models])].sort();
+  const audioIds = [...new Set([...Object.keys(reg.audio), ...refs.audio])].sort();
+  $("#assets-root").innerHTML = `
+    <div class="form-section"><h3>Models</h3>${assetTable("models", modelIds, refs.models)}</div>
+    <div class="form-section"><h3>Audio</h3>${assetTable("audio", audioIds, refs.audio)}</div>
+  `;
+  $("#assets-root").querySelectorAll("[data-asset-kind]").forEach((inputEl) => {
+    inputEl.addEventListener("input", () => {
+      const target = capsule.assetRegistry[inputEl.dataset.assetKind];
+      target[inputEl.dataset.assetId] = inputEl.value.trim();
+      setDirty();
+      runValidation();
+      renderIntegrity();
+    });
+  });
+}
+
+function assetTable(kind, ids, refs) {
+  if (!ids.length) return `<div class="empty-state">No ${kind} references</div>`;
+  return `<table class="asset-table"><thead><tr><th>ID</th><th>Path</th><th>Status</th></tr></thead><tbody>
+    ${ids.map((id) => {
+      const path = capsule.assetRegistry[kind]?.[id] || "";
+      const referenced = refs.has(id);
+      const status = !referenced ? "Unused" : path ? "OK" : "Missing";
+      return `<tr><td class="mono">${escapeHtml(id)}</td><td><input data-asset-kind="${kind}" data-asset-id="${escapeAttr(id)}" value="${escapeAttr(path)}" /></td><td>${escapeHtml(status)}</td></tr>`;
+    }).join("")}
+  </tbody></table>`;
+}
+
+$("#btn-sync-assets").addEventListener("click", () => {
+  const refs = collectAssetRefs();
+  capsule.assetRegistry.models ??= {};
+  capsule.assetRegistry.audio ??= {};
+  for (const id of refs.models) capsule.assetRegistry.models[id] ??= "";
+  for (const id of refs.audio) capsule.assetRegistry.audio[id] ??= "";
+  setDirty();
+  renderAssets();
+  runValidation();
+  renderIntegrity();
+});
+
+function runValidation() {
+  issues = [];
+  const sectors = capsule.sectorDefs.sectors || {};
+  const resources = capsule.resourceDefs.resources || {};
+  const items = capsule.itemDefs.items || {};
+  const buildings = capsule.buildingDefs.buildings || {};
+  const ships = capsule.shipDefs.ships || {};
+  const vfxEffects = capsule.vfxDefs.effects || {};
+  if (!gmapBuffer) addIssue("WARNING", "gmap", `${GAME_GMAP_FILE} is not loaded for game data output`);
+  if (capsule.chunkMap.sourceGmap && capsule.chunkMap.sourceGmap !== GAME_GMAP_FILE) {
+    addIssue("WARNING", "chunk_map", `sourceGmap will be exported as ${GAME_GMAP_FILE}`);
+  }
+  if (gmapBuffer && !enabledClusterCount()) addIssue("WARNING", "chunk_map", "No clusters are enabled for game data output");
+  const chunkSectorOwners = new Map();
+  for (const [key, ann] of Object.entries(capsule.chunkMap.chunks || {})) {
+    if (ann.sectorId) {
+      if (!sectors[ann.sectorId]) addIssue("ERROR", "chunk_map", `${key} references missing sector ${ann.sectorId}`);
+      if (chunkSectorOwners.has(ann.sectorId)) addIssue("ERROR", "chunk_map", `${ann.sectorId} is assigned to multiple chunks (${chunkSectorOwners.get(ann.sectorId)}, ${key})`);
+      chunkSectorOwners.set(ann.sectorId, key);
+    }
+    for (const resId of Object.keys(ann.resourceAmounts || {})) {
+      if (!resources[resId]) addIssue("ERROR", "chunk_map", `${key} references missing resource ${resId}`);
+    }
+  }
+  for (const [id, res] of Object.entries(resources)) {
+    if (!items[res.producesItemId]) addIssue("ERROR", "resource_defs", `${id} produces missing item ${res.producesItemId}`);
+    const allocated = resourceAllocated(id);
+    if (allocated > Number(res.totalCapacity || 0)) addIssue("INFO", "resource_defs", `${id} allocated ${allocated} exceeds totalCapacity ${res.totalCapacity}`);
+  }
+  for (const [id, sector] of Object.entries(sectors)) {
+    for (const entry of sector.initialBuildings || []) if (!buildings[entry.building_id]) addIssue("ERROR", "sector_defs", `${id} initialBuildings references ${entry.building_id}`);
+    for (const entry of sector.initialResourceFacilities || []) if (!buildings[entry.building_id]) addIssue("ERROR", "sector_defs", `${id} initialResourceFacilities references ${entry.building_id}`);
+  }
+  for (const [id, ship] of Object.entries(ships)) {
+    const modelId = ship.visual?.modelId;
+    if (!modelId) addIssue("ERROR", "ship_defs", `${id} has no visual modelId`);
+    const bindings = ship.visual?.effectBindings || [];
+    if (!bindings.length) addIssue("WARNING", "ship_defs", `${id} has no GLB VFX bindings`);
+    if (!bindings.some((component) => component.engineOutput === true)) addIssue("WARNING", "ship_defs", `${id} has no engine output binding`);
+    for (const component of bindings) {
+      if (!component.id) addIssue("ERROR", "ship_defs", `${id} has a VFX binding without id`);
+      if (!vfxEffects[component.effectId]) addIssue("ERROR", "ship_defs", `${id}.${component.id} references missing VFX ${component.effectId}`);
+      const objects = component.target?.objectMatches || [];
+      const materials = component.target?.materialMatches || [];
+      if (!objects.length && !materials.length) addIssue("WARNING", "ship_defs", `${id}.${component.id} has no GLB object/material target`);
+    }
+    const runtimeVfx = buildShipVfxFromComponents(ship.visual || {}, vfxEffects);
+    const lightParts = runtimeVfx.lightParts || [];
+    const engineLight = runtimeVfx.engineOutput?.controlledLightType;
+    if (engineLight && !lightParts.some((part) => part.id === engineLight)) {
+      addIssue("ERROR", "ship_defs", `${id} engineOutput references missing light part ${engineLight}`);
+    }
+  }
+  const refs = collectAssetRefs();
+  for (const id of refs.models) if (!capsule.assetRegistry.models?.[id]) addIssue("WARNING", "asset_registry", `Model ${id} has no path`);
+  for (const id of refs.audio) if (!capsule.assetRegistry.audio?.[id]) addIssue("WARNING", "asset_registry", `Audio ${id} has no path`);
+  for (const [kind, cfg] of Object.entries(entityConfig)) {
+    for (const id of Object.keys(cfg.collection())) {
+      for (const lang of ["ko", "en"]) {
+        const content = capsule.i18n.content?.[lang]?.[cfg.singular]?.[id];
+        if (!content?.name) addIssue("WARNING", "i18n", `${lang}.${cfg.singular}.${id}.name is empty`);
+        if (cfg.singular !== "sector" && content && !("description" in content)) addIssue("WARNING", "i18n", `${lang}.${cfg.singular}.${id}.description is missing`);
+      }
+    }
+  }
+  updateHeader();
+  countValues();
+  return issues;
+}
+
+function addIssue(level, file, message) {
+  issues.push({ level, file, message });
+}
+
+function renderIntegrity() {
+  const root = $("#integrity-root");
+  if (!issues.length) {
+    root.innerHTML = `<div class="form-section"><div class="empty-state">No validation issues</div></div>`;
+    return;
+  }
+  root.innerHTML = `<div class="form-section"><h3>Issues</h3><table class="issue-table"><thead><tr><th>Level</th><th>File</th><th>Message</th></tr></thead><tbody>
+    ${issues.map((issue) => `<tr><td><span class="severity ${issue.level.toLowerCase()}">${issue.level}</span></td><td class="mono">${escapeHtml(issue.file)}</td><td>${escapeHtml(issue.message)}</td></tr>`).join("")}
+  </tbody></table></div>`;
+}
+
+$("#btn-run-validation").addEventListener("click", () => {
+  runValidation();
+  renderIntegrity();
+});
+
+function resourceAllocated(id) {
+  let total = 0;
+  for (const ann of Object.values(capsule.chunkMap.chunks || {})) total += Number(ann.resourceAmounts?.[id] || 0);
+  return total;
+}
+
+function mapAllocated() {
+  let total = 0;
+  for (const ann of Object.values(capsule.chunkMap.chunks || {})) for (const value of Object.values(ann.resourceAmounts || {})) total += Number(value || 0);
+  return total;
+}
+
+function toFilePayload(slot) {
+  syncGameDataBeforeOutput();
+  if (slot === "assetRegistry") return buildAssetRegistryPayload();
+  if (slot === "shipDefs") return buildShipDefsPayload();
+  if (slot === "vfxDefs") return buildVfxDefsPayload();
+  return clone(capsule[slot]);
+}
+
+function syncGameDataBeforeOutput() {
+  capsule.chunkMap.sourceGmap = GAME_GMAP_FILE;
+  syncClusterCatalog();
+  syncVfxDefs();
+  syncShipVisuals();
+}
+
+function buildAssetRegistryPayload() {
+  const refs = collectAssetRefs();
+  const source = capsule.assetRegistry || {};
+  const models = {};
+  const audio = {};
+
+  for (const id of [...refs.models].sort()) {
+    models[id] = source.models?.[id] || "";
+  }
+  for (const id of [...refs.audio].sort()) {
+    audio[id] = source.audio?.[id] || "";
+  }
+
+  return {
+    version: source.version || 1,
+    models,
+    audio
+  };
+}
+
+function buildShipDefsPayload() {
+  const payload = clone(capsule.shipDefs);
+  for (const [id, ship] of Object.entries(payload.ships || {})) {
+    const visual = ship.visual || {};
+    const sourceVisual = capsule.shipDefs.ships?.[id]?.visual || {};
+    ship.visual = {
+      modelId: visual.modelId || id,
+      reflectionIntensity: Number(visual.materials?.reflectionIntensity ?? visual.reflectionIntensity ?? 0.32),
+      highlightColor: sourceVisual.highlightColor || visual.highlightColor || firstHighlightColor(sourceVisual) || firstHighlightColor(visual) || "#ffffff",
+      emissiveSurface: {
+        ...(visual.materials?.emissiveSurface || sourceVisual.materials?.emissiveSurface || { materialName: "EmissiveMTL_light", fallbackColor: "#ffffff" })
+      },
+      highlights: visual.materials?.highlights || sourceVisual.materials?.highlights || {},
+      effectBindings: clone(sourceVisual.effectBindings || visual.effectBindings || [])
+    };
+    ship.visual.highlights.highlight_01 ??= {
+      id: "highlight_01",
+      label: "Highlight_01",
+      materialName: "Highlight_01",
+      defaultColor: ship.visual.highlightColor
+    };
+    ship.visual.highlights.highlight_01.defaultColor = ship.visual.highlightColor;
+  }
+  return payload;
+}
+
+function buildVfxDefsPayload() {
+  syncVfxDefs();
+  return clone(capsule.vfxDefs);
+}
+
+function downloadJson(name, data) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  downloadBlob(name, blob);
+}
+
+function downloadBinary(name, buffer) {
+  downloadBlob(name, new Blob([buffer], { type: "application/octet-stream" }));
+}
+
+function downloadBlob(name, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function buildProjectPayload() {
+  syncGameDataBeforeOutput();
+  return {
+    format: PROJECT_FORMAT,
+    version: PROJECT_VERSION,
+    savedAt: new Date().toISOString(),
+    capsule: clone(capsule),
+    gmap: gmapBuffer ? {
+      fileName: gmapFileName || GAME_GMAP_FILE,
+      byteLength: gmapBuffer.byteLength,
+      base64: arrayBufferToBase64(gmapBuffer)
+    } : null,
+    editor: {
+      activeTab,
+      selected: clone(selected),
+      activeCluster,
+      mapViewScope,
+      mapMode,
+      mapTool,
+      showUnplacedChunks
+    }
+  };
+}
+
+async function saveProjectFile() {
+  const fileName = `save-${nextProjectSaveNumber()}.ged`;
+  downloadJson(fileName, buildProjectPayload());
+  projectFileName = fileName;
+  setDirty(false);
+}
+
+function nextProjectSaveNumber() {
+  try {
+    const current = Math.max(1, Math.round(Number(localStorage.getItem(PROJECT_SAVE_COUNTER_KEY)) || 1));
+    localStorage.setItem(PROJECT_SAVE_COUNTER_KEY, String(current + 1));
+    return current;
+  } catch (_) {
+    return 1;
+  }
+}
+
+function confirmDiscardProject() {
+  return !dirty || confirm("Discard unsaved project changes?");
+}
+
+function clearLoadedGmap() {
+  selectedKey = null;
+  gmapBuffer = null;
+  gmapFileSize = 0;
+  gmapFileName = "";
+  mapData = null;
+  clData = null;
+  mapBounds = null;
+  activeCluster = 0;
+  mapViewScope = "cluster";
+  showUnplacedChunks = true;
+  sceneCenter.set(0, 0, 0);
+  camera.position.set(260, 210, 280);
+  controls.target.set(0, 0, 0);
+  controls.update();
+  rebuildMap();
+  renderClusterList();
+  refreshMapStats();
+  renderChunkPanel(null);
+}
+
+function newProject() {
+  if (!confirmDiscardProject()) return;
+  capsule = makeEmptyCapsule();
+  selected = makeEmptySelection();
+  issues = [];
+  projectFileName = "";
+  mapMode = "edit";
+  mapTool = "select";
+  mapViewScope = "cluster";
+  showUnplacedChunks = true;
+  clearLoadedGmap();
+  setMapMode(mapMode);
+  setMapTool(mapTool);
+  setShowUnplacedChunks(showUnplacedChunks);
+  rerender();
+  setActiveTab("map");
+  setDirty(true);
+}
+
+async function openProjectFile(file) {
+  const data = JSON.parse(await file.text());
+  if (data.format !== PROJECT_FORMAT) {
+    throw new Error("This is not a .ged editor save file.");
+  }
+  if (data.version !== PROJECT_VERSION) {
+    throw new Error(`Unsupported .ged project version: ${data.version ?? "unknown"}.`);
+  }
+  if (!data.capsule) {
+    throw new Error("Invalid .ged project: capsule payload is missing.");
+  }
+  const payload = data;
+  capsule = normalizeCapsule(payload.capsule);
+  selected = { ...makeEmptySelection(), ...(payload.editor?.selected || {}) };
+  mapMode = payload.editor?.mapMode || "edit";
+  mapTool = payload.editor?.mapTool || "select";
+  mapViewScope = payload.editor?.mapViewScope || "cluster";
+  showUnplacedChunks = payload.editor?.showUnplacedChunks !== false;
+  activeCluster = Number(payload.editor?.activeCluster ?? 0);
+  projectFileName = file.name || "";
+  clearLoadedGmap();
+  activeCluster = Number(payload.editor?.activeCluster ?? 0);
+  mapViewScope = payload.editor?.mapViewScope || "cluster";
+  showUnplacedChunks = payload.editor?.showUnplacedChunks !== false;
+  if (payload.gmap?.base64) {
+    const buffer = base64ToArrayBuffer(payload.gmap.base64);
+    await applyGmapArrayBuffer(buffer, payload.gmap.fileName || GAME_GMAP_FILE, payload.gmap.byteLength || buffer.byteLength);
+  }
+  setMapMode(mapMode);
+  setMapTool(mapTool);
+  setShowUnplacedChunks(showUnplacedChunks);
+  rerender();
+  setActiveTab(payload.editor?.activeTab || "map");
+  setDirty(false);
+}
+
+function exportAllFiles() {
+  syncGameDataBeforeOutput();
+  let delay = 0;
+  for (const [slot, fileName] of Object.entries(FILES)) {
+    setTimeout(() => downloadJson(fileName, toFilePayload(slot)), delay);
+    delay += 120;
+  }
+  if (gmapBuffer) {
+    setTimeout(() => downloadBinary(GAME_GMAP_FILE, gmapBuffer), delay);
+  } else {
+    alert(`${GAME_GMAP_FILE} is required but no .gmap file is loaded in this editor session.`);
+  }
+}
+
+$("#btn-new-project").addEventListener("click", newProject);
+$("#btn-open-project").addEventListener("click", () => $("#file-project").click());
+$("#btn-save-project").addEventListener("click", () => saveProjectFile().catch((err) => alert(err.message)));
+$("#file-project").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (!confirmDiscardProject()) {
+    event.target.value = "";
+    return;
+  }
+  try {
+    await openProjectFile(file);
+  } catch (err) {
+    alert(`Project open failed: ${err.message}`);
+  } finally {
+    event.target.value = "";
+  }
+});
+$("#btn-export-all").addEventListener("click", exportAllFiles);
+
+function normalizeCapsule(raw) {
+  const base = makeEmptyCapsule();
+  const next = { ...base };
+  next.assetRegistry = raw.assetRegistry || base.assetRegistry;
+  next.itemDefs = normalizeItems(raw.itemDefs || base.itemDefs);
+  next.resourceDefs = normalizeResources(raw.resourceDefs || base.resourceDefs);
+  next.buildingDefs = normalizeBuildings(raw.buildingDefs || base.buildingDefs);
+  next.sectorDefs = normalizeSectors(raw.sectorDefs || base.sectorDefs);
+  next.vfxDefs = normalizeVfxDefs(raw.vfxDefs || base.vfxDefs);
+  next.shipDefs = normalizeShips(raw.shipDefs || base.shipDefs);
+  next.i18n = normalizeI18n(raw.i18n || base.i18n);
+  next.chunkMap = normalizeChunkMap(raw.chunkMap || base.chunkMap);
+  const previousCapsule = capsule;
+  capsule = next;
+  syncVfxDefs();
+  syncShipVisuals();
+  const normalized = capsule;
+  capsule = previousCapsule;
+  return normalized;
+}
+
+function normalizeItems(raw) {
+  const src = raw.items || {};
+  const items = {};
+  for (const [key, value] of Object.entries(src)) {
+    if (key === "version") continue;
+    const id = value.id || key;
+    items[id] = { id, category: value.category || "resource", type: value.type || "mineral", mass: Number(value.mass ?? 1), tradable: value.tradable ?? true, stackable: value.stackable ?? true };
+  }
+  return { version: raw.version || 1, items };
+}
+
+function normalizeResources(raw) {
+  const src = raw.resources || {};
+  const resources = {};
+  for (const [key, value] of Object.entries(src)) {
+    if (key === "version") continue;
+    const id = value.id || key;
+    resources[id] = {
+      id,
+      producesItemId: value.producesItemId || "",
+      nodeType: value.nodeType || "PERMANENT",
+      totalCapacity: Number(value.totalCapacity ?? 0),
+      spawnLimitPerCycle: Number(value.spawnLimitPerCycle ?? 0),
+      nodeCapacityRange: value.nodeCapacityRange || [0, 0],
+      sectorRatio: Number(value.sectorRatio ?? 0),
+      baseYieldPerSec: Number(value.baseYieldPerSec ?? 0),
+      visual: normalizeVisual(value.visual)
+    };
+    const lifetime = value.lifetimeRange;
+    if (lifetime) resources[id].lifetimeRange = lifetime;
+  }
+  return { version: raw.version || 1, resources };
+}
+
+function normalizeBuildings(raw) {
+  const src = raw.buildings || {};
+  const buildings = {};
+  for (const [key, value] of Object.entries(src)) {
+    if (key === "version") continue;
+    const id = value.id || key;
+    const placement = value.placement || { type: "free_space" };
+    const production = value.production || { kind: "NONE" };
+    buildings[id] = {
+      id,
+      size: value.size || "M",
+      category: value.category || "factory",
+      hp: Number(value.hp ?? 1000),
+      adminCost: Number(value.adminCost ?? 0),
+      placement: {
+        type: placement.type || "free_space",
+        radius: placement.radius ?? null,
+        requiredResourceType: placement.requiredResourceType || undefined
+      },
+      production: {
+        kind: production.kind || "NONE",
+        outputSink: production.outputSink || "building_inventory",
+        recipeId: production.recipeId || undefined,
+        depletes: production.depletes ?? false,
+        lockExpiry: production.lockExpiry ?? false,
+        outputs: production.outputs || []
+      },
+      docking: value.docking || { capacity: 0 },
+      trade: value.trade || { enabled: false, handling_speed: 0, cargo_capacity: 0, min_reputation: 0 },
+      initialInventory: value.initialInventory || {},
+      visual: normalizeVisual(value.visual)
+    };
+  }
+  return { version: raw.version || 1, buildings };
+}
+
+function normalizeSectors(raw) {
+  const src = raw.sectors || {};
+  const sectors = {};
+  let index = 0;
+  for (const [key, value] of Object.entries(src)) {
+    if (key === "version") continue;
+    const id = value.id || key;
+    sectors[id] = {
+      id,
+      theme: value.theme || "Sector",
+      themeMusicId: value.themeMusicId || "bgm_sector_01",
+      color: value.color || SECTOR_COLORS[index % SECTOR_COLORS.length],
+      betaVoidCount: Math.max(0, Math.round(Number(value.betaVoidCount ?? 1) || 0)),
+      stats: value.stats || { base_gdp_coeff: 1, admin_capacity: 0, population_cap: 0, environmental_weight: { mining_efficiency: 1, agriculture_efficiency: 1 } },
+      resourceWeights: value.resourceWeights || {},
+      initialBuildings: value.initialBuildings || [],
+      initialResourceFacilities: value.initialResourceFacilities || []
+    };
+    index++;
+  }
+  return { version: raw.version || 1, sectors };
+}
+
+function normalizeVfxDefs(raw = {}) {
+  const effects = normalizeVfxEffects(raw.effects || {});
+  return { version: raw.version || 1, effects };
+}
+
+function normalizeShips(raw) {
+  const src = raw.ships || {};
+  const ships = {};
+  for (const [key, value] of Object.entries(src)) {
+    if (key === "version") continue;
+    const id = value.id || key;
+    const specs = clone(value.specs || {});
+    const hyperdriveSpecs = value.hyperdriveSpecs || specs.hyperdriveSpecs || {};
+    delete specs.hyperdriveSpecs;
+    ships[id] = {
+      id,
+      labelKey: value.labelKey || `ui.settings.gameplay.${id}`,
+      fallbackLabel: value.fallbackLabel || id,
+      specs,
+      hyperdriveSpecs,
+      visual: normalizeShipVisual(id, value.visual)
+    };
+  }
+  return { version: raw.version || 1, defaultShipId: raw.defaultShipId || DEFAULT_SHIP_ID, ships };
+}
+
+function normalizeVfxEffects(raw = {}) {
+  const result = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (key === "version") continue;
+    const id = value.id || key;
+    result[id] = {
+      id,
+      kind: value.kind || "emissive_light",
+      label: value.label || id,
+      settings: {
+        ...DEFAULT_SHIP_LIGHT_SETTINGS,
+        ...(value.settings || {})
+      }
+    };
+  }
+  return result;
+}
+
+function normalizeShipEffectBindings(bindings = []) {
+  return Array.isArray(bindings) ? bindings.map((binding) => normalizeShipComponent(binding)) : [];
+}
+
+function normalizeShipComponent(component = {}) {
+  return {
+    id: component.id || "component",
+    kind: normalizeShipBindingKind(component.kind),
+    label: component.label || component.id || "Component",
+    effectId: component.effectId || "",
+    target: {
+      objectMatches: Array.isArray(component.target?.objectMatches)
+        ? component.target.objectMatches
+        : Array.isArray(component.objectMatches) ? component.objectMatches : [],
+      materialMatches: Array.isArray(component.target?.materialMatches)
+        ? component.target.materialMatches
+        : Array.isArray(component.materialMatches) ? component.materialMatches : []
+    },
+    engineOutput: component.engineOutput === true,
+    defaultLight: component.defaultLight === true,
+    overrides: component.overrides || {}
+  };
+}
+
+function normalizeShipBindingKind(kind) {
+  return SHIP_COMPONENT_KINDS.includes(kind) ? kind : "emissive_light";
+}
+
+function normalizeI18n(raw) {
+  return { version: raw.version || 1, system: raw.system || {}, content: raw.content || { ko: {}, en: {} } };
+}
+
+function normalizeChunkMap(raw) {
+  const chunks = {};
+  for (const [key, value] of Object.entries(raw.chunks || {})) {
+    chunks[key] = {
+      sectorId: value.sectorId || null,
+      resourceAmounts: value.resourceAmounts || {},
+      spawnFlags: value.spawnFlags || { betaVoid: false }
+    };
+  }
+  const clusters = {};
+  for (const [key, value] of Object.entries(raw.clusters || {})) {
+    const id = value.id || key;
+    clusters[id] = {
+      id,
+      name: value.name || id,
+      enabled: value.enabled === true,
+      chunkCount: Number(value.chunkCount ?? 0),
+      bounds: value.bounds || null
+    };
+  }
+  return { version: 2, sourceGmap: raw.sourceGmap || "", clusters, chunks };
+}
+
+function normalizeVisual(visual = {}) {
+  return {
+    category: visual.category,
+    modelId: visual.modelId || "hq_01",
+    color: visual.color || "#ffffff",
+    emissive: visual.emissive || "#17345e",
+    emissiveIntensity: visual.emissiveIntensity ?? 0.08,
+    scale: visual.scale ?? 5
+  };
+}
+
+function normalizeShipVisual(id, visual = {}) {
+  const base = createDefaultShipVisual(id, {});
+  const materials = visual.materials || {};
+  const highlights = materials.highlights || {};
+  const reflectionIntensity = Number(materials.reflectionIntensity ?? visual.reflectionIntensity ?? base.reflectionIntensity);
+  const highlightColor = normalizeColorString(visual.highlightColor || firstHighlightColor(visual) || base.highlightColor);
+
+  return {
+    modelId: visual.modelId || base.modelId,
+    reflectionIntensity,
+    highlightColor,
+    effectBindings: normalizeShipEffectBindings(visual.effectBindings || []),
+    materials: {
+      reflectionIntensity,
+      emissiveSurface: {
+        ...base.materials.emissiveSurface,
+        ...(materials.emissiveSurface || {})
+      },
+      highlights: Object.keys(highlights).length
+        ? highlights
+        : base.materials.highlights
+    }
+  };
+}
+
+let mapData = null;
+let clData = null;
+let activeCluster = 0;
+let selectedKey = null;
+let mapViewScope = "cluster";
+let mapMode = "edit";
+let mapTool = "select";
+let showUnplacedChunks = true;
+let gmapFileName = "";
+let gmapBuffer = null;
+let gmapFileSize = 0;
+let sceneCenter = new THREE.Vector3();
+let mapBounds = null;
+let faceMesh = null;
+let borderMesh = null;
+let depthMesh = null;
+let ghostFaceMesh = null;
+let ghostBorderMesh = null;
+let instanceKeys = [];
+let pointerDown = null;
+
+const canvas = $("#three-canvas");
+const view3d = $("#view3d");
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050606);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200000);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+const emptyGrid = new THREE.GridHelper(600, 30, 0x44d7b6, 0x253034);
+emptyGrid.material.transparent = true;
+emptyGrid.material.opacity = 0.32;
+scene.add(emptyGrid);
+camera.position.set(260, 210, 280);
+controls.target.set(0, 0, 0);
+controls.update();
+const raycaster = new THREE.Raycaster();
+const SPACING = 4;
+const cw = (v) => v * SPACING;
+
+function makeTex(draw) {
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  draw(ctx, 64, 3);
+  const tex = new THREE.CanvasTexture(c);
+  tex.magFilter = THREE.NearestFilter;
+  return tex;
+}
+
+const faceTex = makeTex((ctx, size, border) => {
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(border, border, size - border * 2, size - border * 2);
+});
+const borderTex = makeTex((ctx, size, border) => {
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, size, size);
+  ctx.clearRect(border, border, size - border * 2, size - border * 2);
+});
+const mapMaterial = (tex, blending, opacity = 1) => new THREE.MeshBasicMaterial({
+  map: tex,
+  transparent: true,
+  opacity,
+  depthWrite: false,
+  side: THREE.FrontSide,
+  polygonOffset: true,
+  polygonOffsetFactor: -1,
+  polygonOffsetUnits: -4,
+  blending
+});
+
+async function decompress(u8) {
+  const ds = new DecompressionStream("gzip");
+  const writer = ds.writable.getWriter();
+  writer.write(u8);
+  writer.close();
+  const reader = ds.readable.getReader();
+  const chunks = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  const out = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return out;
+}
+
+async function loadGmap(buffer) {
+  if (buffer.byteLength < 12) throw new Error("File is too small.");
+  const dv = new DataView(buffer);
+  const magic = [0x47, 0x4d, 0x41, 0x50];
+  for (let i = 0; i < 4; i++) if (dv.getUint8(i) !== magic[i]) throw new Error("GMAP magic mismatch.");
+  const gx = dv.getUint16(4, true);
+  const gy = dv.getUint16(6, true);
+  const gz = dv.getUint16(8, true);
+  const bits = await decompress(new Uint8Array(buffer, 12));
+  const chunks = [];
+  for (let idx = 0; idx < gx * gy * gz; idx++) {
+    if (bits[idx >> 3] & (1 << (idx & 7))) chunks.push([Math.floor(idx / (gy * gz)), Math.floor((idx % (gy * gz)) / gz), idx % gz]);
+  }
+  return { gx, gy, gz, chunks };
+}
+
+function buildClusters(chunks) {
+  const dirs = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  const set = new Set(chunks.map(([x, y, z]) => `${x}:${y}:${z}`));
+  const visited = new Set();
+  const clusters = [];
+  const clusterIds = [];
+  const chunkToCluster = {};
+  for (const [x, y, z] of chunks) {
+    const key = `${x}:${y}:${z}`;
+    if (visited.has(key)) continue;
+    const stack = [key];
+    const members = [];
+    visited.add(key);
+    while (stack.length) {
+      const current = stack.pop();
+      members.push(current);
+      const [cx, cy, cz] = current.split(":").map(Number);
+      for (const [dx, dy, dz] of dirs) {
+        const next = `${cx + dx}:${cy + dy}:${cz + dz}`;
+        if (set.has(next) && !visited.has(next)) {
+          visited.add(next);
+          stack.push(next);
+        }
+      }
+    }
+    const index = clusters.length;
+    const clusterId = clusterIdForMembers(members);
+    clusters.push(members);
+    clusterIds.push(clusterId);
+    for (const member of members) chunkToCluster[member] = index;
+  }
+  return { clusters, clusterIds, chunkToCluster, chunkSet: set };
+}
+
+function clusterBounds(members) {
+  let ax = Infinity, ay = Infinity, az = Infinity, bx = -Infinity, by = -Infinity, bz = -Infinity;
+  for (const key of members) {
+    const [x, y, z] = key.split(":").map(Number);
+    ax = Math.min(ax, x); ay = Math.min(ay, y); az = Math.min(az, z);
+    bx = Math.max(bx, x); by = Math.max(by, y); bz = Math.max(bz, z);
+  }
+  return { ax, ay, az, bx, by, bz };
+}
+
+function clusterIdForMembers(members) {
+  const bounds = clusterBounds(members);
+  let hash = 2166136261;
+  for (const key of [...members].sort()) {
+    for (let i = 0; i < key.length; i++) {
+      hash ^= key.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+  }
+  return `cl_${members.length}_${bounds.ax}_${bounds.ay}_${bounds.az}_${bounds.bx}_${bounds.by}_${bounds.bz}_${(hash >>> 0).toString(36)}`;
+}
+
+function clusterState(index) {
+  const id = clData?.clusterIds?.[index];
+  return id ? capsule.chunkMap.clusters?.[id] || null : null;
+}
+
+function clusterEnabled(index) {
+  return clusterState(index)?.enabled === true;
+}
+
+function clusterIndexForKey(key) {
+  const index = clData?.chunkToCluster?.[key];
+  return Number.isInteger(index) ? index : -1;
+}
+
+function clusterSelected(index) {
+  return index === activeCluster;
+}
+
+function clusterVisible(index) {
+  if (!Number.isInteger(index) || index < 0) return false;
+  if (mapViewScope === "overview") return clusterSelected(index) || clusterEnabled(index);
+  return clusterSelected(index);
+}
+
+function enabledClusterCount() {
+  return Object.values(capsule.chunkMap.clusters || {}).filter((cluster) => cluster.enabled === true).length;
+}
+
+function overviewDistance(bounds) {
+  const sx = Math.max(1, bounds.bx - bounds.ax + 1);
+  const sy = Math.max(1, bounds.by - bounds.ay + 1);
+  const sz = Math.max(1, bounds.bz - bounds.az + 1);
+  return Math.max(sx, sy, sz, 20) * SPACING * 3.2;
+}
+
+function syncClusterCatalog() {
+  capsule.chunkMap.clusters ??= {};
+  if (!clData?.clusters?.length) return;
+  const next = {};
+  clData.clusters.forEach((members, index) => {
+    const id = clData.clusterIds[index] || clusterIdForMembers(members);
+    const current = capsule.chunkMap.clusters[id] || {};
+    const bounds = clusterBounds(members);
+    next[id] = {
+      id,
+      name: current.name || `Cluster ${index + 1}`,
+      enabled: current.enabled === true,
+      chunkCount: members.length,
+      bounds: { min: [bounds.ax, bounds.ay, bounds.az], max: [bounds.bx, bounds.by, bounds.bz] }
+    };
+  });
+  capsule.chunkMap.clusters = next;
+}
+
+function setClusterEnabled(index, enabled) {
+  syncClusterCatalog();
+  const id = clData?.clusterIds?.[index];
+  if (!id || !capsule.chunkMap.clusters?.[id]) return;
+  capsule.chunkMap.clusters[id].enabled = enabled;
+  setDirty();
+  renderClusterList();
+  updateMapColors();
+  refreshMapStats();
+  runValidation();
+  renderIntegrity();
+}
+
+function annotation(key) {
+  return capsule.chunkMap.chunks[key] || null;
+}
+
+function ensureAnnotation(key) {
+  capsule.chunkMap.chunks[key] ??= { sectorId: null, resourceAmounts: {}, spawnFlags: { betaVoid: false } };
+  capsule.chunkMap.chunks[key].resourceAmounts ??= {};
+  capsule.chunkMap.chunks[key].spawnFlags ??= { betaVoid: false };
+  return capsule.chunkMap.chunks[key];
+}
+
+function clearAnnotation(key) {
+  delete capsule.chunkMap.chunks[key];
+  setDirty();
+}
+
+function chunkHasResources(ann) {
+  return Object.values(ann?.resourceAmounts || {}).some((v) => Number(v) > 0);
+}
+
+function chunkPlacementKind(ann) {
+  if (!ann) return null;
+  if (ann.sectorId) return "sector";
+  if (chunkHasResources(ann)) return "resource";
+  if (ann.spawnFlags?.betaVoid) return "void";
+  return null;
+}
+
+function chunkVisualState(key) {
+  const clusterIndex = clusterIndexForKey(key);
+  const placementKind = chunkPlacementKind(annotation(key));
+  const unplaced = !placementKind;
+  const baseVisible = clusterVisible(clusterIndex);
+  const visible = baseVisible && (!unplaced || showUnplacedChunks || key === selectedKey);
+  return {
+    clusterIndex,
+    selected: clusterSelected(clusterIndex),
+    enabled: clusterEnabled(clusterIndex),
+    visible,
+    placementKind,
+    unplaced,
+    ghost: visible && unplaced && key !== selectedKey
+  };
+}
+
+function chunkColor(key, state = chunkVisualState(key)) {
+  if (!state.visible) return new THREE.Color(0x050606);
+  if (key === selectedKey) return new THREE.Color(0xffffff);
+  const ann = annotation(key);
+  if (state.ghost) return new THREE.Color(0xc4c9c6);
+  if (state.selected) {
+    if (state.placementKind === "sector") return new THREE.Color(capsule.sectorDefs.sectors[ann.sectorId]?.color || 0xf4b35e);
+    if (state.placementKind === "resource") return new THREE.Color(0x5dd39e);
+    if (state.placementKind === "void") return new THREE.Color(0xf05d5e);
+    return new THREE.Color(0xc6cfca);
+  }
+  if (state.placementKind === "sector") return new THREE.Color(capsule.sectorDefs.sectors[ann.sectorId]?.color || 0xa8afab).multiplyScalar(0.72);
+  if (state.placementKind === "resource") return new THREE.Color(0x5dd39e).multiplyScalar(0.72);
+  if (state.placementKind === "void") return new THREE.Color(0xf05d5e).multiplyScalar(0.62);
+  return new THREE.Color(0x8f9994);
+}
+
+function chunkBorderScalar(state) {
+  if (!state.visible) return 0;
+  if (state.ghost) return 0.2;
+  if (state.selected) return 0.58;
+  if (state.enabled) return 0.34;
+  return 0.14;
+}
+
+function rebuildMap() {
+  [depthMesh, faceMesh, borderMesh, ghostFaceMesh, ghostBorderMesh].forEach((mesh) => {
+    if (!mesh) return;
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+  });
+  depthMesh = faceMesh = borderMesh = ghostFaceMesh = ghostBorderMesh = null;
+  instanceKeys = [];
+  if (!mapData?.chunks?.length || !clData) return;
+
+  const count = mapData.chunks.length;
+  const geo = new THREE.BoxGeometry(0.88, 0.88, 0.88);
+  depthMesh = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, side: THREE.FrontSide }), count);
+  faceMesh = new THREE.InstancedMesh(geo.clone(), mapMaterial(faceTex, THREE.NormalBlending), count);
+  borderMesh = new THREE.InstancedMesh(geo.clone(), mapMaterial(borderTex, THREE.AdditiveBlending), count);
+  ghostFaceMesh = new THREE.InstancedMesh(geo.clone(), mapMaterial(faceTex, THREE.NormalBlending, 0.24), count);
+  ghostBorderMesh = new THREE.InstancedMesh(geo.clone(), mapMaterial(borderTex, THREE.AdditiveBlending, 0.18), count);
+  ghostFaceMesh.renderOrder = 1;
+  ghostBorderMesh.renderOrder = 2;
+  faceMesh.renderOrder = 3;
+  borderMesh.renderOrder = 4;
+
+  mapData.chunks.forEach(([x, y, z], index) => {
+    instanceKeys[index] = `${x}:${y}:${z}`;
+  });
+  updateMapColors();
+  scene.add(depthMesh, ghostFaceMesh, ghostBorderMesh, faceMesh, borderMesh);
+}
+
+function updateMapColors() {
+  if (!depthMesh || !faceMesh || !borderMesh || !ghostFaceMesh || !ghostBorderMesh || !clData) return;
+  const dummy = new THREE.Object3D();
+  const color = new THREE.Color();
+  instanceKeys.forEach((key, index) => {
+    const [x, y, z] = key.split(":").map(Number);
+    const state = chunkVisualState(key);
+    const solidVisible = state.visible && !state.ghost;
+    const ghostVisible = state.ghost;
+    dummy.position.set(cw(x), cw(y), cw(z));
+    dummy.scale.setScalar(solidVisible ? 1 : 0.0001);
+    dummy.updateMatrix();
+    depthMesh.setMatrixAt(index, dummy.matrix);
+    faceMesh.setMatrixAt(index, dummy.matrix);
+    borderMesh.setMatrixAt(index, dummy.matrix);
+    color.copy(chunkColor(key, state));
+    faceMesh.setColorAt(index, color);
+    color.multiplyScalar(chunkBorderScalar(state));
+    borderMesh.setColorAt(index, color);
+    dummy.scale.setScalar(ghostVisible ? 1 : 0.0001);
+    dummy.updateMatrix();
+    ghostFaceMesh.setMatrixAt(index, dummy.matrix);
+    ghostBorderMesh.setMatrixAt(index, dummy.matrix);
+    color.copy(chunkColor(key, state));
+    ghostFaceMesh.setColorAt(index, color);
+    color.multiplyScalar(chunkBorderScalar(state));
+    ghostBorderMesh.setColorAt(index, color);
+  });
+  [depthMesh, faceMesh, borderMesh, ghostFaceMesh, ghostBorderMesh].forEach((mesh) => mesh.instanceMatrix.needsUpdate = true);
+  faceMesh.instanceColor.needsUpdate = true;
+  borderMesh.instanceColor.needsUpdate = true;
+  ghostFaceMesh.instanceColor.needsUpdate = true;
+  ghostBorderMesh.instanceColor.needsUpdate = true;
+}
+
+async function applyGmapArrayBuffer(buffer, name, size) {
+  gmapBuffer = buffer.slice(0);
+  gmapFileSize = size || buffer.byteLength;
+  mapData = await loadGmap(buffer);
+  gmapFileName = name;
+  capsule.chunkMap.sourceGmap = GAME_GMAP_FILE;
+  clData = buildClusters(mapData.chunks);
+  syncClusterCatalog();
+  activeCluster = clamp(activeCluster || 0, 0, Math.max(0, clData.clusters.length - 1));
+  let ax = Infinity, ay = Infinity, az = Infinity, bx = -Infinity, by = -Infinity, bz = -Infinity;
+  for (const [x, y, z] of mapData.chunks) {
+    ax = Math.min(ax, x); ay = Math.min(ay, y); az = Math.min(az, z);
+    bx = Math.max(bx, x); by = Math.max(by, y); bz = Math.max(bz, z);
+  }
+  mapBounds = { ax, ay, az, bx, by, bz };
+  sceneCenter.set(cw((ax + bx) / 2), cw((ay + by) / 2), cw((az + bz) / 2));
+  const dist = Math.max(mapData.gx, mapData.gy, mapData.gz) * 7;
+  camera.position.set(sceneCenter.x, sceneCenter.y + dist * 0.7, sceneCenter.z + dist * 0.45);
+  controls.target.copy(sceneCenter);
+  controls.update();
+  rebuildMap();
+  renderClusterList();
+  refreshMapStats(gmapFileSize);
+  setDirty();
+}
+
+function refreshMapStats(fileSize = null) {
+  $("#map-file-name").textContent = gmapFileName || "None";
+  $("#map-grid").textContent = mapData ? `${mapData.gx}x${mapData.gy}x${mapData.gz}` : "-";
+  $("#map-chunks").textContent = mapData?.chunks?.length?.toLocaleString() || "0";
+  $("#map-clusters").textContent = clData?.clusters?.length?.toLocaleString() || "0";
+  $("#map-enabled-clusters").textContent = enabledClusterCount().toLocaleString();
+  const values = Object.values(capsule.chunkMap.chunks || {});
+  $("#map-sector-count").textContent = values.filter((ann) => ann.sectorId).length;
+  $("#map-resource-count").textContent = values.filter((ann) => Object.values(ann.resourceAmounts || {}).some((v) => Number(v) > 0)).length;
+  $("#map-betavoid-count").textContent = values.filter((ann) => ann.spawnFlags?.betaVoid).length;
+  $("#map-allocated").textContent = mapAllocated().toLocaleString();
+  const focusedState = clusterState(activeCluster);
+  const outputState = focusedState?.enabled ? "output on" : "output off";
+  const scopeLabel = mapViewScope === "overview" ? "Overview" : "Cluster";
+  $("#active-cluster-label").textContent = clData ? `${scopeLabel}: selected ${activeCluster + 1} / ${clData.clusters.length} - ${outputState}` : "No map loaded";
+  if (fileSize) $("#map-file-name").title = `${(fileSize / 1024).toFixed(1)} KB`;
+}
+
+function renderClusterList() {
+  const list = $("#cluster-list");
+  if (!clData?.clusters?.length) {
+    list.innerHTML = `<div class="empty-state">No clusters</div>`;
+    return;
+  }
+  list.innerHTML = clData.clusters.map((members, index) => {
+    const state = clusterState(index) || {};
+    const annotated = members.filter((key) => annotation(key)).length;
+    const enabled = state.enabled === true;
+    const viewLabel = index === activeCluster ? "Selected" : "";
+    const outputLabel = enabled ? "Output" : "Off";
+    return `<div class="cluster-row ${index === activeCluster ? "active" : ""} ${enabled ? "enabled" : ""}" data-cluster="${index}">
+      <input type="checkbox" data-cluster-enabled="${index}" ${enabled ? "checked" : ""} title="Enable this cluster for game data" />
+      <span class="mono">${index + 1}</span>
+      <span class="cluster-main">
+        <span class="cluster-title">${escapeHtml(state.name || `Cluster ${index + 1}`)}</span>
+        <span class="cluster-sub">${members.length.toLocaleString()} chunks</span>
+      </span>
+      <span class="cluster-state">${viewLabel ? `${viewLabel} / ` : ""}${outputLabel} - ${annotated}</span>
+    </div>`;
+  }).join("");
+}
+
+$("#cluster-list").addEventListener("change", (event) => {
+  const inputEl = event.target.closest("[data-cluster-enabled]");
+  if (!inputEl || !clData) return;
+  event.stopPropagation();
+  setClusterEnabled(Number(inputEl.dataset.clusterEnabled), inputEl.checked);
+});
+
+$("#cluster-list").addEventListener("click", (event) => {
+  if (event.target.closest("[data-cluster-enabled]")) return;
+  const row = event.target.closest("[data-cluster]");
+  if (!row || !clData) return;
+  activeCluster = Number(row.dataset.cluster);
+  mapViewScope = "cluster";
+  selectedKey = null;
+  const bounds = clusterBounds(clData.clusters[activeCluster]);
+  flyTo(new THREE.Vector3(cw((bounds.ax + bounds.bx) / 2), cw((bounds.ay + bounds.by) / 2), cw((bounds.az + bounds.bz) / 2)), Math.max(bounds.bx - bounds.ax, bounds.by - bounds.ay, bounds.bz - bounds.az, 20) * 8);
+  renderClusterList();
+  renderChunkPanel(null);
+  updateMapColors();
+  refreshMapStats();
+  setDirty();
+});
+
+let camAnim = null;
+function flyTo(target, distance) {
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  camAnim = { sp: camera.position.clone(), st: controls.target.clone(), ep: target.clone().add(dir.multiplyScalar(distance)), et: target.clone(), t: 0, dur: 55 };
+}
+
+function easeOut(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function renderChunkPanel(key) {
+  const panel = $("#chunk-panel");
+  selectedKey = key || null;
+  if (!key) {
+    panel.className = "empty-state";
+    panel.innerHTML = "No chunk selected";
+    return;
+  }
+  panel.className = "stack";
+  const ann = annotation(key) || { sectorId: "", resourceAmounts: {}, spawnFlags: { betaVoid: false } };
+  const [x, y, z] = key.split(":").map(Number);
+  panel.innerHTML = `
+    <div class="metric-grid">
+      <div class="metric"><span>X</span><b>${x}</b></div>
+      <div class="metric"><span>Y</span><b>${y}</b></div>
+      <div class="metric"><span>Z</span><b>${z}</b></div>
+      <div class="metric"><span>Total</span><b>${chunkAllocated(key).toLocaleString()}</b></div>
+    </div>
+    <div class="field">
+      <label>Sector</label>
+      <select id="chunk-sector" ${mapMode === "view" ? "disabled" : ""}>
+        ${idOptions(capsule.sectorDefs.sectors, ann.sectorId || "", "None")}
+      </select>
+    </div>
+    <div class="field inline">
+      <input type="checkbox" id="chunk-betavoid" ${ann.spawnFlags?.betaVoid ? "checked" : ""} ${mapMode === "view" ? "disabled" : ""} />
+      <label>Beta Void</label>
+    </div>
+    <div class="panel-title" style="margin-top:6px">Resources</div>
+    ${Object.keys(capsule.resourceDefs.resources).sort().map((id) => `
+      <div class="row">
+        <span class="mono" style="width:64px;color:var(--quiet)">${escapeHtml(id)}</span>
+        <input type="number" min="0" step="1" data-chunk-resource="${escapeAttr(id)}" value="${Number(ann.resourceAmounts?.[id] || 0)}" ${mapMode === "view" ? "disabled" : ""} />
+      </div>`).join("")}
+    <button id="chunk-clear" class="btn-danger" ${mapMode === "view" ? "disabled" : ""}>Clear Chunk</button>
+  `;
+  const sector = $("#chunk-sector");
+  sector?.addEventListener("change", () => {
+    const newId = sector.value || null;
+    if (newId) {
+      const conflict = Object.entries(capsule.chunkMap.chunks).find(([otherKey, otherAnn]) => otherKey !== key && otherAnn.sectorId === newId);
+      if (conflict && !confirm(`${newId} is already assigned to ${conflict[0]}. Move it here?`)) {
+        sector.value = annotation(key)?.sectorId || "";
+        return;
+      }
+      if (conflict) ensureAnnotation(conflict[0]).sectorId = null;
+    }
+    ensureAnnotation(key).sectorId = newId;
+    setDirty();
+    updateMapColors();
+    refreshMapStats();
+    runValidation();
+    renderIntegrity();
+  });
+  $("#chunk-betavoid")?.addEventListener("change", (event) => {
+    ensureAnnotation(key).spawnFlags.betaVoid = event.target.checked;
+    setDirty();
+    updateMapColors();
+    refreshMapStats();
+  });
+  panel.querySelectorAll("[data-chunk-resource]").forEach((inputEl) => {
+    inputEl.addEventListener("input", () => {
+      const ann2 = ensureAnnotation(key);
+      const value = Math.max(0, Math.round(toNumber(inputEl.value)));
+      if (value) ann2.resourceAmounts[inputEl.dataset.chunkResource] = value;
+      else delete ann2.resourceAmounts[inputEl.dataset.chunkResource];
+      setDirty();
+      updateMapColors();
+      refreshMapStats();
+    });
+  });
+  $("#chunk-clear")?.addEventListener("click", () => {
+    clearAnnotation(key);
+    renderChunkPanel(key);
+    updateMapColors();
+    refreshMapStats();
+  });
+}
+
+function chunkAllocated(key) {
+  return Object.values(annotation(key)?.resourceAmounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+}
+
+canvas.addEventListener("pointerdown", (event) => {
+  pointerDown = { x: event.clientX, y: event.clientY };
+});
+
+canvas.addEventListener("pointerup", (event) => {
+  if (!pointerDown || !faceMesh) return;
+  const moved = Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y);
+  pointerDown = null;
+  if (moved > 5) return;
+  const key = pickChunk(event);
+  if (!key) {
+    selectedKey = null;
+    renderChunkPanel(null);
+    updateMapColors();
+    return;
+  }
+  const pickedCluster = clusterIndexForKey(key);
+  const clusterChanged = pickedCluster !== activeCluster;
+  if (clusterChanged) {
+    activeCluster = pickedCluster;
+    renderClusterList();
+    refreshMapStats();
+  }
+  if (mapMode === "edit" && mapTool === "erase") {
+    if (clusterChanged) {
+      selectedKey = key;
+      renderChunkPanel(key);
+      updateMapColors();
+      return;
+    }
+    clearAnnotation(key);
+    if (selectedKey === key) selectedKey = null;
+    renderChunkPanel(selectedKey);
+    updateMapColors();
+    refreshMapStats();
+    return;
+  }
+  selectedKey = key;
+  const [x, y, z] = key.split(":");
+  $("#goto-x").value = x;
+  $("#goto-y").value = y;
+  $("#goto-z").value = z;
+  renderChunkPanel(key);
+  updateMapColors();
+});
+
+canvas.addEventListener("mousemove", (event) => {
+  if (!faceMesh) return;
+  const key = pickChunk(event);
+  if (!key) {
+    $("#cursor-info").textContent = "";
+    return;
+  }
+  const ann = annotation(key);
+  $("#cursor-info").textContent = `${key}${ann?.sectorId ? ` ${ann.sectorId}` : ""}`;
+});
+
+canvas.addEventListener("mouseleave", () => {
+  $("#cursor-info").textContent = "";
+});
+
+function pickChunk(event) {
+  const rect = canvas.getBoundingClientRect();
+  raycaster.setFromCamera(new THREE.Vector2(((event.clientX - rect.left) / rect.width) * 2 - 1, ((event.clientY - rect.top) / rect.height) * -2 + 1), camera);
+  const hits = raycaster.intersectObjects([faceMesh, ghostFaceMesh].filter(Boolean));
+  for (const hit of hits) {
+    const key = instanceKeys[hit.instanceId];
+    if (clusterVisible(clusterIndexForKey(key))) return key;
+  }
+  return null;
+}
+
+function setMapMode(mode) {
+  mapMode = mode;
+  $("#map-mode-edit").classList.toggle("active", mode === "edit");
+  $("#map-mode-view").classList.toggle("active", mode === "view");
+  renderChunkPanel(selectedKey);
+}
+
+function setMapTool(tool) {
+  mapTool = tool;
+  $("#map-tool-select").classList.toggle("active", tool === "select");
+  $("#map-tool-erase").classList.toggle("active", tool === "erase");
+}
+
+function setShowUnplacedChunks(value, markDirty = false) {
+  showUnplacedChunks = !!value;
+  $("#map-show-unplaced").checked = showUnplacedChunks;
+  updateMapColors();
+  if (markDirty) setDirty();
+}
+
+$("#map-mode-edit").addEventListener("click", () => setMapMode("edit"));
+$("#map-mode-view").addEventListener("click", () => setMapMode("view"));
+$("#map-tool-select").addEventListener("click", () => setMapTool("select"));
+$("#map-tool-erase").addEventListener("click", () => setMapTool("erase"));
+$("#map-show-unplaced").addEventListener("change", (event) => setShowUnplacedChunks(event.target.checked, true));
+
+$("#btn-load-gmap").addEventListener("click", () => $("#file-gmap").click());
+$("#file-gmap").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    await applyGmapArrayBuffer(await file.arrayBuffer(), file.name, file.size);
+  } catch (err) {
+    alert(`GMAP load failed: ${err.message}`);
+  } finally {
+    event.target.value = "";
+  }
+});
+
+const drop = $("#drop-gmap");
+drop.addEventListener("click", () => $("#file-gmap").click());
+drop.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  drop.classList.add("drag-over");
+});
+drop.addEventListener("dragleave", () => drop.classList.remove("drag-over"));
+drop.addEventListener("drop", async (event) => {
+  event.preventDefault();
+  drop.classList.remove("drag-over");
+  const file = event.dataTransfer.files[0];
+  if (!file) return;
+  try {
+    if (!file.name.toLowerCase().endsWith(".gmap")) throw new Error("Only .gmap files can be dropped here.");
+    await applyGmapArrayBuffer(await file.arrayBuffer(), file.name, file.size);
+  } catch (err) {
+    alert(`Load failed: ${err.message}`);
+  }
+});
+
+function gotoChunk() {
+  if (!mapData || !clData) return;
+  const x = Math.round(toNumber($("#goto-x").value));
+  const y = Math.round(toNumber($("#goto-y").value));
+  const z = Math.round(toNumber($("#goto-z").value));
+  const key = `${x}:${y}:${z}`;
+  if (!clData.chunkSet.has(key)) {
+    $("#goto-msg").textContent = "No valid chunk";
+    return;
+  }
+  $("#goto-msg").textContent = "";
+  activeCluster = clData.chunkToCluster[key];
+  mapViewScope = "cluster";
+  selectedKey = key;
+  renderClusterList();
+  renderChunkPanel(key);
+  updateMapColors();
+  flyTo(new THREE.Vector3(cw(x), cw(y), cw(z)), 60);
+}
+
+$("#btn-goto").addEventListener("click", gotoChunk);
+["goto-x", "goto-y", "goto-z"].forEach((id) => $(`#${id}`).addEventListener("keydown", (event) => {
+  if (event.key === "Enter") gotoChunk();
+}));
+$("#btn-overview").addEventListener("click", () => {
+  if (!mapData) return;
+  mapViewScope = "overview";
+  renderClusterList();
+  updateMapColors();
+  refreshMapStats();
+  const distance = mapBounds ? Math.max(overviewDistance(mapBounds), Math.max(mapData.gx, mapData.gy, mapData.gz) * 7) : Math.max(mapData.gx, mapData.gy, mapData.gz) * 7;
+  flyTo(sceneCenter.clone(), distance);
+});
+
+function resizeRenderer() {
+  const w = view3d.clientWidth;
+  const h = view3d.clientHeight;
+  if (w < 1 || h < 1) return;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h, false);
+}
+
+new ResizeObserver(resizeRenderer).observe(view3d);
+requestAnimationFrame(resizeRenderer);
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (camAnim) {
+    const progress = easeOut(Math.min(++camAnim.t / camAnim.dur, 1));
+    camera.position.lerpVectors(camAnim.sp, camAnim.ep, progress);
+    controls.target.lerpVectors(camAnim.st, camAnim.et, progress);
+    if (camAnim.t >= camAnim.dur) camAnim = null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+rerender();
+setActiveTab("map");
+</script>
+</body>
+</html>

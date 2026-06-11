@@ -89,29 +89,10 @@ export const ASSETS = {
   },
   ships: {
     ship_01: {
-      local: { glb: new URL("../rss/ships/ship_01.glb", import.meta.url).href },
-      remoteFallback: "https://raw.githubusercontent.com/shyeonic/storage/8a7253eb0ff11db007c2c1d7056d840d56e73e7f/ship_01.obj"
+      local: { glb: new URL("../rss/ships/ship_01.glb", import.meta.url).href }
     },
     ship_02: {
       local: { glb: new URL("../rss/ships/ship_02.glb", import.meta.url).href }
     }
   },
-  worldModels: {
-    gas_01: {
-      obj: new URL("../rss/ore_planets/gas_01.obj", import.meta.url).href,
-      mtl: new URL("../rss/ore_planets/gas_01.mtl", import.meta.url).href
-    },
-    ore_01: {
-      obj: new URL("../rss/ore_planets/ore_01.obj", import.meta.url).href,
-      mtl: new URL("../rss/ore_planets/ore_01.mtl", import.meta.url).href
-    },
-    water_01: {
-      obj: new URL("../rss/ore_planets/water_01.obj", import.meta.url).href,
-      mtl: new URL("../rss/ore_planets/water_01.mtl", import.meta.url).href
-    },
-    hq_01: {
-      obj: new URL("../rss/buildings/hq_01.obj", import.meta.url).href,
-      mtl: new URL("../rss/buildings/hq_01.mtl", import.meta.url).href
-    }
-  }
 };

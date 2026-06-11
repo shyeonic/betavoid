@@ -3,6 +3,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { BloomRenderPipeline } from "./BloomRenderPipeline.js";
 import { HyperdriveWarpLayer } from "./HyperdriveWarpLayer.js";
 import { CONFIG, CONTROL_SETTINGS, DEFAULT_KEY_BINDINGS, KEY_BINDING_GROUPS } from "./config.js";
+import { MinimapManager } from "./MinimapManager.js";
 import { ResourceManager } from "./ResourceManager.js";
 import { ShipVisualManager } from "./ShipVisualManager.js";
 import { SoundManager } from "./SoundManager.js";
@@ -22,8 +23,7 @@ import {
   normalizeRenderResolutionScale,
   normalizePerformanceSettings
 } from "./definitions/environmentDefinitions.js";
-import { DEFAULT_SHIP_ID, SHIP_DEFINITIONS, getShipDefinition, getShipSpecs } from "./definitions/shipDefinitions.js";
-import { BUILDING_DEFINITIONS, ITEM_DEFINITIONS, RESOURCE_DEFINITIONS, WORLD_CONFIG } from "./worldDefinitions.js";
+import { WORLD_CONFIG } from "./worldDefinitions.js";
 import { createI18n } from "./i18n/i18n.js";
 
 const LIGHTING_SETTINGS = {
@@ -42,15 +42,38 @@ const RENDERER_TONE_MAPPINGS = {
   none: THREE.NoToneMapping
 };
 
+function requireDefinitionMap(gameData, key) {
+  const definitions = gameData?.[key];
+  if (!definitions || Object.keys(definitions).length === 0) {
+    throw new Error(`Game data is missing ${key}.`);
+  }
+  return definitions;
+}
+
+function resolveDefaultShipId(gameData, shipDefinitions) {
+  if (gameData?.defaultShipId && shipDefinitions[gameData.defaultShipId]) return gameData.defaultShipId;
+  if (shipDefinitions.ship_01) return "ship_01";
+  return Object.keys(shipDefinitions)[0];
+}
+
 export class GameManager {
-  constructor({ root }) {
+  constructor({ root, gameData = null }) {
+    if (!gameData) throw new Error("GameManager requires loaded gameData.");
+
     this.root = root;
+    this.gameData = gameData;
     this.config = CONFIG;
+    this.worldConfig = gameData.worldConfig || WORLD_CONFIG;
+    this.buildingDefinitions = requireDefinitionMap(gameData, "buildingDefinitions");
+    this.itemDefinitions = requireDefinitionMap(gameData, "itemDefinitions");
+    this.resourceDefinitions = requireDefinitionMap(gameData, "resourceDefinitions");
+    this.shipDefinitions = requireDefinitionMap(gameData, "shipDefinitions");
+    this.defaultShipId = resolveDefaultShipId(gameData, this.shipDefinitions);
     this.keyBindingStorageKey = "void-zero-key-bindings";
     this.keyBindings = this.loadKeyBindings();
     this.environmentMode = ENVIRONMENT_MODES.light;
     this.performanceSettings = { ...DEFAULT_PERFORMANCE_SETTINGS };
-    this.i18n = createI18n();
+    this.i18n = createI18n({ messages: gameData?.messages });
     this.worldViewSettings = { chunkBoundsMode: "all" };
     this.keyToAction = this.createKeyToAction(this.keyBindings);
     this.state = {
@@ -74,7 +97,7 @@ export class GameManager {
 
     this.activeActions = new Set();
     this.clock = new THREE.Clock();
-    this.shipStats = { ...getShipSpecs(DEFAULT_SHIP_ID) };
+    this.shipStats = { ...this.getShipSpecs(this.defaultShipId) };
     this.ui = new UIManager({
       config: this.config,
       shipStats: this.shipStats,
@@ -86,9 +109,16 @@ export class GameManager {
     this.resourceManager = new ResourceManager({
       onChange: (snapshot) => this.ui.setResourceProgress(snapshot)
     });
-    this.soundManager = new SoundManager(this.resourceManager);
-    this.worldDataManager = new WorldDataManager();
+    this.soundManager = new SoundManager(this.resourceManager, {
+      audioRegistry: gameData.assetRegistry?.audio,
+      assetBaseUrl: new URL("../", gameData.baseUrl).href
+    });
+    this.worldDataManager = new WorldDataManager({
+      config: this.worldConfig,
+      gameData
+    });
     this.worldMapManager = null;
+    this.minimapManager = null;
     this.targetingOverlay = new TargetingOverlay({
       canvas: this.ui.elements.targetingCanvas,
       frameStyle: this.getEnvironmentPreset().targeting.frame
@@ -224,7 +254,7 @@ export class GameManager {
     this.shipVisualManager = null;
     this.playerShipVisualState = null;
     this.shipEngineOutputPercent = null;
-    this.selectedShipId = DEFAULT_SHIP_ID;
+    this.selectedShipId = this.defaultShipId;
     this.materialMapSlots = [
       "map",
       "normalMap",
@@ -276,7 +306,8 @@ export class GameManager {
       onClearWorldSelection: () => this.clearWorldSelection(),
       onEnterTargetCam: () => this.enterTargetCameraMode(),
       onProcessBetaVoid: (object) => this.processBetaVoidFromUi(object),
-      onToggleCameraMode: () => this.requestCameraToggle()
+      onToggleCameraMode: () => this.requestCameraToggle(),
+      onOpenMinimap: () => this.minimapManager?.open()
     });
     this.ui.setChunkBoundsMode(this.worldViewSettings.chunkBoundsMode);
     this.ui.setEnvironmentMode(this.environmentMode);
@@ -303,12 +334,27 @@ export class GameManager {
     this.worldMapManager = new WorldMapManager({
       scene: this.scene,
       camera: this.camera,
-      renderScale: WORLD_CONFIG.renderScale,
+      worldConfig: this.worldConfig,
+      renderScale: this.worldConfig.renderScale,
       renderResolutionScale: this.getRenderResolutionScale(),
       environmentVisuals: preset.worldMap,
+      buildingDefinitions: this.buildingDefinitions,
+      resourceDefinitions: this.resourceDefinitions,
+      assetRegistry: this.gameData.assetRegistry,
+      assetBaseUrl: new URL("../", this.gameData.baseUrl).href,
       onRenderMutation: () => this.renderPipeline?.markTargetsDirty()
     });
     this.worldMapManager.setChunkBoundsMode(this.worldViewSettings.chunkBoundsMode);
+    this.minimapManager = new MinimapManager({
+      gameData: this.gameData,
+      worldDataManager: this.worldDataManager,
+      i18n: this.i18n,
+      getShipDataPosition: () => (this.worldMapManager && this.ship ? this.getPlayerDataPosition() : null),
+      getEnvironmentMode: () => this.environmentMode,
+      onVisibilityChange: (visible) => this.ui.setMinimapExpanded(visible),
+      onSelectObject: (object) => this.selectWorldObjectFromMinimap(object),
+      onShowObjectDetail: (ref) => this.showObjectDetailFromMinimap(ref)
+    });
   }
 
   loadKeyBindings() {
@@ -341,10 +387,7 @@ export class GameManager {
     const saved = await this.worldDataManager.getStoreValue("settings", ENVIRONMENT_SETTINGS_KEY);
     const savedMode = saved?.mode;
     const nextMode = savedMode ? normalizeEnvironmentMode(savedMode) : this.environmentMode;
-    const nextPerformanceSettings = normalizePerformanceSettings(
-      saved?.performanceSettings,
-      saved?.renderQualityMode
-    );
+    const nextPerformanceSettings = normalizePerformanceSettings(saved?.performanceSettings);
     this.environmentMode = nextMode;
     this.performanceSettings = nextPerformanceSettings;
     this.applyEnvironmentPreset(this.getEnvironmentPreset(nextMode));
@@ -398,7 +441,7 @@ export class GameManager {
   async loadSavedShipSettings() {
     const saved = await this.worldDataManager.getStoreValue("settings", "shipSettings");
     const shipId = saved?.selectedShipId;
-    this.selectedShipId = (shipId && SHIP_DEFINITIONS[shipId]) ? shipId : DEFAULT_SHIP_ID;
+    this.selectedShipId = (shipId && this.shipDefinitions[shipId]) ? shipId : this.defaultShipId;
     this._applyShipSpecs(this.selectedShipId);
     this.ui.setSelectedShipId(this.selectedShipId);
   }
@@ -416,12 +459,29 @@ export class GameManager {
   }
 
   _applyShipSpecs(shipId) {
-    Object.assign(this.shipStats, getShipSpecs(shipId));
+    Object.assign(this.shipStats, this.getShipSpecs(shipId));
     this.ui.refreshSpeedGaugeRange();
   }
 
+  getShipDefinition(shipId) {
+    return this.shipDefinitions[shipId] || this.shipDefinitions[this.defaultShipId];
+  }
+
+  getShipSpecs(shipId) {
+    const specs = this.getShipDefinition(shipId)?.specs || {};
+    return {
+      ...specs,
+      hyperdriveSpecs: { ...(specs.hyperdriveSpecs || {}) }
+    };
+  }
+
+  getShipModelId(shipId) {
+    const visual = this.getShipDefinition(shipId)?.visual || {};
+    return visual.model_id || visual.modelId || shipId;
+  }
+
   async setSelectedShipId(shipId) {
-    if (!SHIP_DEFINITIONS[shipId] || shipId === this.selectedShipId) return;
+    if (!this.shipDefinitions[shipId] || shipId === this.selectedShipId) return;
 
     const previousShipId = this.selectedShipId;
 
@@ -444,7 +504,7 @@ export class GameManager {
     this.ui.setSelectedShipId(shipId);
 
     try {
-      const result = await this.resourceManager.loadShipModel(shipId, { silent: true });
+      const result = await this.resourceManager.loadShipModel(this.getShipModelId(shipId), { silent: true });
       if (this.disposed) return;
       this.addShipModel(result.object);
       void this.saveShipSettings();
@@ -572,6 +632,7 @@ export class GameManager {
         this.renderPipeline?.unregisterMaterialOverrideTarget(object);
       }
     });
+    this.shipVisualManager.setShipDefinitions(this.shipDefinitions, this.defaultShipId);
   }
 
   setupShipLocalLights() {
@@ -665,10 +726,6 @@ export class GameManager {
             this._deactivationLog = null;
           }
           this._commitDeactivationNavLog(null, 0);
-          if (this._deactivationLog) {
-            const { id: _id, ...logData } = this._deactivationLog;
-            try { localStorage.setItem("vz_deactivation_snapshot", JSON.stringify(logData)); } catch (_) {}
-          }
           this.savePlayerShipState({ force: true });
         }
       },
@@ -680,7 +737,6 @@ export class GameManager {
         } else if (document.visibilityState === "visible") {
           this._resolvePreflightSnapshot();
           this._resolveDeactivationNavLog();
-          try { localStorage.removeItem("vz_deactivation_snapshot"); } catch (_) {}
           this._resolveHyperdriveWarp();
           this._snapToActiveNavLog();
         }
@@ -712,7 +768,7 @@ export class GameManager {
 
     const warnings = [];
     await this.loadSavedShipSettings();
-    const shipTask = this.resourceManager.loadShipModel(this.selectedShipId)
+    const shipTask = this.resourceManager.loadShipModel(this.getShipModelId(this.selectedShipId))
       .then((result) => {
         if (this.disposed) return result;
         this.addShipModel(result.object);
@@ -853,7 +909,6 @@ export class GameManager {
           void this.worldDataManager.updateNavLog(activeLog.id, { status: "cancelled", cancelled_at: Date.now() });
         }
         usedNavLog = true;
-        try { localStorage.removeItem("vz_deactivation_snapshot"); } catch (_) {}
       } else {
         if (tSec < 0) {
           // Pre-flight: navLog is complete but flight_start_at is in the future
@@ -910,16 +965,6 @@ export class GameManager {
           usedNavLog = true;
         }
       }
-    } else if (activeLog) {
-      // flight_start_at 없는 활성 log (구버전 호환): stopping에서 재개
-      const navTargetVec = new THREE.Vector3(activeLog.target.x, activeLog.target.y, activeLog.target.z);
-      this.navTarget = navTargetVec;
-      this.activeNavLogId = activeLog.id;
-      this.targetMarker.visible = true;
-      this.targetMarker.position.copy(navTargetVec);
-      this.state.autopilotPhase = "stopping";
-      this.state.autopilotPeakSpeed = 0;
-      // usedNavLog = false: 위치/속도는 아래 playerShipState에서 복원
     }
 
     if (!usedNavLog) {
@@ -957,21 +1002,7 @@ export class GameManager {
         // 수동 비행 중 비활성화 구간 결정론적 항법 적용
         const elapsed = (Date.now() - savedAt) / 1000;
         if (elapsed > 0) {
-          let snapshotLog = null;
-          try {
-            const raw = localStorage.getItem("vz_deactivation_snapshot");
-            if (raw) snapshotLog = JSON.parse(raw);
-          } catch (_) {}
-
-          if (snapshotLog?.flight_start_at && snapshotLog?.from_position) {
-            // pagehide 시점의 정확한 위치/속도/타임스탬프로 navLog 재생성
-            const id = this.worldDataManager.createNavLog({ ...snapshotLog, status: "active" });
-            this._deactivationLog = { ...snapshotLog, id };
-          } else {
-            // desired_speed=0 강제: 게임 종료 시점부터 즉시 감속
-            this._commitDeactivationNavLog(savedAt, 0);
-          }
-          try { localStorage.removeItem("vz_deactivation_snapshot"); } catch (_) {}
+          this._commitDeactivationNavLog(savedAt, 0);
           this._resolveDeactivationNavLog();
           if (this.state.autopilotPhase === null) {
             this.state.desiredSpeed = 0;
@@ -1024,7 +1055,7 @@ export class GameManager {
 
   addShipModel(model) {
     const shipId = this.selectedShipId;
-    const shipVisualDefinition = getShipDefinition(shipId).visual;
+    const shipVisualDefinition = this.getShipDefinition(shipId)?.visual;
     model.name = shipId;
     model.rotation.y = Math.PI;
     this.ship.add(model);
@@ -1041,7 +1072,8 @@ export class GameManager {
     this.playerShipVisualState = this.shipVisualManager?.applyToShip({
       shipId,
       root: this.ship,
-      object: model
+      object: model,
+      shipDefinition: shipVisualDefinition
     }) || null;
     this.shipEngineOutputPercent = null;
     this.updateShipEngineOutput();
@@ -1050,7 +1082,7 @@ export class GameManager {
     this.renderPipeline?.markTargetsDirty();
   }
 
-  applyShipReflection(model, shipVisualDefinition = getShipDefinition(DEFAULT_SHIP_ID).visual) {
+  applyShipReflection(model, shipVisualDefinition = this.getShipDefinition(this.defaultShipId)?.visual) {
     if (!this.shipReflectionTexture) return;
     const reflectionIntensity = shipVisualDefinition?.materials?.reflectionIntensity ?? this.shipReflectionIntensity;
 
@@ -2937,6 +2969,7 @@ export class GameManager {
     this.environmentMode = nextMode;
     this.applyEnvironmentPreset(this.getEnvironmentPreset(nextMode));
     this.ui.setEnvironmentMode(nextMode);
+    this.minimapManager?.setEnvironmentMode(nextMode);
     void this.saveEnvironmentSettings();
   }
 
@@ -2988,12 +3021,12 @@ export class GameManager {
         ? "beta_void"
         : object.building_id || object.resource_id || object.type || "unknown";
       const definition = kind === "building"
-        ? BUILDING_DEFINITIONS[object.building_id]
+        ? this.buildingDefinitions[object.building_id]
         : kind === "resource"
-          ? RESOURCE_DEFINITIONS[object.resource_id || object.type]
+          ? this.resourceDefinitions[object.resource_id || object.type]
           : null;
       const producedItem = kind === "resource"
-        ? ITEM_DEFINITIONS[definition?.produces_item_id]
+        ? this.itemDefinitions[definition?.produces_item_id]
         : null;
       const labelDefinition = kind === "building" ? definition : producedItem || definition;
       const label = kind === "betaVoid"
@@ -3140,7 +3173,6 @@ export class GameManager {
       this.activeActions.clear();
       this._commitDeactivationNavLog(nowMs - frameGapMs);
       this._resolveDeactivationNavLog();
-      try { localStorage.removeItem("vz_deactivation_snapshot"); } catch (_) {}
     }
 
     const dt = Math.min(this.clock.getDelta(), 0.05);
@@ -3435,6 +3467,27 @@ export class GameManager {
     return kind === "resource" || kind === "building" || kind === "betaVoid";
   }
 
+  // 미니맵 토스트의 상세 버튼 — 스캐너 항목과 동일한 정보로 최상위 standalone 상세 팝업을 띄운다.
+  showObjectDetailFromMinimap(ref) {
+    if (!ref?.id || !this.isSelectableWorldKind(ref.kind)) return;
+    const object = this.ui.findObjectInPayload(this.getWorldObjectList(), ref);
+    if (!object) {
+      this.ui.showErrorToast("object detail unavailable");
+      return;
+    }
+    this.ui.openStandaloneObjectDetailPopup(object);
+  }
+
+  // 미니맵 섹터 맵에서의 선택 — 데이터 좌표를 렌더 좌표로 변환해 스캐너 선택과 동일하게 처리한다.
+  selectWorldObjectFromMinimap(object) {
+    if (!object?.id || !this.isSelectableWorldKind(object.kind)) return;
+    const target = object.position ? this.worldMapManager.toRenderVector(object.position) : null;
+    this.selectWorldObjectFromListItem({
+      ...object,
+      target: target ? { x: target.x, y: target.y, z: target.z } : null
+    });
+  }
+
   selectWorldObjectFromListItem(object) {
     if (!object?.id || !this.isSelectableWorldKind(object.kind)) return;
 
@@ -3605,12 +3658,12 @@ export class GameManager {
     if (kind === "betaVoid") return this.i18n.t("betaVoid.name", {}, "Beta Void");
 
     if (kind === "building") {
-      const definition = BUILDING_DEFINITIONS[type];
+      const definition = this.buildingDefinitions[type];
       return this.i18n.resolveDefinitionText(definition, "name", this.formatObjectName(type));
     }
 
-    const definition = RESOURCE_DEFINITIONS[type];
-    const producedItem = ITEM_DEFINITIONS[definition?.produces_item_id];
+    const definition = this.resourceDefinitions[type];
+    const producedItem = this.itemDefinitions[definition?.produces_item_id];
     return this.i18n.resolveDefinitionText(producedItem || definition, "name", this.formatObjectName(type));
   }
 
@@ -3618,7 +3671,7 @@ export class GameManager {
     if (kind === "betaVoid") return new URL("../rss/svg/ind_void.svg", import.meta.url).href;
     if (kind !== "building") return new URL("../rss/svg/ind_loot.svg", import.meta.url).href;
 
-    const size = BUILDING_DEFINITIONS[type]?.size;
+    const size = this.buildingDefinitions[type]?.size;
     if (size === "EX") return new URL("../rss/svg/ind_ex.svg", import.meta.url).href;
     if (size === "L") return new URL("../rss/svg/ind_large.svg", import.meta.url).href;
     if (size === "S") return new URL("../rss/svg/ind_small.svg", import.meta.url).href;
@@ -3629,8 +3682,8 @@ export class GameManager {
     if (kind === "betaVoid") return 30;
 
     const definition = kind === "building"
-      ? BUILDING_DEFINITIONS[type]
-      : RESOURCE_DEFINITIONS[type];
+      ? this.buildingDefinitions[type]
+      : this.resourceDefinitions[type];
     const visualScale = Number(definition?.visual?.scale) || 8;
     return Math.max(0.001, visualScale * 1.6);
   }
@@ -4002,6 +4055,7 @@ export class GameManager {
 
     this.ui.dispose();
     this.targetingOverlay.dispose();
+    this.minimapManager?.dispose();
     this.worldMapManager.dispose();
     this.soundManager.dispose();
     this.resourceManager.dispose();

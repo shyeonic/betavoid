@@ -196,16 +196,12 @@ export function normalizeRenderResolutionScale(scale) {
     : DEFAULT_PERFORMANCE_SETTINGS.renderResolutionScale;
 }
 
-export function normalizePerformanceSettings(settings = {}, legacyRenderQualityMode = null) {
+export function normalizePerformanceSettings(settings = {}) {
   const source = settings && typeof settings === "object" ? settings : {};
-  const legacyBloomDisabled = legacyRenderQualityMode === "performance" || source.bloom === false;
-  const bloomQuality = legacyBloomDisabled
-    ? BLOOM_QUALITY_MODES.none
-    : normalizeBloomQualityMode(source.bloomQuality);
   return {
     materialMaps: source.materialMaps !== false,
     renderResolutionScale: normalizeRenderResolutionScale(source.renderResolutionScale),
-    bloomQuality,
+    bloomQuality: normalizeBloomQualityMode(source.bloomQuality),
     lightingEffects: source.lightingEffects !== false,
     antialias: source.antialias === true
   };

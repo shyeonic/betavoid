@@ -1,21 +1,38 @@
-import {
-  BUILDING_DEFINITIONS,
-  ITEM_DEFINITIONS,
-  INITIAL_RESOURCE_TYPES,
-  RESOURCE_DEFINITIONS,
-  SECTOR_TEMPLATES,
-  WORLD_CONFIG
-} from "./worldDefinitions.js";
+import { WORLD_CONFIG } from "./worldDefinitions.js";
 
 const STORE_NAMES = ["sectors", "chunks", "resourceNodes", "buildings", "betaVoids", "meta", "settings"];
-const BETA_VOID_TARGET_SECTOR_IDS = new Set(["SEC-001", "SEC-002"]);
-const BETA_VOID_TARGETS_PER_SECTOR = 5;
-const BETA_VOID_MIN_DISTANCE = 200;
-const BETA_VOID_PLACEMENT_MARGIN = 500;
+
+function requireDefinitionMap(gameData, key) {
+  const definitions = gameData?.[key];
+  if (!definitions || Object.keys(definitions).length === 0) {
+    throw new Error(`Game data is missing ${key}.`);
+  }
+  return definitions;
+}
+
+function requireDefinitionList(gameData, key) {
+  const definitions = gameData?.[key];
+  if (!Array.isArray(definitions) || definitions.length === 0) {
+    throw new Error(`Game data is missing ${key}.`);
+  }
+  return definitions;
+}
 
 export class WorldDataManager {
-  constructor({ config = WORLD_CONFIG } = {}) {
-    this.config = config;
+  constructor({ config = null, gameData = null } = {}) {
+    if (!gameData) throw new Error("WorldDataManager requires loaded gameData.");
+
+    this.gameData = gameData;
+    this.config = config || gameData.worldConfig || WORLD_CONFIG;
+    this.buildingDefinitions = requireDefinitionMap(gameData, "buildingDefinitions");
+    this.itemDefinitions = requireDefinitionMap(gameData, "itemDefinitions");
+    this.resourceDefinitions = requireDefinitionMap(gameData, "resourceDefinitions");
+    this.sectorTemplates = requireDefinitionList(gameData, "sectorTemplates");
+    this.initialResourceTypes = requireDefinitionList(gameData, "initialResourceTypes");
+    this.chunkMap = gameData.chunkMap || null;
+    this.chunkAnnotations = this.chunkMap?.chunks || {};
+    this.enabledChunks = Array.isArray(gameData.enabledChunks) ? gameData.enabledChunks : null;
+    this.dataSourceKey = gameData.dataSourceKey || "game-data:unknown";
     this.db = null;
     this.snapshot = null;
   }
@@ -59,6 +76,7 @@ export class WorldDataManager {
   async loadOrCreateWorld() {
     const meta = await this.getStoreValue("meta", "world");
     if (!meta) return this.createNewWorld();
+    if (meta.data_source_key !== this.dataSourceKey) return this.createNewWorld();
 
     await this.checkAndSpawnResources();
     await this.processBetaVoidLifecycle();
@@ -90,6 +108,7 @@ export class WorldDataManager {
     });
     const betaVoids = this.createInitialBetaVoids({
       buildings,
+      chunks,
       createdAt: now,
       resourceNodes,
       rng,
@@ -101,6 +120,8 @@ export class WorldDataManager {
     const meta = {
       key: "world",
       seed,
+      data_source_key: this.dataSourceKey,
+      data_source_name: this.gameData?.dataSetName || "static",
       generated_at: now
     };
     const playerShip = this.createDefaultPlayerShipState(now, sectors);
@@ -111,6 +132,27 @@ export class WorldDataManager {
   }
 
   createWorldChunks(createdAt) {
+    if (this.enabledChunks?.length > 0) {
+      return this.enabledChunks
+        .map((position) => ({
+          x: Number(position.x) || 0,
+          y: Number(position.y) || 0,
+          z: Number(position.z) || 0
+        }))
+        .sort((a, b) => a.x - b.x || a.y - b.y || a.z - b.z)
+        .map((position) => ({
+          chunk_id: this.getChunkId(position),
+          position,
+          global_bounds: this.getChunkBounds(position),
+          sector_id: null,
+          object_counts: {
+            resources: 0,
+            buildings: 0
+          },
+          created_at: createdAt
+        }));
+    }
+
     const chunks = [];
     const offsetX = Math.floor(this.config.chunkGrid.x / 2);
     const offsetY = Math.floor(this.config.chunkGrid.y / 2);
@@ -143,10 +185,17 @@ export class WorldDataManager {
   }
 
   createSectors(createdAt, rng, chunks) {
-    const availableChunks = shuffle([...chunks], rng).slice(0, SECTOR_TEMPLATES.length);
+    const chunkById = new Map(chunks.map((chunk) => [chunk.chunk_id, chunk]));
+    const usedChunkIds = new Set();
+    const randomChunks = shuffle([...chunks], rng);
 
-    return SECTOR_TEMPLATES.map((template, index) => {
-      const chunk = availableChunks[index];
+    return this.sectorTemplates.map((template) => {
+      const annotatedChunkId = this.findAnnotatedChunkIdForSector(template.sector_id, chunkById, usedChunkIds);
+      const chunk = annotatedChunkId
+        ? chunkById.get(annotatedChunkId)
+        : randomChunks.find((candidate) => !usedChunkIds.has(candidate.chunk_id));
+      if (!chunk) return null;
+      usedChunkIds.add(chunk.chunk_id);
       chunk.sector_id = template.sector_id;
       const min = { ...chunk.global_bounds.min };
       const max = { ...chunk.global_bounds.max };
@@ -154,8 +203,10 @@ export class WorldDataManager {
 
       return {
         sector_id: template.sector_id,
+        label_key: template.label_key,
         name: template.name,
         theme: template.theme,
+        theme_key: template.theme_key,
         theme_music_id: template.theme_music_id,
         stats: structuredCloneSafe(template.stats || {}),
         chunk_id: chunk.chunk_id,
@@ -163,6 +214,7 @@ export class WorldDataManager {
         resource_weights: { ...template.resource_weights },
         initial_buildings: structuredCloneSafe(template.initial_buildings || []),
         initial_resource_facilities: structuredCloneSafe(template.initial_resource_facilities || []),
+        beta_void_count: this.normalizeBetaVoidCount(template.beta_void_count, null),
         global_bounds: { min, max },
         chunk_bounds: {
           min: chunkPosition,
@@ -170,15 +222,35 @@ export class WorldDataManager {
         },
         created_at: createdAt
       };
-    });
+    }).filter(Boolean);
+  }
+
+  findAnnotatedChunkIdForSector(sectorId, chunkById, usedChunkIds) {
+    for (const [chunkId, annotation] of Object.entries(this.chunkAnnotations)) {
+      if (annotation?.sectorId !== sectorId) continue;
+      if (!chunkById.has(chunkId) || usedChunkIds.has(chunkId)) continue;
+      return chunkId;
+    }
+    return null;
   }
 
   createInitialResourceNodes({ chunks, createdAt, placedObjects, rng, sectors, seed }) {
+    if (this.hasChunkMapResourceAnnotations()) {
+      return this.createChunkMapResourceNodes({
+        chunks,
+        createdAt,
+        placedObjects,
+        rng,
+        sectors,
+        seed
+      });
+    }
+
     const resourceNodes = [];
     let nodeIndex = 0;
 
-    for (const resourceId of INITIAL_RESOURCE_TYPES) {
-      const definition = RESOURCE_DEFINITIONS[resourceId];
+    for (const resourceId of this.initialResourceTypes) {
+      const definition = this.resourceDefinitions[resourceId];
       if (!definition) continue;
 
       const totalCapacity = Math.max(0, Math.round(Number(definition.total_capacity) || 0));
@@ -200,6 +272,68 @@ export class WorldDataManager {
     return resourceNodes;
   }
 
+  hasChunkMapResourceAnnotations() {
+    return Object.values(this.chunkAnnotations).some((annotation) => (
+      Object.values(annotation?.resourceAmounts || {}).some((amount) => Number(amount) > 0)
+    ));
+  }
+
+  createChunkMapResourceNodes({ chunks, createdAt, placedObjects, rng, sectors, seed }) {
+    const chunkById = new Map(chunks.map((chunk) => [chunk.chunk_id, chunk]));
+    const sectorsById = new Map(sectors.map((sector) => [sector.sector_id, sector]));
+    const resourceNodes = [];
+    let nodeIndex = 0;
+
+    for (const [chunkId, annotation] of Object.entries(this.chunkAnnotations)) {
+      const chunk = chunkById.get(chunkId);
+      if (!chunk) continue;
+
+      const sector = sectorsById.get(annotation.sectorId || chunk.sector_id) || null;
+      for (const [resourceId, rawAmount] of Object.entries(annotation.resourceAmounts || {})) {
+        const capacity = Math.max(0, Math.round(Number(rawAmount) || 0));
+        const definition = this.resourceDefinitions[resourceId];
+        if (!definition || capacity <= 0) continue;
+
+        const item = this.itemDefinitions[definition.produces_item_id] || null;
+        const position = this.findAvailablePositionInBounds({
+          bounds: chunk.global_bounds,
+          placedObjects,
+          rng,
+          minDistance: this.config.resourceMinDistance
+        });
+        const chunkData = this.getChunkDataAtPosition(position);
+        const lifetime = this.pickResourceLifetime(definition, rng);
+        const node = {
+          resource_instance_id: this.createId("RES", resourceId, seed, nodeIndex, rng),
+          resource_id: resourceId,
+          type: resourceId,
+          category: definition.visual.category || item?.type || null,
+          produces_item_id: definition.produces_item_id,
+          item_type: item?.type || null,
+          node_type: definition.node_type,
+          model_id: definition.visual.model_id,
+          sector_id: sector?.sector_id || null,
+          chunk_id: chunkData.chunk_id,
+          chunk: chunkData.chunk,
+          position,
+          local_position: chunkData.local_position,
+          total_capacity: capacity,
+          current_amount: capacity,
+          base_yield_per_sec: definition.base_yield_per_sec,
+          spawn_time: createdAt,
+          expiry_time: lifetime ? createdAt + lifetime : null,
+          created_at: createdAt
+        };
+
+        resourceNodes.push(node);
+        placedObjects.push(node);
+        nodeIndex += 1;
+      }
+    }
+
+    return resourceNodes;
+  }
+
   createDistributedResourceNodes({
     chunks,
     createdAt,
@@ -212,7 +346,7 @@ export class WorldDataManager {
     startIndex,
     totalCapacity
   }) {
-    const definition = RESOURCE_DEFINITIONS[resourceId];
+    const definition = this.resourceDefinitions[resourceId];
     if (!definition) return { nodes: [], nextIndex: startIndex, remaining: totalCapacity };
 
     const nodes = [];
@@ -294,8 +428,8 @@ export class WorldDataManager {
     seed,
     startIndex
   }) {
-    const definition = RESOURCE_DEFINITIONS[resourceId];
-    const item = ITEM_DEFINITIONS[definition.produces_item_id] || null;
+    const definition = this.resourceDefinitions[resourceId];
+    const item = this.itemDefinitions[definition.produces_item_id] || null;
     const [minCapacity, maxCapacity] = definition.node_capacity_range || [quota, quota];
     const nodes = [];
     let nextIndex = startIndex;
@@ -365,6 +499,15 @@ export class WorldDataManager {
     return this.pickPositionInBounds(chunk.global_bounds, rng);
   }
 
+  findAvailablePositionInBounds({ bounds, placedObjects, rng, minDistance }) {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const position = this.pickPositionInBounds(bounds, rng);
+      if (this.isFarEnough(position, placedObjects, minDistance)) return position;
+    }
+
+    return this.getBoundsCenter(bounds);
+  }
+
   createInitialBuildings({ createdAt, placedObjects, resourceNodes, rng, sectors, seed }) {
     const buildings = [];
     const consumedResourceNodeIds = new Set();
@@ -390,7 +533,7 @@ export class WorldDataManager {
       }
 
       for (const entry of sector.initial_resource_facilities || []) {
-        const definition = BUILDING_DEFINITIONS[entry.building_id];
+        const definition = this.buildingDefinitions[entry.building_id];
         const requiredCategory = definition?.placement_rule?.required_resource_type;
         if (!requiredCategory) continue;
 
@@ -426,17 +569,33 @@ export class WorldDataManager {
     return buildings;
   }
 
-  createInitialBetaVoids({ buildings, createdAt, resourceNodes, rng, sectors }) {
+  createInitialBetaVoids({ buildings, chunks = this.snapshot?.chunks || [], createdAt, resourceNodes, rng, sectors }) {
+    if (this.hasChunkMapBetaVoidAnnotations()) {
+      return this.createChunkMapBetaVoids({
+        buildings,
+        chunks,
+        createdAt,
+        resourceNodes,
+        rng,
+        sectors
+      });
+    }
+
     const betaVoids = [];
     const placedObjects = [...buildings, ...resourceNodes];
-    const targetSectors = sectors.filter((sector) => BETA_VOID_TARGET_SECTOR_IDS.has(sector.sector_id));
+    const targetSectors = sectors
+      .map((sector) => ({
+        sector,
+        count: this.getSectorBetaVoidCount(sector, 0)
+      }))
+      .filter((entry) => entry.count > 0);
 
-    for (const sector of targetSectors) {
+    for (const { sector, count } of targetSectors) {
       let placedCount = 0;
       let attempts = 0;
-      const maxAttempts = 100;
+      const maxAttempts = Math.max(100, count * 100);
 
-      while (placedCount < BETA_VOID_TARGETS_PER_SECTOR && attempts < maxAttempts) {
+      while (placedCount < count && attempts < maxAttempts) {
         attempts += 1;
         const position = this.findAvailableBetaVoidPositionInSector({
           sector,
@@ -460,11 +619,67 @@ export class WorldDataManager {
     return betaVoids;
   }
 
+  hasChunkMapBetaVoidAnnotations() {
+    return Object.values(this.chunkAnnotations).some((annotation) => annotation?.spawnFlags?.betaVoid === true);
+  }
+
+  createChunkMapBetaVoids({ buildings, chunks = [], createdAt, resourceNodes, rng, sectors }) {
+    const betaVoids = [];
+    const placedObjects = [...buildings, ...resourceNodes];
+    const sectorsById = new Map(sectors.map((sector) => [sector.sector_id, sector]));
+    const chunksById = new Map(chunks.map((chunk) => [chunk.chunk_id, chunk]));
+    const sectorCounters = new Map();
+
+    for (const [chunkId, annotation] of Object.entries(this.chunkAnnotations)) {
+      if (annotation?.spawnFlags?.betaVoid !== true) continue;
+
+      const chunk = chunksById.get(chunkId);
+      if (!chunk) continue;
+      const sector = sectorsById.get(annotation.sectorId || chunk.sector_id) || null;
+      const count = this.getSectorBetaVoidCount(sector, 1);
+      for (let placedCount = 0; placedCount < count; placedCount += 1) {
+        const position = this.findAvailableBetaVoidPositionInBounds({
+          bounds: chunk.global_bounds,
+          placedObjects,
+          rng
+        });
+        const sectorIndex = this.nextBetaVoidSectorIndex(sectorCounters, sector, chunkId);
+        const betaVoid = this.createBetaVoidRecord({
+          createdAt,
+          position,
+          sector,
+          sectorIndex
+        });
+        betaVoids.push(betaVoid);
+        placedObjects.push(betaVoid);
+      }
+    }
+
+    return betaVoids;
+  }
+
+  nextBetaVoidSectorIndex(counters, sector, fallbackKey) {
+    const key = sector?.sector_id || fallbackKey || "GLOBAL";
+    const next = (counters.get(key) || 0) + 1;
+    counters.set(key, next);
+    return next;
+  }
+
+  getSectorBetaVoidCount(sector, fallback = 0) {
+    return this.normalizeBetaVoidCount(sector?.beta_void_count, fallback);
+  }
+
+  normalizeBetaVoidCount(value, fallback = 0) {
+    if (value == null || value === "") return fallback;
+    return Math.max(0, Math.round(Number(value) || 0));
+  }
+
   createBetaVoidRecord({ createdAt, position, sector, sectorIndex }) {
     const chunkData = this.getChunkDataAtPosition(position);
+    const sectorId = sector?.sector_id || "GLOBAL";
     return {
-      id: `BETA-VOID-${sector.sector_id}-${sectorIndex}`,
-      sector_id: sector.sector_id,
+      id: `BETA-VOID-${sectorId}-${sectorIndex}`,
+      sector_id: sector?.sector_id || null,
       sector_index: sectorIndex,
       position,
       chunk_id: chunkData.chunk_id,
@@ -481,18 +696,36 @@ export class WorldDataManager {
   findAvailableBetaVoidPositionInSector({ sector, placedObjects, rng }) {
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const position = this.pickBetaVoidPositionInBounds(sector.global_bounds, rng);
-      if (this.isFarEnough(position, placedObjects, BETA_VOID_MIN_DISTANCE)) return position;
+      if (this.isFarEnough(position, placedObjects, this.getBetaVoidMinDistance())) return position;
     }
 
     return this.getBoundsCenter(sector.global_bounds);
   }
 
+  findAvailableBetaVoidPositionInBounds({ bounds, placedObjects, rng }) {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const position = this.pickBetaVoidPositionInBounds(bounds, rng);
+      if (this.isFarEnough(position, placedObjects, this.getBetaVoidMinDistance())) return position;
+    }
+
+    return this.getBoundsCenter(bounds);
+  }
+
   pickBetaVoidPositionInBounds(bounds, rng) {
+    const margin = this.getBetaVoidPlacementMargin();
     return {
-      x: Math.round(lerp(bounds.min.x + BETA_VOID_PLACEMENT_MARGIN, bounds.max.x - BETA_VOID_PLACEMENT_MARGIN, rng())),
-      y: Math.round(lerp(bounds.min.y + BETA_VOID_PLACEMENT_MARGIN, bounds.max.y - BETA_VOID_PLACEMENT_MARGIN, rng())),
-      z: Math.round(lerp(bounds.min.z + BETA_VOID_PLACEMENT_MARGIN, bounds.max.z - BETA_VOID_PLACEMENT_MARGIN, rng()))
+      x: Math.round(lerp(bounds.min.x + margin, bounds.max.x - margin, rng())),
+      y: Math.round(lerp(bounds.min.y + margin, bounds.max.y - margin, rng())),
+      z: Math.round(lerp(bounds.min.z + margin, bounds.max.z - margin, rng()))
     };
+  }
+
+  getBetaVoidMinDistance() {
+    return Math.max(0, Number(this.config.betaVoidMinDistance) || 0);
+  }
+
+  getBetaVoidPlacementMargin() {
+    return Math.max(0, Number(this.config.betaVoidPlacementMargin) || 0);
   }
 
   getNext6HourCheckpoint(timestamp) {
@@ -549,8 +782,9 @@ export class WorldDataManager {
   }
 
   async processBetaVoidLifecycle({ now = Date.now() } = {}) {
-    const [sectors, resourceNodes, buildings, storedBetaVoids, worldMeta] = await Promise.all([
+    const [sectors, chunks, resourceNodes, buildings, storedBetaVoids, worldMeta] = await Promise.all([
       this.getAll("sectors"),
+      this.getAll("chunks"),
       this.getAll("resourceNodes"),
       this.getAll("buildings"),
       this.getAll("betaVoids"),
@@ -565,6 +799,7 @@ export class WorldDataManager {
     if (betaVoids.length === 0) {
       betaVoids = this.createInitialBetaVoids({
         buildings,
+        chunks,
         createdAt: now,
         resourceNodes,
         rng: createSeededRandom(`${worldMeta.seed}:beta-void:${now}`),
@@ -629,7 +864,7 @@ export class WorldDataManager {
       pools: {}
     };
 
-    for (const resourceId of INITIAL_RESOURCE_TYPES) {
+    for (const resourceId of this.initialResourceTypes) {
       this.ensureResourcePool(resourceManager, resourceId);
     }
 
@@ -638,7 +873,7 @@ export class WorldDataManager {
   }
 
   ensureResourcePool(resourceManager, resourceId) {
-    const definition = RESOURCE_DEFINITIONS[resourceId];
+    const definition = this.resourceDefinitions[resourceId];
     if (!definition) return null;
 
     if (!resourceManager.pools) resourceManager.pools = {};
@@ -658,7 +893,7 @@ export class WorldDataManager {
   }
 
   updateResourceManagerTotals(resourceManager, resourceNodes = [], buildings = []) {
-    for (const resourceId of INITIAL_RESOURCE_TYPES) {
+    for (const resourceId of this.initialResourceTypes) {
       const pool = this.ensureResourcePool(resourceManager, resourceId);
       if (!pool) continue;
 
@@ -713,8 +948,8 @@ export class WorldDataManager {
     let nextIndex = resourceNodes.length;
     let spawnedCount = 0;
 
-    for (const resourceId of INITIAL_RESOURCE_TYPES) {
-      const definition = RESOURCE_DEFINITIONS[resourceId];
+    for (const resourceId of this.initialResourceTypes) {
+      const definition = this.resourceDefinitions[resourceId];
       const pool = this.ensureResourcePool(resourceManager, resourceId);
       if (!definition || !pool) continue;
 
@@ -778,7 +1013,7 @@ export class WorldDataManager {
     sector,
     seed
   }) {
-    const definition = BUILDING_DEFINITIONS[buildingId];
+    const definition = this.buildingDefinitions[buildingId];
     if (!definition) return null;
 
     const resolvedPosition = position || this.pickBuildingPosition(sector, definition, rng, placedObjects);
@@ -899,9 +1134,12 @@ export class WorldDataManager {
   }
 
   createDefaultPlayerShipState(createdAt = Date.now(), sectors = this.snapshot?.sectors || []) {
-    const position = { x: 0, y: 0, z: 0 };
+    const firstSector = sectors[0] || null;
+    const position = firstSector
+      ? this.getBoundsCenter(firstSector.global_bounds)
+      : { x: 0, y: 0, z: 0 };
     const chunkData = this.getChunkDataAtPosition(position);
-    const sector = this.getSectorAtPosition(position.x, position.y, position.z, sectors);
+    const sector = firstSector || this.getSectorAtPosition(position.x, position.y, position.z, sectors);
 
     return {
       key: "playerShip",

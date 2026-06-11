@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "chunkSize": {
+    "x": 400000,
+    "y": 400000,
+    "z": 400000
+  },
+  "resourceCheckInterval": 86400000,
+  "placementMargin": 800,
+  "resourceMinDistance": 1200,
+  "buildingMinDistance": 1600,
+  "betaVoidMinDistance": 200,
+  "betaVoidTargetsPerSector": 5
+}

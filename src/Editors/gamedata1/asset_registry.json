@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "models": {
+    "ship_01": "assets/models/ships/ship_01.glb",
+    "ship_02": "assets/models/ships/ship_02.glb",
+    "water_01": "assets/models/resources/water_01.glb",
+    "ore_01": "assets/models/resources/ore_01.glb",
+    "gas_01": "assets/models/resources/gas_01.glb",
+    "hq_01": "assets/models/buildings/hq_01.glb",
+    "mine_01": "assets/models/buildings/mine_01.glb",
+    "power_01": "assets/models/buildings/power_01.glb"
+  },
+  "audio": {
+    "bgm_sector_01": "assets/audio/bgm_sector_01.ogg",
+    "bgm_sector_02": "assets/audio/bgm_sector_02.ogg"
+  }
+}

@@ -1,0 +1,365 @@
+{
+  "version": 1,
+  "sectors": {
+    "SEC-001": {
+      "id": "SEC-001",
+      "theme": "Volcanic_Industrial",
+      "themeMusicId": "bgm_sector_01",
+      "color": "#ff6b35",
+      "betaVoidCount": 1,
+      "stats": {
+        "base_gdp_coeff": 1.2,
+        "admin_capacity": 500,
+        "population_cap": 1000000,
+        "environmental_weight": {
+          "mining_efficiency": 1.5,
+          "agriculture_efficiency": 0.5
+        }
+      },
+      "resourceWeights": {
+        "rss_001": 3,
+        "rss_002": 6,
+        "rss_003": 9,
+        "rss_004": 12,
+        "rss_005": 2,
+        "rss_006": 5,
+        "rss_007": 8,
+        "rss_008": 11,
+        "rss_009": 1,
+        "rss_010": 4
+      },
+      "initialBuildings": [
+        {
+          "building_id": "arc_station",
+          "count": 1
+        },
+        {
+          "building_id": "plasma_power_plant",
+          "count": 2
+        },
+        {
+          "building_id": "orbital_dorm",
+          "count": 3
+        },
+        {
+          "building_id": "orbital_defence_turret",
+          "count": 5
+        }
+      ],
+      "initialResourceFacilities": [
+        {
+          "building_id": "mine",
+          "count": 4
+        },
+        {
+          "building_id": "refinery",
+          "count": 2
+        },
+        {
+          "building_id": "hydro_synthesizer",
+          "count": 1
+        }
+      ]
+    },
+    "SEC-002": {
+      "id": "SEC-002",
+      "theme": "Trade_Hub",
+      "themeMusicId": "bgm_sector_01",
+      "color": "#ffd450",
+      "betaVoidCount": 1,
+      "stats": {
+        "base_gdp_coeff": 1.5,
+        "admin_capacity": 800,
+        "population_cap": 2000000,
+        "environmental_weight": {
+          "mining_efficiency": 1,
+          "agriculture_efficiency": 1
+        }
+      },
+      "resourceWeights": {
+        "rss_001": 4,
+        "rss_002": 8,
+        "rss_003": 12,
+        "rss_004": 3,
+        "rss_005": 7,
+        "rss_006": 11,
+        "rss_007": 2,
+        "rss_008": 6,
+        "rss_009": 10,
+        "rss_010": 1
+      },
+      "initialBuildings": [
+        {
+          "building_id": "arc_station",
+          "count": 1
+        },
+        {
+          "building_id": "plasma_power_plant",
+          "count": 1
+        },
+        {
+          "building_id": "orbital_dorm",
+          "count": 2
+        },
+        {
+          "building_id": "orbital_defence_turret",
+          "count": 4
+        }
+      ],
+      "initialResourceFacilities": [
+        {
+          "building_id": "mine",
+          "count": 2
+        },
+        {
+          "building_id": "refinery",
+          "count": 2
+        },
+        {
+          "building_id": "hydro_synthesizer",
+          "count": 1
+        }
+      ]
+    },
+    "SEC-003": {
+      "id": "SEC-003",
+      "theme": "Desert_Wasteland",
+      "themeMusicId": "bgm_sector_01",
+      "color": "#ff4466",
+      "betaVoidCount": 1,
+      "stats": {
+        "base_gdp_coeff": 0.8,
+        "admin_capacity": 300,
+        "population_cap": 500000,
+        "environmental_weight": {
+          "mining_efficiency": 1.2,
+          "agriculture_efficiency": 0.3
+        }
+      },
+      "resourceWeights": {
+        "rss_001": 5,
+        "rss_002": 10,
+        "rss_003": 2,
+        "rss_004": 7,
+        "rss_005": 12,
+        "rss_006": 4,
+        "rss_007": 9,
+        "rss_008": 1,
+        "rss_009": 6,
+        "rss_010": 11
+      },
+      "initialBuildings": [],
+      "initialResourceFacilities": []
+    },
+    "SEC-004": {
+      "id": "SEC-004",
+      "theme": "Gas_Giant",
+      "themeMusicId": "bgm_sector_01",
+      "color": "#63d2ff",
+      "betaVoidCount": 1,
+      "stats": {
+        "base_gdp_coeff": 1.1,
+        "admin_capacity": 400,
+        "population_cap": 800000,
+        "environmental_weight": {
+          "mining_efficiency": 0.5,
+          "agriculture_efficiency": 0.2
+        }
+      },
+      "resourceWeights": {
+        "rss_001": 6,
+        "rss_002": 12,
+        "rss_003": 5,
+        "rss_004": 11,
+        "rss_005": 4,
+        "rss_006": 10,
+        "rss_007": 3,
+        "rss_008": 9,
+        "rss_009": 2,
+        "rss_010": 8
+      },
+      "initialBuildings": [],
+      "initialResourceFacilities": []
+    },
+    "SEC-005": {
+      "id": "SEC-005",
+      "theme": "Dark_Matter_Zone",
+      "themeMusicId": "bgm_sector_01",
+      "color": "#aa88ff",
+      "betaVoidCount": 1,
+      "stats": {
+        "base_gdp_coeff": 1,
+        "admin_capacity": 600,
+        "population_cap": 1200000,
+        "environmental_weight": {
+          "mining_efficiency": 0.8,
+          "agriculture_efficiency": 0.4
+        }
+      },
+      "resourceWeights": {
+        "rss_001": 7,
+        "rss_002": 1,
+        "rss_003": 8,
+        "rss_004": 2,
+        "rss_005": 9,
+        "rss_006": 3,
+        "rss_007": 10,
+        "rss_008": 4,
+        "rss_009": 11,
+        "rss_010": 5
+      },
+      "initialBuildings": [],
+      "initialResourceFacilities": []
+    },
+    "SEC-006": {
+      "id": "SEC-006",
+      "theme": "Military_Fortress",
+      "themeMusicId": "bgm_sector_01",
+      "color": "#ff9944",
+      "betaVoidCount": 1,
+      "stats": {
+        "base_gdp_coeff": 1.3,
+        "admin_capacity": 700,
+        "population_cap": 1500000,
+        "environmental_weight": {
+          "mining_efficiency": 1.1,
+          "agriculture_efficiency": 0.7
+        }
+      },
+      "resourceWeights": {
+        "rss_001": 8,
+        "rss_002": 3,
+        "rss_003": 11,
+        "rss_004": 6,
+        "rss_005": 1,
+        "rss_006": 9,
+        "rss_007": 4,
+        "rss_008": 12,
+        "rss_009": 7,
+        "rss_010": 2
+      },
+      "initialBuildings": [],
+      "initialResourceFacilities": []
+    },
+    "SEC-007": {
+      "id": "SEC-007",
+      "theme": "Solar_Forge",
+      "themeMusicId": "bgm_sector_01",
+      "color": "#ffee44",
+      "betaVoidCount": 1,
+      "stats": {
+        "base_gdp_coeff": 1.4,
+        "admin_capacity": 550,
+        "population_cap": 1100000,
+        "environmental_weight": {
+          "mining_efficiency": 1.3,
+          "agriculture_efficiency": 0.6
+        }
+      },
+      "resourceWeights": {
+        "rss_001": 9,
+        "rss_002": 5,
+        "rss_003": 1,
+        "rss_004": 10,
+        "rss_005": 6,
+        "rss_006": 2,
+        "rss_007": 11,
+        "rss_008": 7,
+        "rss_009": 3,
+        "rss_010": 12
+      },
+      "initialBuildings": [],
+      "initialResourceFacilities": []
+    },
+    "SEC-008": {
+      "id": "SEC-008",
+      "theme": "Ice_World",
+      "themeMusicId": "bgm_sector_01",
+      "color": "#88ddff",
+      "betaVoidCount": 1,
+      "stats": {
+        "base_gdp_coeff": 0.9,
+        "admin_capacity": 350,
+        "population_cap": 700000,
+        "environmental_weight": {
+          "mining_efficiency": 1,
+          "agriculture_efficiency": 0.5
+        }
+      },
+      "resourceWeights": {
+        "rss_001": 10,
+        "rss_002": 7,
+        "rss_003": 4,
+        "rss_004": 1,
+        "rss_005": 11,
+        "rss_006": 8,
+        "rss_007": 5,
+        "rss_008": 2,
+        "rss_009": 12,
+        "rss_010": 9
+      },
+      "initialBuildings": [],
+      "initialResourceFacilities": []
+    },
+    "SEC-009": {
+      "id": "SEC-009",
+      "theme": "Agricultural_Paradise",
+      "themeMusicId": "bgm_sector_01",
+      "color": "#44dd88",
+      "betaVoidCount": 1,
+      "stats": {
+        "base_gdp_coeff": 1.1,
+        "admin_capacity": 450,
+        "population_cap": 900000,
+        "environmental_weight": {
+          "mining_efficiency": 0.6,
+          "agriculture_efficiency": 1.7
+        }
+      },
+      "resourceWeights": {
+        "rss_001": 11,
+        "rss_002": 9,
+        "rss_003": 7,
+        "rss_004": 5,
+        "rss_005": 3,
+        "rss_006": 1,
+        "rss_007": 12,
+        "rss_008": 10,
+        "rss_009": 8,
+        "rss_010": 6
+      },
+      "initialBuildings": [],
+      "initialResourceFacilities": []
+    },
+    "SEC-010": {
+      "id": "SEC-010",
+      "theme": "Frontier_Outpost",
+      "themeMusicId": "bgm_sector_01",
+      "color": "#cc88cc",
+      "betaVoidCount": 1,
+      "stats": {
+        "base_gdp_coeff": 0.7,
+        "admin_capacity": 250,
+        "population_cap": 400000,
+        "environmental_weight": {
+          "mining_efficiency": 0.9,
+          "agriculture_efficiency": 0.8
+        }
+      },
+      "resourceWeights": {
+        "rss_001": 12,
+        "rss_002": 11,
+        "rss_003": 10,
+        "rss_004": 9,
+        "rss_005": 8,
+        "rss_006": 7,
+        "rss_007": 6,
+        "rss_008": 5,
+        "rss_009": 4,
+        "rss_010": 3
+      },
+      "initialBuildings": [],
+      "initialResourceFacilities": []
+    }
+  }
+}

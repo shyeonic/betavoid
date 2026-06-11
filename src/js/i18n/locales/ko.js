@@ -89,6 +89,13 @@ export const ko = {
         status: "상태",
         type: "유형"
       }
+    },
+    map: {
+      title: "맵",
+      back: "뒤로",
+      galaxy: "은하",
+      unnamedSpace: "Unnamed Space",
+      voidSpace: "Void Space"
     }
   },
   betaVoid: {

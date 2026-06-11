@@ -1,0 +1,2795 @@
+{
+  "format": "void-zero-galaxy-editor-save",
+  "version": 1,
+  "savedAt": "2026-06-10T02:18:58.893Z",
+  "capsule": {
+    "assetRegistry": {
+      "version": 1,
+      "models": {
+        "ship_01": "rss/ships/ship_01.glb",
+        "ship_02": "rss/ships/ship_02.glb",
+        "water_01": "rss/ore_planets/water_01.glb",
+        "ore_01": "rss/ore_planets/ore_01.glb",
+        "gas_01": "rss/ore_planets/gas_01.glb",
+        "hq_01": "rss/buildings/station_03.glb",
+        "mine_01": "rss/buildings/station_02.glb",
+        "power_01": "rss/buildings/station_01.glb"
+      },
+      "audio": {
+        "bgm_sector_01": "rss/sounds/bgm_sector_01.ogg",
+        "bgm_sector_02": "rss/soundsbgm_sector_02.ogg"
+      }
+    },
+    "itemDefs": {
+      "version": 1,
+      "items": {
+        "item_001": {
+          "id": "item_001",
+          "category": "resource",
+          "type": "hydrite_mineral",
+          "mass": 1,
+          "tradable": true,
+          "stackable": true
+        },
+        "item_002": {
+          "id": "item_002",
+          "category": "resource",
+          "type": "mineral",
+          "mass": 1.5,
+          "tradable": true,
+          "stackable": true
+        },
+        "item_003": {
+          "id": "item_003",
+          "category": "resource",
+          "type": "mineral",
+          "mass": 1.2,
+          "tradable": true,
+          "stackable": true
+        },
+        "item_004": {
+          "id": "item_004",
+          "category": "resource",
+          "type": "mineral",
+          "mass": 1,
+          "tradable": true,
+          "stackable": true
+        },
+        "item_005": {
+          "id": "item_005",
+          "category": "resource",
+          "type": "mineral",
+          "mass": 2,
+          "tradable": true,
+          "stackable": true
+        },
+        "item_006": {
+          "id": "item_006",
+          "category": "resource",
+          "type": "mineral",
+          "mass": 0.8,
+          "tradable": true,
+          "stackable": true
+        },
+        "item_007": {
+          "id": "item_007",
+          "category": "resource",
+          "type": "gas",
+          "mass": 0.2,
+          "tradable": true,
+          "stackable": true
+        },
+        "item_008": {
+          "id": "item_008",
+          "category": "resource",
+          "type": "gas",
+          "mass": 0.3,
+          "tradable": true,
+          "stackable": true
+        },
+        "item_009": {
+          "id": "item_009",
+          "category": "resource",
+          "type": "gas",
+          "mass": 0.5,
+          "tradable": true,
+          "stackable": true
+        },
+        "item_010": {
+          "id": "item_010",
+          "category": "resource",
+          "type": "gas",
+          "mass": 0.4,
+          "tradable": true,
+          "stackable": true
+        }
+      }
+    },
+    "resourceDefs": {
+      "version": 1,
+      "resources": {
+        "rss_001": {
+          "id": "rss_001",
+          "producesItemId": "item_001",
+          "nodeType": "PERMANENT",
+          "totalCapacity": 1000000,
+          "spawnLimitPerCycle": 200000,
+          "nodeCapacityRange": [
+            10000,
+            20000
+          ],
+          "sectorRatio": 0.3,
+          "baseYieldPerSec": 5,
+          "visual": {
+            "category": "hydrite_mineral",
+            "modelId": "water_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          }
+        },
+        "rss_002": {
+          "id": "rss_002",
+          "producesItemId": "item_002",
+          "nodeType": "PERMANENT",
+          "totalCapacity": 600000,
+          "spawnLimitPerCycle": 120000,
+          "nodeCapacityRange": [
+            4000,
+            8000
+          ],
+          "sectorRatio": 0.4,
+          "baseYieldPerSec": 4,
+          "visual": {
+            "category": "mineral",
+            "modelId": "ore_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          }
+        },
+        "rss_003": {
+          "id": "rss_003",
+          "producesItemId": "item_003",
+          "nodeType": "PERMANENT",
+          "totalCapacity": 400000,
+          "spawnLimitPerCycle": 80000,
+          "nodeCapacityRange": [
+            3000,
+            6000
+          ],
+          "sectorRatio": 0.4,
+          "baseYieldPerSec": 6,
+          "visual": {
+            "category": "mineral",
+            "modelId": "ore_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          }
+        },
+        "rss_004": {
+          "id": "rss_004",
+          "producesItemId": "item_004",
+          "nodeType": "PERMANENT",
+          "totalCapacity": 600000,
+          "spawnLimitPerCycle": 120000,
+          "nodeCapacityRange": [
+            5000,
+            10000
+          ],
+          "sectorRatio": 0.5,
+          "baseYieldPerSec": 7,
+          "visual": {
+            "category": "mineral",
+            "modelId": "ore_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          }
+        },
+        "rss_005": {
+          "id": "rss_005",
+          "producesItemId": "item_005",
+          "nodeType": "PERMANENT",
+          "totalCapacity": 300000,
+          "spawnLimitPerCycle": 30000,
+          "nodeCapacityRange": [
+            6000,
+            10000
+          ],
+          "sectorRatio": 0.2,
+          "baseYieldPerSec": 2,
+          "visual": {
+            "category": "mineral",
+            "modelId": "ore_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          }
+        },
+        "rss_006": {
+          "id": "rss_006",
+          "producesItemId": "item_006",
+          "nodeType": "PERMANENT",
+          "totalCapacity": 200000,
+          "spawnLimitPerCycle": 40000,
+          "nodeCapacityRange": [
+            3000,
+            6000
+          ],
+          "sectorRatio": 0.3,
+          "baseYieldPerSec": 5.5,
+          "visual": {
+            "category": "mineral",
+            "modelId": "ore_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          }
+        },
+        "rss_007": {
+          "id": "rss_007",
+          "producesItemId": "item_007",
+          "nodeType": "DECAYING",
+          "totalCapacity": 800000,
+          "spawnLimitPerCycle": 40000,
+          "nodeCapacityRange": [
+            3000,
+            6000
+          ],
+          "sectorRatio": 0.4,
+          "baseYieldPerSec": 8,
+          "visual": {
+            "category": "gas",
+            "modelId": "gas_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          },
+          "lifetimeRange": [
+            432000000,
+            864000000
+          ]
+        },
+        "rss_008": {
+          "id": "rss_008",
+          "producesItemId": "item_008",
+          "nodeType": "DECAYING",
+          "totalCapacity": 600000,
+          "spawnLimitPerCycle": 35000,
+          "nodeCapacityRange": [
+            2000,
+            4000
+          ],
+          "sectorRatio": 0.2,
+          "baseYieldPerSec": 7.5,
+          "visual": {
+            "category": "gas",
+            "modelId": "gas_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          },
+          "lifetimeRange": [
+            432000000,
+            864000000
+          ]
+        },
+        "rss_009": {
+          "id": "rss_009",
+          "producesItemId": "item_009",
+          "nodeType": "DECAYING",
+          "totalCapacity": 300000,
+          "spawnLimitPerCycle": 30000,
+          "nodeCapacityRange": [
+            2000,
+            4000
+          ],
+          "sectorRatio": 0.1,
+          "baseYieldPerSec": 3,
+          "visual": {
+            "category": "gas",
+            "modelId": "gas_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          },
+          "lifetimeRange": [
+            259200000,
+            518400000
+          ]
+        },
+        "rss_010": {
+          "id": "rss_010",
+          "producesItemId": "item_010",
+          "nodeType": "DECAYING",
+          "totalCapacity": 100000,
+          "spawnLimitPerCycle": 20000,
+          "nodeCapacityRange": [
+            2000,
+            2000
+          ],
+          "sectorRatio": 0.1,
+          "baseYieldPerSec": 1.5,
+          "visual": {
+            "category": "gas",
+            "modelId": "gas_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          },
+          "lifetimeRange": [
+            259200000,
+            518400000
+          ]
+        }
+      }
+    },
+    "buildingDefs": {
+      "version": 1,
+      "buildings": {
+        "arc_station": {
+          "id": "arc_station",
+          "size": "EX",
+          "category": "headquarters",
+          "hp": 1000,
+          "adminCost": 20,
+          "placement": {
+            "type": "sector_anchor",
+            "radius": null
+          },
+          "production": {
+            "kind": "SELF",
+            "outputSink": "building_inventory",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": [
+              {
+                "type": "service",
+                "serviceId": "power"
+              },
+              {
+                "type": "service",
+                "serviceId": "worker"
+              }
+            ]
+          },
+          "docking": {
+            "capacity": null
+          },
+          "trade": {
+            "enabled": true,
+            "handling_speed": 1,
+            "cargo_capacity": 50000,
+            "min_reputation": 0
+          },
+          "initialInventory": {
+            "item_001": 5000,
+            "item_004": 3000,
+            "item_003": 2000,
+            "item_002": 1500,
+            "item_007": 4000,
+            "item_008": 2000
+          },
+          "visual": {
+            "modelId": "hq_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5.5
+          }
+        },
+        "plasma_power_plant": {
+          "id": "plasma_power_plant",
+          "size": "L",
+          "category": "power_plant",
+          "hp": 1000,
+          "adminCost": 15,
+          "placement": {
+            "type": "sector_anchor",
+            "radius": 320
+          },
+          "production": {
+            "kind": "SELF",
+            "outputSink": "public",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": [
+              {
+                "type": "service",
+                "serviceId": "power"
+              }
+            ]
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "power_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          }
+        },
+        "beta_particle_reactor": {
+          "id": "beta_particle_reactor",
+          "size": "L",
+          "category": "hyperdrive_energy",
+          "hp": 1000,
+          "adminCost": 15,
+          "placement": {
+            "type": "free_space",
+            "radius": null
+          },
+          "production": {
+            "kind": "SELF",
+            "outputSink": "public",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": [
+              {
+                "type": "service",
+                "serviceId": "beta_crystal"
+              }
+            ]
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "hq_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          }
+        },
+        "orbital_dorm": {
+          "id": "orbital_dorm",
+          "size": "L",
+          "category": "habitation",
+          "hp": 1000,
+          "adminCost": 10,
+          "placement": {
+            "type": "sector_anchor",
+            "radius": 640
+          },
+          "production": {
+            "kind": "SELF",
+            "outputSink": "public",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": [
+              {
+                "type": "service",
+                "serviceId": "worker"
+              }
+            ]
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "hq_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          }
+        },
+        "colony_dorm": {
+          "id": "colony_dorm",
+          "size": "L",
+          "category": "habitation",
+          "hp": 1000,
+          "adminCost": 4,
+          "placement": {
+            "type": "free_space",
+            "radius": null
+          },
+          "production": {
+            "kind": "SELF",
+            "outputSink": "public",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": [
+              {
+                "type": "service",
+                "serviceId": "worker"
+              }
+            ]
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "hq_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          }
+        },
+        "orbital_defence_turret": {
+          "id": "orbital_defence_turret",
+          "size": "S",
+          "category": "defense_turret",
+          "hp": 1000,
+          "adminCost": 2,
+          "placement": {
+            "type": "sector_anchor",
+            "radius": 640
+          },
+          "production": {
+            "kind": "NONE",
+            "outputSink": "public",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": []
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "hq_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 3.5
+          }
+        },
+        "sentinel_turret": {
+          "id": "sentinel_turret",
+          "size": "S",
+          "category": "defense_turret",
+          "hp": 1000,
+          "adminCost": 0,
+          "placement": {
+            "type": "free_space",
+            "radius": null
+          },
+          "production": {
+            "kind": "NONE",
+            "outputSink": "public",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": []
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "hq_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 3.5
+          }
+        },
+        "shipyard": {
+          "id": "shipyard",
+          "size": "L",
+          "category": "shipyard",
+          "hp": 1000,
+          "adminCost": 18,
+          "placement": {
+            "type": "free_space",
+            "radius": null
+          },
+          "production": {
+            "kind": "FACTORY",
+            "outputSink": "building_inventory",
+            "recipeId": "shipyard.construct_ship",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": []
+          },
+          "docking": {
+            "capacity": null
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "hq_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          }
+        },
+        "trade_port": {
+          "id": "trade_port",
+          "size": "L",
+          "category": "trade_port",
+          "hp": 1000,
+          "adminCost": 15,
+          "placement": {
+            "type": "free_space",
+            "radius": null
+          },
+          "production": {
+            "kind": "NONE",
+            "outputSink": "building_inventory",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": []
+          },
+          "docking": {
+            "capacity": null
+          },
+          "trade": {
+            "enabled": true,
+            "handling_speed": 1,
+            "cargo_capacity": 50000,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "hq_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          }
+        },
+        "outbase": {
+          "id": "outbase",
+          "size": "L",
+          "category": "outpost",
+          "hp": 1000,
+          "adminCost": 0,
+          "placement": {
+            "type": "free_space",
+            "radius": null
+          },
+          "production": {
+            "kind": "NONE",
+            "outputSink": "building_inventory",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": []
+          },
+          "docking": {
+            "capacity": 5
+          },
+          "trade": {
+            "enabled": true,
+            "handling_speed": 1,
+            "cargo_capacity": 50000,
+            "min_reputation": 0
+          },
+          "initialInventory": {
+            "item_001": 2000,
+            "item_004": 1500,
+            "item_003": 1000,
+            "item_007": 1500
+          },
+          "visual": {
+            "modelId": "hq_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 5
+          }
+        },
+        "hydro_synthesizer": {
+          "id": "hydro_synthesizer",
+          "size": "M",
+          "category": "resource_production",
+          "hp": 1000,
+          "adminCost": 2,
+          "placement": {
+            "type": "resource_node",
+            "radius": null,
+            "requiredResourceType": "hydrite_mineral"
+          },
+          "production": {
+            "kind": "RESOURCE_EXTRACTOR",
+            "outputSink": "building_inventory",
+            "depletes": true,
+            "lockExpiry": true,
+            "outputs": []
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "mine_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 4.5
+          }
+        },
+        "mine": {
+          "id": "mine",
+          "size": "M",
+          "category": "resource_production",
+          "hp": 1000,
+          "adminCost": 0,
+          "placement": {
+            "type": "resource_node",
+            "radius": null,
+            "requiredResourceType": "mineral"
+          },
+          "production": {
+            "kind": "RESOURCE_EXTRACTOR",
+            "outputSink": "building_inventory",
+            "depletes": true,
+            "lockExpiry": true,
+            "outputs": []
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "mine_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 4.5
+          }
+        },
+        "refinery": {
+          "id": "refinery",
+          "size": "M",
+          "category": "resource_production",
+          "hp": 1000,
+          "adminCost": 0,
+          "placement": {
+            "type": "resource_node",
+            "radius": null,
+            "requiredResourceType": "gas"
+          },
+          "production": {
+            "kind": "RESOURCE_EXTRACTOR",
+            "outputSink": "building_inventory",
+            "depletes": true,
+            "lockExpiry": true,
+            "outputs": []
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "mine_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 4.5
+          }
+        },
+        "bio_fab": {
+          "id": "bio_fab",
+          "size": "M",
+          "category": "resource_production",
+          "hp": 1000,
+          "adminCost": 0,
+          "placement": {
+            "type": "free_space",
+            "radius": null
+          },
+          "production": {
+            "kind": "SELF",
+            "outputSink": "public",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": [
+              {
+                "type": "service",
+                "serviceId": "bio"
+              }
+            ]
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "mine_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 4.5
+          }
+        },
+        "food_factory": {
+          "id": "food_factory",
+          "size": "M",
+          "category": "factory",
+          "hp": 1000,
+          "adminCost": 1,
+          "placement": {
+            "type": "free_space",
+            "radius": null
+          },
+          "production": {
+            "kind": "FACTORY",
+            "outputSink": "building_inventory",
+            "recipeId": "food_factory.process_food",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": []
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "hq_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 4.5
+          }
+        },
+        "silicon_factory": {
+          "id": "silicon_factory",
+          "size": "M",
+          "category": "factory",
+          "hp": 1000,
+          "adminCost": 1,
+          "placement": {
+            "type": "free_space",
+            "radius": null
+          },
+          "production": {
+            "kind": "FACTORY",
+            "outputSink": "building_inventory",
+            "recipeId": "silicon_factory.produce_semiconductor",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": []
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "hq_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 4.5
+          }
+        },
+        "weapon_factory": {
+          "id": "weapon_factory",
+          "size": "M",
+          "category": "factory",
+          "hp": 1000,
+          "adminCost": 2,
+          "placement": {
+            "type": "free_space",
+            "radius": null
+          },
+          "production": {
+            "kind": "FACTORY",
+            "outputSink": "building_inventory",
+            "recipeId": "weapon_factory.standard_weapon",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": []
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "hq_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 4.5
+          }
+        },
+        "advanced_weapon_factory": {
+          "id": "advanced_weapon_factory",
+          "size": "M",
+          "category": "factory",
+          "hp": 1000,
+          "adminCost": 3,
+          "placement": {
+            "type": "free_space",
+            "radius": null
+          },
+          "production": {
+            "kind": "FACTORY",
+            "outputSink": "building_inventory",
+            "recipeId": "advanced_weapon_factory.advanced_weapon",
+            "depletes": false,
+            "lockExpiry": false,
+            "outputs": []
+          },
+          "docking": {
+            "capacity": 0
+          },
+          "trade": {
+            "enabled": false,
+            "handling_speed": 0,
+            "cargo_capacity": 0,
+            "min_reputation": 0
+          },
+          "initialInventory": {},
+          "visual": {
+            "modelId": "hq_01",
+            "color": "#ffffff",
+            "emissive": "#17345e",
+            "emissiveIntensity": 0.08,
+            "scale": 4.5
+          }
+        }
+      }
+    },
+    "sectorDefs": {
+      "version": 1,
+      "sectors": {
+        "SEC-001": {
+          "id": "SEC-001",
+          "theme": "Volcanic_Industrial",
+          "themeMusicId": "bgm_sector_01",
+          "color": "#ff6b35",
+          "betaVoidCount": 1,
+          "stats": {
+            "base_gdp_coeff": 1.2,
+            "admin_capacity": 500,
+            "population_cap": 1000000,
+            "environmental_weight": {
+              "mining_efficiency": 1.5,
+              "agriculture_efficiency": 0.5
+            }
+          },
+          "resourceWeights": {
+            "rss_001": 3,
+            "rss_002": 6,
+            "rss_003": 9,
+            "rss_004": 12,
+            "rss_005": 2,
+            "rss_006": 5,
+            "rss_007": 8,
+            "rss_008": 11,
+            "rss_009": 1,
+            "rss_010": 4
+          },
+          "initialBuildings": [
+            {
+              "building_id": "arc_station",
+              "count": 1
+            },
+            {
+              "building_id": "plasma_power_plant",
+              "count": 2
+            },
+            {
+              "building_id": "orbital_dorm",
+              "count": 3
+            },
+            {
+              "building_id": "orbital_defence_turret",
+              "count": 5
+            }
+          ],
+          "initialResourceFacilities": [
+            {
+              "building_id": "mine",
+              "count": 4
+            },
+            {
+              "building_id": "refinery",
+              "count": 2
+            },
+            {
+              "building_id": "hydro_synthesizer",
+              "count": 1
+            }
+          ]
+        },
+        "SEC-002": {
+          "id": "SEC-002",
+          "theme": "Trade_Hub",
+          "themeMusicId": "bgm_sector_01",
+          "color": "#ffd450",
+          "betaVoidCount": 1,
+          "stats": {
+            "base_gdp_coeff": 1.5,
+            "admin_capacity": 800,
+            "population_cap": 2000000,
+            "environmental_weight": {
+              "mining_efficiency": 1,
+              "agriculture_efficiency": 1
+            }
+          },
+          "resourceWeights": {
+            "rss_001": 4,
+            "rss_002": 8,
+            "rss_003": 12,
+            "rss_004": 3,
+            "rss_005": 7,
+            "rss_006": 11,
+            "rss_007": 2,
+            "rss_008": 6,
+            "rss_009": 10,
+            "rss_010": 1
+          },
+          "initialBuildings": [
+            {
+              "building_id": "arc_station",
+              "count": 1
+            },
+            {
+              "building_id": "plasma_power_plant",
+              "count": 1
+            },
+            {
+              "building_id": "orbital_dorm",
+              "count": 2
+            },
+            {
+              "building_id": "orbital_defence_turret",
+              "count": 4
+            }
+          ],
+          "initialResourceFacilities": [
+            {
+              "building_id": "mine",
+              "count": 2
+            },
+            {
+              "building_id": "refinery",
+              "count": 2
+            },
+            {
+              "building_id": "hydro_synthesizer",
+              "count": 1
+            }
+          ]
+        },
+        "SEC-003": {
+          "id": "SEC-003",
+          "theme": "Desert_Wasteland",
+          "themeMusicId": "bgm_sector_01",
+          "color": "#ff4466",
+          "betaVoidCount": 1,
+          "stats": {
+            "base_gdp_coeff": 0.8,
+            "admin_capacity": 300,
+            "population_cap": 500000,
+            "environmental_weight": {
+              "mining_efficiency": 1.2,
+              "agriculture_efficiency": 0.3
+            }
+          },
+          "resourceWeights": {
+            "rss_001": 5,
+            "rss_002": 10,
+            "rss_003": 2,
+            "rss_004": 7,
+            "rss_005": 12,
+            "rss_006": 4,
+            "rss_007": 9,
+            "rss_008": 1,
+            "rss_009": 6,
+            "rss_010": 11
+          },
+          "initialBuildings": [],
+          "initialResourceFacilities": []
+        },
+        "SEC-004": {
+          "id": "SEC-004",
+          "theme": "Gas_Giant",
+          "themeMusicId": "bgm_sector_01",
+          "color": "#63d2ff",
+          "betaVoidCount": 1,
+          "stats": {
+            "base_gdp_coeff": 1.1,
+            "admin_capacity": 400,
+            "population_cap": 800000,
+            "environmental_weight": {
+              "mining_efficiency": 0.5,
+              "agriculture_efficiency": 0.2
+            }
+          },
+          "resourceWeights": {
+            "rss_001": 6,
+            "rss_002": 12,
+            "rss_003": 5,
+            "rss_004": 11,
+            "rss_005": 4,
+            "rss_006": 10,
+            "rss_007": 3,
+            "rss_008": 9,
+            "rss_009": 2,
+            "rss_010": 8
+          },
+          "initialBuildings": [],
+          "initialResourceFacilities": []
+        },
+        "SEC-005": {
+          "id": "SEC-005",
+          "theme": "Dark_Matter_Zone",
+          "themeMusicId": "bgm_sector_01",
+          "color": "#aa88ff",
+          "betaVoidCount": 1,
+          "stats": {
+            "base_gdp_coeff": 1,
+            "admin_capacity": 600,
+            "population_cap": 1200000,
+            "environmental_weight": {
+              "mining_efficiency": 0.8,
+              "agriculture_efficiency": 0.4
+            }
+          },
+          "resourceWeights": {
+            "rss_001": 7,
+            "rss_002": 1,
+            "rss_003": 8,
+            "rss_004": 2,
+            "rss_005": 9,
+            "rss_006": 3,
+            "rss_007": 10,
+            "rss_008": 4,
+            "rss_009": 11,
+            "rss_010": 5
+          },
+          "initialBuildings": [],
+          "initialResourceFacilities": []
+        },
+        "SEC-006": {
+          "id": "SEC-006",
+          "theme": "Military_Fortress",
+          "themeMusicId": "bgm_sector_01",
+          "color": "#ff9944",
+          "betaVoidCount": 1,
+          "stats": {
+            "base_gdp_coeff": 1.3,
+            "admin_capacity": 700,
+            "population_cap": 1500000,
+            "environmental_weight": {
+              "mining_efficiency": 1.1,
+              "agriculture_efficiency": 0.7
+            }
+          },
+          "resourceWeights": {
+            "rss_001": 8,
+            "rss_002": 3,
+            "rss_003": 11,
+            "rss_004": 6,
+            "rss_005": 1,
+            "rss_006": 9,
+            "rss_007": 4,
+            "rss_008": 12,
+            "rss_009": 7,
+            "rss_010": 2
+          },
+          "initialBuildings": [],
+          "initialResourceFacilities": []
+        },
+        "SEC-007": {
+          "id": "SEC-007",
+          "theme": "Solar_Forge",
+          "themeMusicId": "bgm_sector_01",
+          "color": "#ffee44",
+          "betaVoidCount": 1,
+          "stats": {
+            "base_gdp_coeff": 1.4,
+            "admin_capacity": 550,
+            "population_cap": 1100000,
+            "environmental_weight": {
+              "mining_efficiency": 1.3,
+              "agriculture_efficiency": 0.6
+            }
+          },
+          "resourceWeights": {
+            "rss_001": 9,
+            "rss_002": 5,
+            "rss_003": 1,
+            "rss_004": 10,
+            "rss_005": 6,
+            "rss_006": 2,
+            "rss_007": 11,
+            "rss_008": 7,
+            "rss_009": 3,
+            "rss_010": 12
+          },
+          "initialBuildings": [],
+          "initialResourceFacilities": []
+        },
+        "SEC-008": {
+          "id": "SEC-008",
+          "theme": "Ice_World",
+          "themeMusicId": "bgm_sector_01",
+          "color": "#88ddff",
+          "betaVoidCount": 1,
+          "stats": {
+            "base_gdp_coeff": 0.9,
+            "admin_capacity": 350,
+            "population_cap": 700000,
+            "environmental_weight": {
+              "mining_efficiency": 1,
+              "agriculture_efficiency": 0.5
+            }
+          },
+          "resourceWeights": {
+            "rss_001": 10,
+            "rss_002": 7,
+            "rss_003": 4,
+            "rss_004": 1,
+            "rss_005": 11,
+            "rss_006": 8,
+            "rss_007": 5,
+            "rss_008": 2,
+            "rss_009": 12,
+            "rss_010": 9
+          },
+          "initialBuildings": [],
+          "initialResourceFacilities": []
+        },
+        "SEC-009": {
+          "id": "SEC-009",
+          "theme": "Agricultural_Paradise",
+          "themeMusicId": "bgm_sector_01",
+          "color": "#44dd88",
+          "betaVoidCount": 1,
+          "stats": {
+            "base_gdp_coeff": 1.1,
+            "admin_capacity": 450,
+            "population_cap": 900000,
+            "environmental_weight": {
+              "mining_efficiency": 0.6,
+              "agriculture_efficiency": 1.7
+            }
+          },
+          "resourceWeights": {
+            "rss_001": 11,
+            "rss_002": 9,
+            "rss_003": 7,
+            "rss_004": 5,
+            "rss_005": 3,
+            "rss_006": 1,
+            "rss_007": 12,
+            "rss_008": 10,
+            "rss_009": 8,
+            "rss_010": 6
+          },
+          "initialBuildings": [],
+          "initialResourceFacilities": []
+        },
+        "SEC-010": {
+          "id": "SEC-010",
+          "theme": "Frontier_Outpost",
+          "themeMusicId": "bgm_sector_01",
+          "color": "#cc88cc",
+          "betaVoidCount": 1,
+          "stats": {
+            "base_gdp_coeff": 0.7,
+            "admin_capacity": 250,
+            "population_cap": 400000,
+            "environmental_weight": {
+              "mining_efficiency": 0.9,
+              "agriculture_efficiency": 0.8
+            }
+          },
+          "resourceWeights": {
+            "rss_001": 12,
+            "rss_002": 11,
+            "rss_003": 10,
+            "rss_004": 9,
+            "rss_005": 8,
+            "rss_006": 7,
+            "rss_007": 6,
+            "rss_008": 5,
+            "rss_009": 4,
+            "rss_010": 3
+          },
+          "initialBuildings": [],
+          "initialResourceFacilities": []
+        }
+      }
+    },
+    "shipDefs": {
+      "version": 1,
+      "defaultShipId": "ship_01",
+      "ships": {
+        "ship_01": {
+          "id": "ship_01",
+          "labelKey": "ui.settings.gameplay.ship_01",
+          "fallbackLabel": "ship_01",
+          "specs": {
+            "maxSpeed": 100,
+            "minSpeed": -20,
+            "accelerationRate": 24,
+            "decelerationRate": 32,
+            "throttleAdjustRate": 36,
+            "arrivalRadius": 10,
+            "deactivationCoastDuration": 600,
+            "pitchRate": 1.45,
+            "yawRate": 1.55,
+            "rollRate": 1.8,
+            "strafeRate": 45,
+            "verticalRate": 45
+          },
+          "hyperdriveSpecs": {
+            "cooldownDuration": 5,
+            "warpEntryDuration": 0.6,
+            "warpExitDuration": 0.6,
+            "warpMinFlightDuration": 5,
+            "warpFlightSpeed": 4000
+          },
+          "visual": {
+            "modelId": "ship_01",
+            "reflectionIntensity": 0.32,
+            "highlightColor": "#ff97c2",
+            "effectBindings": [
+              {
+                "id": "vfx_light_engine_001",
+                "kind": "engine",
+                "label": "EmissivePlate_ship_01.001",
+                "effectId": "engine_light_default",
+                "target": {
+                  "objectMatches": [
+                    "EmissivePlate_ship_01.001"
+                  ],
+                  "materialMatches": []
+                },
+                "engineOutput": true,
+                "defaultLight": false,
+                "overrides": {
+                  "color": "#9b9bff"
+                }
+              },
+              {
+                "id": "vfx_light_head_001",
+                "kind": "head_light",
+                "label": "EmissivePlate_ship_01.002",
+                "effectId": "head_light_default",
+                "target": {
+                  "objectMatches": [
+                    "EmissivePlate_ship_01.002"
+                  ],
+                  "materialMatches": []
+                },
+                "engineOutput": false,
+                "defaultLight": true,
+                "overrides": {}
+              },
+              {
+                "id": "vfx_light_aux_003",
+                "kind": "emissive_light",
+                "label": "EmissivePlate_ship_01.003",
+                "effectId": "aux_light_default",
+                "target": {
+                  "objectMatches": [
+                    "EmissivePlate_ship_01.003"
+                  ],
+                  "materialMatches": []
+                },
+                "engineOutput": false,
+                "defaultLight": false,
+                "overrides": {
+                  "color": "#9b9bff"
+                }
+              },
+              {
+                "id": "vfx_light_aux_004",
+                "kind": "emissive_light",
+                "label": "EmissivePlate_ship_01.004",
+                "effectId": "aux_light_default",
+                "target": {
+                  "objectMatches": [
+                    "EmissivePlate_ship_01.004"
+                  ],
+                  "materialMatches": []
+                },
+                "engineOutput": false,
+                "defaultLight": false,
+                "overrides": {
+                  "color": "#9b9bff"
+                }
+              },
+              {
+                "id": "vfx_light_aux_005",
+                "kind": "emissive_light",
+                "label": "EmissivePlate_ship_01.005",
+                "effectId": "aux_light_default",
+                "target": {
+                  "objectMatches": [
+                    "EmissivePlate_ship_01.005"
+                  ],
+                  "materialMatches": []
+                },
+                "engineOutput": false,
+                "defaultLight": false,
+                "overrides": {
+                  "color": "#9b9bff"
+                }
+              },
+              {
+                "id": "vfx_light_aux_006",
+                "kind": "emissive_light",
+                "label": "EmissivePlate_ship_01.006",
+                "effectId": "aux_light_default",
+                "target": {
+                  "objectMatches": [
+                    "EmissivePlate_ship_01.006"
+                  ],
+                  "materialMatches": []
+                },
+                "engineOutput": false,
+                "defaultLight": false,
+                "overrides": {
+                  "color": "#9b9bff"
+                }
+              }
+            ],
+            "materials": {
+              "reflectionIntensity": 0.32,
+              "emissiveSurface": {
+                "materialName": "EmissiveMTL_light",
+                "fallbackColor": "#ffffff"
+              },
+              "highlights": {
+                "highlight_01": {
+                  "id": "highlight_01",
+                  "label": "Highlight_01",
+                  "materialName": "Highlight_01",
+                  "defaultColor": "#ff97c2"
+                }
+              }
+            }
+          }
+        },
+        "ship_02": {
+          "id": "ship_02",
+          "labelKey": "ui.settings.gameplay.ship_02",
+          "fallbackLabel": "ship_02",
+          "specs": {
+            "maxSpeed": 100,
+            "minSpeed": -20,
+            "accelerationRate": 24,
+            "decelerationRate": 32,
+            "throttleAdjustRate": 36,
+            "arrivalRadius": 10,
+            "deactivationCoastDuration": 600,
+            "pitchRate": 1.45,
+            "yawRate": 1.55,
+            "rollRate": 1.8,
+            "strafeRate": 45,
+            "verticalRate": 45
+          },
+          "hyperdriveSpecs": {
+            "cooldownDuration": 5,
+            "warpEntryDuration": 0.6,
+            "warpExitDuration": 0.6,
+            "warpMinFlightDuration": 5,
+            "warpFlightSpeed": 4000
+          },
+          "visual": {
+            "modelId": "ship_02",
+            "reflectionIntensity": 0.32,
+            "highlightColor": "#286d4d",
+            "effectBindings": [
+              {
+                "id": "vfx_light_02_engine_001",
+                "kind": "engine",
+                "label": "EmissivePlate_ship_02.001",
+                "effectId": "engine_light_default",
+                "target": {
+                  "objectMatches": [
+                    "EmissivePlate_ship_02.001"
+                  ],
+                  "materialMatches": []
+                },
+                "engineOutput": true,
+                "defaultLight": false,
+                "overrides": {
+                  "color": "#9b9bff"
+                }
+              },
+              {
+                "id": "vfx_light_02_aux_002",
+                "kind": "emissive_light",
+                "label": "EmissivePlate_ship_02.002",
+                "effectId": "aux_light_default",
+                "target": {
+                  "objectMatches": [
+                    "EmissivePlate_ship_02.002"
+                  ],
+                  "materialMatches": []
+                },
+                "engineOutput": false,
+                "defaultLight": false,
+                "overrides": {
+                  "color": "#9b9bff"
+                }
+              },
+              {
+                "id": "vfx_light_02_aux_003",
+                "kind": "emissive_light",
+                "label": "EmissivePlate_ship_02.003",
+                "effectId": "aux_light_default",
+                "target": {
+                  "objectMatches": [
+                    "EmissivePlate_ship_02.003"
+                  ],
+                  "materialMatches": []
+                },
+                "engineOutput": false,
+                "defaultLight": false,
+                "overrides": {
+                  "color": "#9b9bff"
+                }
+              },
+              {
+                "id": "vfx_light_02_aux_004",
+                "kind": "emissive_light",
+                "label": "EmissivePlate_ship_02.004",
+                "effectId": "aux_light_default",
+                "target": {
+                  "objectMatches": [
+                    "EmissivePlate_ship_02.004"
+                  ],
+                  "materialMatches": []
+                },
+                "engineOutput": false,
+                "defaultLight": false,
+                "overrides": {
+                  "color": "#9b9bff"
+                }
+              },
+              {
+                "id": "vfx_light_02_aux_005",
+                "kind": "emissive_light",
+                "label": "EmissivePlate_ship_02.005",
+                "effectId": "aux_light_default",
+                "target": {
+                  "objectMatches": [
+                    "EmissivePlate_ship_02.005"
+                  ],
+                  "materialMatches": []
+                },
+                "engineOutput": false,
+                "defaultLight": false,
+                "overrides": {
+                  "color": "#9b9bff"
+                }
+              },
+              {
+                "id": "vfx_light_02_aux_006",
+                "kind": "emissive_light",
+                "label": "EmissivePlate_ship_02.006",
+                "effectId": "aux_light_default",
+                "target": {
+                  "objectMatches": [
+                    "EmissivePlate_ship_02.006"
+                  ],
+                  "materialMatches": []
+                },
+                "engineOutput": false,
+                "defaultLight": false,
+                "overrides": {
+                  "color": "#9b9bff"
+                }
+              },
+              {
+                "id": "vfx_light_02_aux_007",
+                "kind": "emissive_light",
+                "label": "EmissivePlate_ship_02.007",
+                "effectId": "aux_light_default",
+                "target": {
+                  "objectMatches": [
+                    "EmissivePlate_ship_02.007"
+                  ],
+                  "materialMatches": []
+                },
+                "engineOutput": false,
+                "defaultLight": false,
+                "overrides": {
+                  "color": "#9b9bff"
+                }
+              }
+            ],
+            "materials": {
+              "reflectionIntensity": 0.32,
+              "emissiveSurface": {
+                "materialName": "EmissiveMTL_light",
+                "fallbackColor": "#ffffff"
+              },
+              "highlights": {
+                "highlight_01": {
+                  "id": "highlight_01",
+                  "label": "Highlight_01",
+                  "materialName": "Highlight_01",
+                  "defaultColor": "#286d4d"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "vfxDefs": {
+      "version": 1,
+      "effects": {
+        "engine_light_default": {
+          "id": "engine_light_default",
+          "kind": "emissive_light",
+          "label": "Engine Light",
+          "settings": {
+            "color": "#9b9bff",
+            "emissiveIntensity": 12,
+            "lightRangeScale": 2,
+            "minLightRange": 0.18,
+            "maxLightRange": 0.95,
+            "glowSpriteSpreadScale": 1.5,
+            "glowSpriteOpacity": 0.58,
+            "pointLightEnabled": true,
+            "pointIntensity": 0.72,
+            "pointRangeScale": 0.86
+          }
+        },
+        "head_light_default": {
+          "id": "head_light_default",
+          "kind": "emissive_light",
+          "label": "Head Light",
+          "settings": {
+            "color": "#ff0000",
+            "emissiveIntensity": 12,
+            "lightRangeScale": 2,
+            "minLightRange": 0.52,
+            "maxLightRange": 1.45,
+            "glowSpriteSpreadScale": 1.2,
+            "glowSpriteOpacity": 0.38,
+            "pointLightEnabled": false,
+            "pointIntensity": 0.52,
+            "pointRangeScale": 0.82
+          }
+        },
+        "aux_light_default": {
+          "id": "aux_light_default",
+          "kind": "emissive_light",
+          "label": "Aux Light",
+          "settings": {
+            "color": "#9b9bff",
+            "emissiveIntensity": 3,
+            "lightRangeScale": 2,
+            "minLightRange": 0.52,
+            "maxLightRange": 1.45,
+            "glowSpriteSpreadScale": 0.8,
+            "glowSpriteOpacity": 0.28,
+            "pointLightEnabled": false,
+            "pointIntensity": 0.2,
+            "pointRangeScale": 0.2
+          }
+        }
+      }
+    },
+    "i18n": {
+      "version": 1,
+      "system": {
+        "ko": {
+          "ui": {
+            "settings": {
+              "title": "설정"
+            }
+          },
+          "betaVoid": {
+            "name": "베타 보이드"
+          },
+          "buildingSize": {
+            "EX": "전용",
+            "L": "대형",
+            "M": "중형",
+            "S": "소형"
+          },
+          "buildingCategory": {}
+        },
+        "en": {
+          "ui": {
+            "settings": {
+              "title": "Settings"
+            }
+          },
+          "betaVoid": {
+            "name": "Beta Void"
+          },
+          "buildingSize": {
+            "EX": "Exclusive",
+            "L": "Large",
+            "M": "Medium",
+            "S": "Small"
+          },
+          "buildingCategory": {}
+        }
+      },
+      "content": {
+        "ko": {
+          "item": {
+            "item_001": {
+              "name": "하이드라이트",
+              "description": "광물 자원"
+            },
+            "item_002": {
+              "name": "티타늄",
+              "description": "광물 자원"
+            },
+            "item_003": {
+              "name": "구리",
+              "description": "광물 자원"
+            },
+            "item_004": {
+              "name": "철",
+              "description": "광물 자원"
+            },
+            "item_005": {
+              "name": "금",
+              "description": "광물 자원"
+            },
+            "item_006": {
+              "name": "실리콘",
+              "description": "광물 자원"
+            },
+            "item_007": {
+              "name": "수소",
+              "description": "가스 자원"
+            },
+            "item_008": {
+              "name": "헬륨",
+              "description": "가스 자원"
+            },
+            "item_009": {
+              "name": "제논",
+              "description": "가스 자원"
+            },
+            "item_010": {
+              "name": "탈리스",
+              "description": "가스 자원"
+            }
+          },
+          "resource": {
+            "rss_001": {
+              "name": "하이드라이트 매장지",
+              "description": "하이드라이트를 생산하는 자원 노드"
+            },
+            "rss_002": {
+              "name": "티타늄 매장지",
+              "description": "티타늄를 생산하는 자원 노드"
+            },
+            "rss_003": {
+              "name": "구리 매장지",
+              "description": "구리를 생산하는 자원 노드"
+            },
+            "rss_004": {
+              "name": "철 매장지",
+              "description": "철를 생산하는 자원 노드"
+            },
+            "rss_005": {
+              "name": "금 매장지",
+              "description": "금를 생산하는 자원 노드"
+            },
+            "rss_006": {
+              "name": "실리콘 매장지",
+              "description": "실리콘를 생산하는 자원 노드"
+            },
+            "rss_007": {
+              "name": "수소 가스전",
+              "description": "수소를 생산하는 자원 노드"
+            },
+            "rss_008": {
+              "name": "헬륨 가스전",
+              "description": "헬륨를 생산하는 자원 노드"
+            },
+            "rss_009": {
+              "name": "제논 가스전",
+              "description": "제논를 생산하는 자원 노드"
+            },
+            "rss_010": {
+              "name": "탈리스 가스전",
+              "description": "탈리스를 생산하는 자원 노드"
+            }
+          },
+          "building": {
+            "arc_station": {
+              "name": "아크 스테이션",
+              "description": "..."
+            },
+            "plasma_power_plant": {
+              "name": "플라즈마 파워 플랜트",
+              "description": "..."
+            },
+            "beta_particle_reactor": {
+              "name": "베타 입자 리액터",
+              "description": "..."
+            },
+            "orbital_dorm": {
+              "name": "궤도 거주지",
+              "description": "..."
+            },
+            "colony_dorm": {
+              "name": "외곽 거주지",
+              "description": "..."
+            },
+            "orbital_defence_turret": {
+              "name": "궤도 방어 터렛",
+              "description": "..."
+            },
+            "sentinel_turret": {
+              "name": "감시 터렛",
+              "description": "..."
+            },
+            "shipyard": {
+              "name": "조선소",
+              "description": "..."
+            },
+            "trade_port": {
+              "name": "무역항",
+              "description": "..."
+            },
+            "outbase": {
+              "name": "아웃베이스",
+              "description": "..."
+            },
+            "hydro_synthesizer": {
+              "name": "수자원 합성소",
+              "description": "..."
+            },
+            "mine": {
+              "name": "광산",
+              "description": "..."
+            },
+            "refinery": {
+              "name": "정제소",
+              "description": "..."
+            },
+            "bio_fab": {
+              "name": "바이오 팹",
+              "description": "..."
+            },
+            "food_factory": {
+              "name": "식품 공장",
+              "description": "..."
+            },
+            "silicon_factory": {
+              "name": "반도체 공장",
+              "description": "..."
+            },
+            "weapon_factory": {
+              "name": "무기 공장",
+              "description": "..."
+            },
+            "advanced_weapon_factory": {
+              "name": "특수 무기 공장",
+              "description": "..."
+            }
+          },
+          "sector": {
+            "SEC-001": {
+              "name": "EPSILON PRIME",
+              "theme": "Volcanic Industrial"
+            },
+            "SEC-002": {
+              "name": "NOVA STATION",
+              "theme": "Trade Hub"
+            },
+            "SEC-003": {
+              "name": "CRIMSON EXPANSE",
+              "theme": "Desert Wasteland"
+            },
+            "SEC-004": {
+              "name": "AZURE NEBULA",
+              "theme": "Gas Giant"
+            },
+            "SEC-005": {
+              "name": "OBSIDIAN REACH",
+              "theme": "Dark Matter Zone"
+            },
+            "SEC-006": {
+              "name": "TITAN'S GATE",
+              "theme": "Military Fortress"
+            },
+            "SEC-007": {
+              "name": "HELIOS CORE",
+              "theme": "Solar Forge"
+            },
+            "SEC-008": {
+              "name": "FROST FRONTIER",
+              "theme": "Ice World"
+            },
+            "SEC-009": {
+              "name": "EMERALD HAVEN",
+              "theme": "Agricultural Paradise"
+            },
+            "SEC-010": {
+              "name": "VOID EDGE",
+              "theme": "Frontier Outpost"
+            }
+          },
+          "ship": {
+            "ship_01": {
+              "name": "함선 I",
+              "description": ""
+            },
+            "ship_02": {
+              "name": "함선 II",
+              "description": ""
+            }
+          }
+        },
+        "en": {
+          "item": {
+            "item_001": {
+              "name": "Hydrite",
+              "description": "Mineral resource"
+            },
+            "item_002": {
+              "name": "Titanium",
+              "description": "Mineral resource"
+            },
+            "item_003": {
+              "name": "Copper",
+              "description": "Mineral resource"
+            },
+            "item_004": {
+              "name": "Iron",
+              "description": "Mineral resource"
+            },
+            "item_005": {
+              "name": "Gold",
+              "description": "Mineral resource"
+            },
+            "item_006": {
+              "name": "Silicon",
+              "description": "Mineral resource"
+            },
+            "item_007": {
+              "name": "Hydrogen",
+              "description": "Gas resource"
+            },
+            "item_008": {
+              "name": "Helium",
+              "description": "Gas resource"
+            },
+            "item_009": {
+              "name": "Xenon",
+              "description": "Gas resource"
+            },
+            "item_010": {
+              "name": "Talis",
+              "description": "Gas resource"
+            }
+          },
+          "resource": {
+            "rss_001": {
+              "name": "Hydrite Deposit",
+              "description": "A resource node that yields Hydrite."
+            },
+            "rss_002": {
+              "name": "Titanium Deposit",
+              "description": "A resource node that yields Titanium."
+            },
+            "rss_003": {
+              "name": "Copper Deposit",
+              "description": "A resource node that yields Copper."
+            },
+            "rss_004": {
+              "name": "Iron Deposit",
+              "description": "A resource node that yields Iron."
+            },
+            "rss_005": {
+              "name": "Gold Deposit",
+              "description": "A resource node that yields Gold."
+            },
+            "rss_006": {
+              "name": "Silicon Deposit",
+              "description": "A resource node that yields Silicon."
+            },
+            "rss_007": {
+              "name": "Hydrogen Field",
+              "description": "A resource node that yields Hydrogen."
+            },
+            "rss_008": {
+              "name": "Helium Field",
+              "description": "A resource node that yields Helium."
+            },
+            "rss_009": {
+              "name": "Xenon Field",
+              "description": "A resource node that yields Xenon."
+            },
+            "rss_010": {
+              "name": "Talis Field",
+              "description": "A resource node that yields Talis."
+            }
+          },
+          "building": {
+            "arc_station": {
+              "name": "Arc Station",
+              "description": "..."
+            },
+            "plasma_power_plant": {
+              "name": "Plasma Power Plant",
+              "description": "..."
+            },
+            "beta_particle_reactor": {
+              "name": "Beta Particle Reactor",
+              "description": "..."
+            },
+            "orbital_dorm": {
+              "name": "Orbital Dorm",
+              "description": "..."
+            },
+            "colony_dorm": {
+              "name": "Colony Dorm",
+              "description": "..."
+            },
+            "orbital_defence_turret": {
+              "name": "Orbital Defence Turret",
+              "description": "..."
+            },
+            "sentinel_turret": {
+              "name": "Sentinel Turret",
+              "description": "..."
+            },
+            "shipyard": {
+              "name": "Shipyard",
+              "description": "..."
+            },
+            "trade_port": {
+              "name": "Trade Port",
+              "description": "..."
+            },
+            "outbase": {
+              "name": "Outbase",
+              "description": "..."
+            },
+            "hydro_synthesizer": {
+              "name": "Hydro-Synthesizer",
+              "description": "..."
+            },
+            "mine": {
+              "name": "Mine",
+              "description": "..."
+            },
+            "refinery": {
+              "name": "Refinery",
+              "description": "..."
+            },
+            "bio_fab": {
+              "name": "Bio Fab",
+              "description": "..."
+            },
+            "food_factory": {
+              "name": "Food Factory",
+              "description": "..."
+            },
+            "silicon_factory": {
+              "name": "Silicon Factory",
+              "description": "..."
+            },
+            "weapon_factory": {
+              "name": "Weapon Factory",
+              "description": "..."
+            },
+            "advanced_weapon_factory": {
+              "name": "Advanced Weapon Factory",
+              "description": "..."
+            }
+          },
+          "sector": {
+            "SEC-001": {
+              "name": "EPSILON PRIME",
+              "theme": "Volcanic Industrial"
+            },
+            "SEC-002": {
+              "name": "NOVA STATION",
+              "theme": "Trade Hub"
+            },
+            "SEC-003": {
+              "name": "CRIMSON EXPANSE",
+              "theme": "Desert Wasteland"
+            },
+            "SEC-004": {
+              "name": "AZURE NEBULA",
+              "theme": "Gas Giant"
+            },
+            "SEC-005": {
+              "name": "OBSIDIAN REACH",
+              "theme": "Dark Matter Zone"
+            },
+            "SEC-006": {
+              "name": "TITAN'S GATE",
+              "theme": "Military Fortress"
+            },
+            "SEC-007": {
+              "name": "HELIOS CORE",
+              "theme": "Solar Forge"
+            },
+            "SEC-008": {
+              "name": "FROST FRONTIER",
+              "theme": "Ice World"
+            },
+            "SEC-009": {
+              "name": "EMERALD HAVEN",
+              "theme": "Agricultural Paradise"
+            },
+            "SEC-010": {
+              "name": "VOID EDGE",
+              "theme": "Frontier Outpost"
+            }
+          },
+          "ship": {
+            "ship_01": {
+              "name": "Ship I",
+              "description": ""
+            },
+            "ship_02": {
+              "name": "Ship II",
+              "description": ""
+            }
+          }
+        }
+      }
+    },
+    "chunkMap": {
+      "version": 2,
+      "sourceGmap": "galaxyMapData.gmap",
+      "clusters": {
+        "cl_2118_4_43_42_17_60_59_du1c22": {
+          "id": "cl_2118_4_43_42_17_60_59_du1c22",
+          "name": "Cluster 1",
+          "enabled": false,
+          "chunkCount": 2118,
+          "bounds": {
+            "min": [
+              4,
+              43,
+              42
+            ],
+            "max": [
+              17,
+              60,
+              59
+            ]
+          }
+        },
+        "cl_2596_5_6_28_16_18_58_17qwpq3": {
+          "id": "cl_2596_5_6_28_16_18_58_17qwpq3",
+          "name": "Cluster 2",
+          "enabled": false,
+          "chunkCount": 2596,
+          "bounds": {
+            "min": [
+              5,
+              6,
+              28
+            ],
+            "max": [
+              16,
+              18,
+              58
+            ]
+          }
+        },
+        "cl_3755_6_25_4_17_55_22_1p2rzm7": {
+          "id": "cl_3755_6_25_4_17_55_22_1p2rzm7",
+          "name": "Cluster 3",
+          "enabled": false,
+          "chunkCount": 3755,
+          "bounds": {
+            "min": [
+              6,
+              25,
+              4
+            ],
+            "max": [
+              17,
+              55,
+              22
+            ]
+          }
+        },
+        "cl_4676_7_8_98_35_34_113_ps38va": {
+          "id": "cl_4676_7_8_98_35_34_113_ps38va",
+          "name": "Cluster 4",
+          "enabled": true,
+          "chunkCount": 4676,
+          "bounds": {
+            "min": [
+              7,
+              8,
+              98
+            ],
+            "max": [
+              35,
+              34,
+              113
+            ]
+          }
+        },
+        "cl_25280_8_82_4_59_114_42_10otz97": {
+          "id": "cl_25280_8_82_4_59_114_42_10otz97",
+          "name": "Cluster 5",
+          "enabled": false,
+          "chunkCount": 25280,
+          "bounds": {
+            "min": [
+              8,
+              82,
+              4
+            ],
+            "max": [
+              59,
+              114,
+              42
+            ]
+          }
+        },
+        "cl_7257_8_85_43_39_113_79_i3gn9s": {
+          "id": "cl_7257_8_85_43_39_113_79_i3gn9s",
+          "name": "Cluster 6",
+          "enabled": true,
+          "chunkCount": 7257,
+          "bounds": {
+            "min": [
+              8,
+              85,
+              43
+            ],
+            "max": [
+              39,
+              113,
+              79
+            ]
+          }
+        },
+        "cl_465_9_41_86_17_56_92_diwski": {
+          "id": "cl_465_9_41_86_17_56_92_diwski",
+          "name": "Cluster 7",
+          "enabled": false,
+          "chunkCount": 465,
+          "bounds": {
+            "min": [
+              9,
+              41,
+              86
+            ],
+            "max": [
+              17,
+              56,
+              92
+            ]
+          }
+        },
+        "cl_14120_21_60_86_56_114_115_1c7glgj": {
+          "id": "cl_14120_21_60_86_56_114_115_1c7glgj",
+          "name": "Cluster 8",
+          "enabled": false,
+          "chunkCount": 14120,
+          "bounds": {
+            "min": [
+              21,
+              60,
+              86
+            ],
+            "max": [
+              56,
+              114,
+              115
+            ]
+          }
+        },
+        "cl_5793_39_6_64_78_25_97_1995320": {
+          "id": "cl_5793_39_6_64_78_25_97_1995320",
+          "name": "Cluster 9",
+          "enabled": false,
+          "chunkCount": 5793,
+          "bounds": {
+            "min": [
+              39,
+              6,
+              64
+            ],
+            "max": [
+              78,
+              25,
+              97
+            ]
+          }
+        },
+        "cl_7037_40_57_45_58_80_76_w4vwse": {
+          "id": "cl_7037_40_57_45_58_80_76_w4vwse",
+          "name": "Cluster 10",
+          "enabled": false,
+          "chunkCount": 7037,
+          "bounds": {
+            "min": [
+              40,
+              57,
+              45
+            ],
+            "max": [
+              58,
+              80,
+              76
+            ]
+          }
+        },
+        "cl_1647_42_8_21_74_14_34_k37v33": {
+          "id": "cl_1647_42_8_21_74_14_34_k37v33",
+          "name": "Cluster 11",
+          "enabled": false,
+          "chunkCount": 1647,
+          "bounds": {
+            "min": [
+              42,
+              8,
+              21
+            ],
+            "max": [
+              74,
+              14,
+              34
+            ]
+          }
+        },
+        "cl_3599_42_21_6_75_36_18_e34qlk": {
+          "id": "cl_3599_42_21_6_75_36_18_e34qlk",
+          "name": "Cluster 12",
+          "enabled": false,
+          "chunkCount": 3599,
+          "bounds": {
+            "min": [
+              42,
+              21,
+              6
+            ],
+            "max": [
+              75,
+              36,
+              18
+            ]
+          }
+        },
+        "cl_4710_63_24_79_79_37_114_1qdtt51": {
+          "id": "cl_4710_63_24_79_79_37_114_1qdtt51",
+          "name": "Cluster 13",
+          "enabled": false,
+          "chunkCount": 4710,
+          "bounds": {
+            "min": [
+              63,
+              24,
+              79
+            ],
+            "max": [
+              79,
+              37,
+              114
+            ]
+          }
+        },
+        "cl_3453_64_63_82_77_86_104_1eznacq": {
+          "id": "cl_3453_64_63_82_77_86_104_1eznacq",
+          "name": "Cluster 14",
+          "enabled": false,
+          "chunkCount": 3453,
+          "bounds": {
+            "min": [
+              64,
+              63,
+              82
+            ],
+            "max": [
+              77,
+              86,
+              104
+            ]
+          }
+        },
+        "cl_23307_65_30_25_115_82_76_1ttqdr5": {
+          "id": "cl_23307_65_30_25_115_82_76_1ttqdr5",
+          "name": "Cluster 15",
+          "enabled": false,
+          "chunkCount": 23307,
+          "bounds": {
+            "min": [
+              65,
+              30,
+              25
+            ],
+            "max": [
+              115,
+              82,
+              76
+            ]
+          }
+        },
+        "cl_254_65_107_67_76_111_74_17dd37z": {
+          "id": "cl_254_65_107_67_76_111_74_17dd37z",
+          "name": "Cluster 16",
+          "enabled": false,
+          "chunkCount": 254,
+          "bounds": {
+            "min": [
+              65,
+              107,
+              67
+            ],
+            "max": [
+              76,
+              111,
+              74
+            ]
+          }
+        },
+        "cl_1659_82_18_65_93_39_76_1uxzizr": {
+          "id": "cl_1659_82_18_65_93_39_76_1uxzizr",
+          "name": "Cluster 17",
+          "enabled": false,
+          "chunkCount": 1659,
+          "bounds": {
+            "min": [
+              82,
+              18,
+              65
+            ],
+            "max": [
+              93,
+              39,
+              76
+            ]
+          }
+        },
+        "cl_1387_85_104_44_100_113_59_11de537": {
+          "id": "cl_1387_85_104_44_100_113_59_11de537",
+          "name": "Cluster 18",
+          "enabled": false,
+          "chunkCount": 1387,
+          "bounds": {
+            "min": [
+              85,
+              104,
+              44
+            ],
+            "max": [
+              100,
+              113,
+              59
+            ]
+          }
+        },
+        "cl_101_88_90_109_92_110_110_jhjd60": {
+          "id": "cl_101_88_90_109_92_110_110_jhjd60",
+          "name": "Cluster 19",
+          "enabled": false,
+          "chunkCount": 101,
+          "bounds": {
+            "min": [
+              88,
+              90,
+              109
+            ],
+            "max": [
+              92,
+              110,
+              110
+            ]
+          }
+        },
+        "cl_1927_93_61_25_112_77_35_m23jg3": {
+          "id": "cl_1927_93_61_25_112_77_35_m23jg3",
+          "name": "Cluster 20",
+          "enabled": false,
+          "chunkCount": 1927,
+          "bounds": {
+            "min": [
+              93,
+              61,
+              25
+            ],
+            "max": [
+              112,
+              77,
+              35
+            ]
+          }
+        },
+        "cl_1989_99_4_94_114_18_114_o6yvqk": {
+          "id": "cl_1989_99_4_94_114_18_114_o6yvqk",
+          "name": "Cluster 21",
+          "enabled": false,
+          "chunkCount": 1989,
+          "bounds": {
+            "min": [
+              99,
+              4,
+              94
+            ],
+            "max": [
+              114,
+              18,
+              114
+            ]
+          }
+        },
+        "cl_1533_104_6_24_116_22_38_1lnc54r": {
+          "id": "cl_1533_104_6_24_116_22_38_1lnc54r",
+          "name": "Cluster 22",
+          "enabled": false,
+          "chunkCount": 1533,
+          "bounds": {
+            "min": [
+              104,
+              6,
+              24
+            ],
+            "max": [
+              116,
+              22,
+              38
+            ]
+          }
+        }
+      },
+      "chunks": {
+        "31:105:68": {
+          "sectorId": "SEC-001",
+          "resourceAmounts": {
+            "rss_001": 5,
+            "rss_002": 15,
+            "rss_003": 10,
+            "rss_004": 20,
+            "rss_005": 2,
+            "rss_006": 8,
+            "rss_007": 3,
+            "rss_008": 2
+          },
+          "spawnFlags": {
+            "betaVoid": true
+          }
+        },
+        "31:101:68": {
+          "sectorId": "SEC-002",
+          "resourceAmounts": {
+            "rss_001": 8,
+            "rss_002": 10,
+            "rss_003": 12,
+            "rss_004": 10,
+            "rss_005": 5,
+            "rss_006": 10,
+            "rss_007": 5,
+            "rss_008": 5,
+            "rss_009": 3,
+            "rss_010": 2
+          },
+          "spawnFlags": {
+            "betaVoid": true
+          }
+        },
+        "34:99:70": {
+          "sectorId": "SEC-003",
+          "resourceAmounts": {
+            "rss_001": 3,
+            "rss_002": 8,
+            "rss_003": 6,
+            "rss_004": 12,
+            "rss_005": 1,
+            "rss_006": 15,
+            "rss_007": 1,
+            "rss_008": 1
+          },
+          "spawnFlags": {
+            "betaVoid": true
+          }
+        },
+        "32:97:72": {
+          "sectorId": "SEC-004",
+          "resourceAmounts": {
+            "rss_001": 2,
+            "rss_002": 3,
+            "rss_003": 2,
+            "rss_004": 4,
+            "rss_006": 3,
+            "rss_007": 20,
+            "rss_008": 25,
+            "rss_009": 15,
+            "rss_010": 10
+          },
+          "spawnFlags": {
+            "betaVoid": true
+          }
+        },
+        "27:94:71": {
+          "sectorId": "SEC-005",
+          "resourceAmounts": {},
+          "spawnFlags": {
+            "betaVoid": true
+          }
+        },
+        "29:90:72": {
+          "sectorId": "SEC-006",
+          "resourceAmounts": {},
+          "spawnFlags": {
+            "betaVoid": true
+          }
+        },
+        "30:109:52": {
+          "sectorId": "SEC-007",
+          "resourceAmounts": {},
+          "spawnFlags": {
+            "betaVoid": true
+          }
+        },
+        "22:108:52": {
+          "sectorId": "SEC-008",
+          "resourceAmounts": {},
+          "spawnFlags": {
+            "betaVoid": true
+          }
+        },
+        "15:109:52": {
+          "sectorId": "SEC-009",
+          "resourceAmounts": {},
+          "spawnFlags": {
+            "betaVoid": true
+          }
+        },
+        "10:109:49": {
+          "sectorId": null,
+          "resourceAmounts": {},
+          "spawnFlags": {
+            "betaVoid": false
+          }
+        },
+        "21:25:108": {
+          "sectorId": "SEC-010",
+          "resourceAmounts": {
+            "rss_001": 8,
+            "rss_002": 8,
+            "rss_003": 8,
+            "rss_004": 8,
+            "rss_005": 8,
+            "rss_006": 8,
+            "rss_007": 8,
+            "rss_008": 8,
+            "rss_009": 8,
+            "rss_010": 8
+          },
+          "spawnFlags": {
+            "betaVoid": true
+          }
+        },
+        "27:108:72": {
+          "sectorId": null,
+          "resourceAmounts": {},
+          "spawnFlags": {
+            "betaVoid": false
+          }
+        }
+      }
+    }
+  },
+  "gmap": {
+    "fileName": "galaxyMapData.gmap",
+    "byteLength": 9526,
+    "base64": "R01BUHgAeAB4AAAAH4sIAAAAAAAACu2dTbKjRhaFUajCmjhKG+jwqyV46EFHv1qKl+BhDSpKLI2lsASGDAhoK/nJPCfhJilAQtI9A3d9LQmhJ+DTTfInSTQajUaj0Wg0Go1Go9FoNBqNRqPRaDQajUajec18efQOaDQazRC8ImUfgPknIj6aImreOn8ApXjkpBfA7CI9SpjgptShGo1mYUheJV5zasJGRHxyhVjQ5escvat7yn8QfyHWC/DXAvzfAvxjITqmu2Jmj42v159MjId5mPiY4VHHDlVLajSayJD4GrjIZA1cgvIYzHBTaSNKs9hXLfktSX538J8kqZ3P9iNJmiPiycXUxZ+I9GgSi8cYPCzAJIS2TDNoTWewGLbXYb9rmYhmo5NoSsECP2WUNLmW1Gg0bxlq20Q9kcuqBq45dQzSa0vcctG/7zfz36zpLqp/dy/utPgP7jvhD8QSsRKRqrDGQ2fvr1fy5uxi2lhvZwuQNmUsCb8I0uYcgyDNLIDHSLSVl0FrnOz6L6sn80DJeLoFM0SjVIudFuFjyZbMyPbU4qp5nXxRZPyYwmQEvyavnQLO/RT1VIK88qbpLjL/iFhO4HESs6Z/31Zeda/FFotei528ijNgH7mBkdUmlT/X66NT8V3RUcy/F1NXT8UV7a+J0sNsNhZN4mKOaPbkIwbPMRiW5rAr+RXbiu83g8feOOceS8YT4r//TAesZuPBfW02oNmyo8XrXo1rETBnvasWnzfUOE/X8c8FKBtiRVx6MyKAH4B058I52r8m/g2FV285wYbQbKIANGUaqa1YgNaDVY+HSfxXi+jB/nIfEN9BwBHxEdb2inm9/M4WX3VV22UBTmox+XUfLX5BD37txdeeGmf04IDGg+b2shXfJBq1mV5XhYi5iNaDZsudB3tLmlPX+rf7iw6WTHwP5mJjMF9aNA8OlSgrim8nuNihXxEnxfcH3lgnvIa1+HLl4R09OF0Pkviu5WFi8d/dQA/Wq3twrB60l8hYD6bqwdkeXIIZloeLPcj1IHnw90Szp6gHBRzx4HQBqB6k+4PUfaWS2kVvLABv8GBJHky7a/S2HrT/T47tosGGUFmLHlItKXvw/u2ivw1otn7u0fXgsesJYxszyxgtlrM9CAWgvV2YYruo9WDBHjy6N0u0XfSZQxXQTuS1J2l+BXRcZvACOO3BL8kbeJAGLKAHsTeLldfgQVltc8Q3YPseow2heS+DqBuCohbDHnTGIIx50B52Mzw4F+m1BXWb+eV3m5F60Sy/Iejg4I+v2E/mjP1kBmzLwwHLAT0PHuZjQHwXFN/XQXzDB48rAPfVaVlDifEgD1iNwb2YLh7/AHQ+lsELYDapxbHbha/nQUwJnzcHLdreLEPHmCjTOWgrvrYnTNOLr+8YMy6+qD6f690uzEeaSedqMd6DbgNs0IMR/UWXDMFw+ot+Gf4+w09Og64WD6jFQz9uwsGj29eFsJx61I65aPGCpvscE98BG0IT+FjykHzNvkKdHsWGUHnyhbvhYz34AUgezCY9+OmXh+/mQUoD3+rQjXPw4DSS6Vh8NYov76/vNNhhydiHdbvNcHloJVKgFku8mViOWFJGt2Mqqu1nrOnuMLrQNJqY8YPmTPmtx/Y8+tqjbUTt8CBgMYkXeLI5YR1MhjcaTtN2wOBwAeWrlFZ8zxS6+O5SfBsqVcYZHpTF10wh3UxMknc/cYZLdjtwr+4rmRYrxBKRXjtEFl+UBxdoMdxM6sSUhxaNB4+I1kfliCUJT1OvvV7TcQx+gvLyUHK9h0kERp2SgwJbAdnfosNwBmtJB89h/ANfe017hg4VX/tGtnKgE1bnk3niiA2hAac04qMvip+AzkwXFzAd4ZgWnc2PDTZ80/yNKA9vj8IVtbhpMynhfy0WaMkSu9zISK+9Hovubv9cdV41uqrQ1HC/i7iOTr7gvywayf029eiKe6DZdehLXiA+nn0vBmdMprQNPsiDo1rE24XqQZPtPBilxSXl4cJmUiekxULEMubJPAvYX4lG80aJKgDXE9/dcHWHfgGkqQ4d0zVwGXPuTST9ywidHTcK1DvpI/k7Bh+lRS4Pl42qcBLlQRkDs2GqBzVvlUXii/gp+ziUP0I02rsFYQ/mkx4c0SI3k6oHR/INcTst3quZdIkHl2gxMKGJelDz2pEbQl9BfNviH4D2D9b26B5e0fXoPk4hjDCi4pFvF+rsEjMTZclHaXGzZlJZi/KT1YNvnCXTKD9tqCE0UADKp+FxD3hnD34ChsR3momoRbzVqLMNrhPZkrtsJl3iwdCyQOrBVwrp6auI8kTJK07fvOMECsAnEN+qDo3GC2DmiO+IajN4drFw8OChfW3b4orNpJq1s6RajNLivW4Xho78GA/+mWj2nSjTRU2IGT9wZXJTO9ZiTAEonVnfhgt3lpgLRY95DH5HTHo8TuKPzbCcg/2VqcN+UqgSxVf24vuYiQf72n9Gm0k1a+dh5WHEyLvI8lA9+MKRK74FpovsLCgdN3wYkSVpOM194zr5T9zTH3g6VFgB1cOplB86bC/6xQmwbLGIwXweHs11Y3hfwgOgMazFZBvsJ9K44tHOTjLgp4v9anYhzNxNVYescYrRUifhvUuiysO9eDCqJUTaFA9mVw/uLnLFJ095GRAfHXPyZEC3TyTEx/qqWvyJSONbG3y3Bv4GaXNwT6W0ObjiM2j15GB1Ntir7bqE91p4noHDbpi9Os7EI+IBsCRMABMHu+Vje8wRCxG7tWbHHnW0eP1SDrbSrA9wFBevc6d6X1mxPNylB71GfvXgzrOkAIwTH6mNJtST51uPwIQRJ97nkL1phtZQ337vxLkAun+DzHrwe3umDCI4A15tlTXH/oZW9QlYb4cfMXju8ORi/xEawpOLKWLX4tlhuyJQj1kD2E3qnFm1uVi2U116eOqxXdOz92Cvxc6D7UHTHNujuJuEozq828Sjj8ndPLjodqFkOvXgk4c8KBeAa4rvExG2RcuGph4eEc+IsOlmYk7h4WHACjFqmojrlOjOy/PrRfXgYn92FKZhDsRn0IovR1vlzWnAy3qIW26i8EPAFNEsDJNffXRu/xCA7RplPdZN678WswYwd/A0LBDkmG4+Fu1hkTWnrpn00u5458GurK8PcELQFVizVjbsNnMnD4ZQPbjz0HCpRR6k5kpJfBm6LEN5ZSgvwjSEsF8yknGTGrFCLPEjEpIHCyu+AW0BWHQX5M6DBeqpQHk52GyK+TR+oukkzNiDgAViBVqsGxevHnSw8PFksZzGk4dDLdl70HwX6RUT2+DdHKFFpMKrmWatqAc1D07UDUH2oFwAUusl+0cWXzMb0yC6u0lYkAc9LcLxXPke/B2xcfGEHjzl7EFbAM4XX7MAb7dkyvjpoSs+wDzgQRfrpsUzevCMHjwPpovCU4dUS7YebIdPdB7set83RzgD1IMbZaceXDrqx0H14M4T5cG4hlD2oPvsJeJb04Ol2OQa8GA14sGDg+DBcgcejNCiJ76gBwv24HnwIGDnwR5rwKZx8d4ezAYPtl+jevA+ieo287DhhLd7MJU9SB9f8/gsqgfpu5c8mIotn0vF576x7MF87XrwVTwYXw96HjzN8mAFGFMPRmtxfj3YrbejHnxINuw2Q3i7FuXOpfKTeTc0ew9VizQGgYZa8XdP9wcbwvn3+KLFR+juVyV2wfHvD67mweKKN3hwwK5HY7MAL7NwbQ/K9wdL8GAGHkzRZfkWHuxmqjHH3+DB/tjR+4M7CJVLD9JilCUDa+PS8CvNc4f6mpIl+VCg4Qxir04PI7q+UI/QzOsgulrHmCt+QZT6ycR68GMMZ7psffx0Ufag11/0IwnfLsz7ZlK320wz3m1mUounWegOwWg9mPb9RU8pedBtIFEP7jBy8fgDccWVLKKQtqwNoZoheHe4xuKyEZGe7A12kPEgYHhkhIzowXTcg8UJPfiB4vuUPBiF64kvhB9oyd50Y0jDKAgLRE+LJ9Sig3kQj7a/aOrcEHQnN1APvnSiWlx/rIcqPs3M0Nws4gyj8trlUevcRU4jLw2eDXnwmHXiK8xA7mHAYPnRabGb6utzlhY/RZwlTfmNRETxjWHuYO+yMUwZTy5miIWrtqsXj2hJB9PGe/RgPTgcDCEPuncG1IMajWbT0E8mWouEfl/9FNGf7syJPFlp1NpAI1rkcfQnF3sP5ofOg93Uz2fAoTxs1TZosTPd3fBjFnaWRNMxnmLwKOIhBhNXmt23ABj2oBv1oEaj2U/kW+eyNHmlTgmjOoldcZYHO+wv18P0Mq1iSiOR4+BBY5xjPyEm46eI8mvH0Pr3HELjlA5PgCXhcRy7j4/yKhLA74jJcswkDx4lD+p8MhqN5llC41JlLQbWswYKa7EBTKEJ7pjBBXkQ3/ceWx91Wuz1NGixGbBYGbs3OuH7Ig6yHsfeZS3mCYgv2R5X8yC0wL+vB78/egc0Gs2qiSoeo/qM+VqsAdGDh8y5emfXpRzsNdc4pXGxn+kmPwAOlrwBaVOM+L7jexWJl9l48nA1S2aM4MFU8CB1pH9lD+b4UYujiPjkfMP90mheNDQoUV7FcPM1d6O0GCwe3VuTVw/aS2464sGGcLja5AZPDhbObOKRePTxNI25h0cRDzGYRKAkzSwOyYO2PMyw7frqQfcbJA8WyQuFxFeeEM8i4pMLQpSmWlKjSbyBhZHrFEpP5l6lK1hyYfEIHsS5BBoYymi0aC/BrQcbwoPFbuC3Sb4qum80jsmAV1tdED8Qz4g3KzULYRKBF0T314jnQfdgJQ/SwfDcIXmVw/domkQrHO0rY0mI0mRLPlNnI3kVgv+Jj9JrNe8XEp84D2nGeBYflRfoxXNs/aXFgx1y4CqKc8vVuMiG0eKww2nTD3hzsf9TdB68Fd1N5XPwFIPHKTyiUo+k1AyVmqFSM1RqhkrN0KEuFmOIDrXHhefBA1y+yIPPPQqMC0D7177+p7rchCbVp4iyJfdVPAZmzIpBeu2q64Fr9hmeSoZsRUsuXRCl6V9CCJvyFjXEU65Z/ZeoXzz+x8EfOP7/J875XffTo3Q7Z8TXXzLSUew/XdaY6VEczIP4MRMPI7iSQzOUJuIxQ2kK2KptOBDmoKvUFJqjj7BQMx0iVO8/dwo8Gxy1HWBepeIAE+sW+Cg92XirRgPwLBcxWuQW182LR1F8obYqGaUtqxZfMg2YL/WnyT7MxTzmySOYTCKt18sTva2fbziJ2w/zdxn+Tj/N/g378Avk1eFw7jSA6XJcw6FBLWY+nmJwuBS3aovCwzi2HhyOA9PF9008WJKP2HT9n8FUaPXwLXd4Hn9y50FapIVmLoT3ZUtSi+vmWqTWy0Xik1qj4rS4fr8HzTbBeVhqEFDawHpFhJmPzuGdL0T5jabRX5Bp/WZUmuQ7dcX3zezQ8J4/UHw/DQ5/8l8iXuJx0OJFsuQsaTqWzNCSIx6cZ8liDs7WYoqFZ4o3XhO3EYE8+FIdRO3kuJ28+s/dma5/+Dq8M7HfTXEcJrRzsD9gjJnsl/693TLYy7Mk7BVpsRa1WNE9zVu6rXLTFdB2SxDGaZFmbtbcNdj9kUaJ48p8vlNO7islDKvtLOLsTcm7EdAizdZ9Y/At0wZmF88aKFjzEez36Bvin4h/ifhf3LJs2BhL+lpED96uxVkedDAN4nEcjQedr4i+c7r/+9yphu+x82D/zfWm6x7uPdggXvDJ/WsPcJSbLTfY0oJtRf4897CTNRatpMU6Rot9717qrxJYO45GBG/nQbErg5aH24Z6ftfSt46LK+R4OPsXeFLMeRLDplsR19LijWngmpCi6bIG3iQP4zEG5U318JdoyVEtOtVi5ntwrhaTsAentRgW3zwtXj3o/uIhDz53B9GcZ6Pvv5vuHp8nvvYQMW2RDh7HsX0tabHzIC0Hg7cj8CrDq8GI5SF5sEYPVjTrQXfEd07pL31iAbii+BatzKt3D1cOia+Syv6cGzBOQAEP7kR8s1HWIjXt3tpqigXgDA9GmW4DLf45psXho3taXOrBiWrR92Dq44oedDovQWh5gidLjgaqbE3XeZAqPvbgEXFUi1RL5gfvx19cecjrzMSUhxNa7JzSa7H70N1XG+lBuaf7es2k6sGVQ3c4xAKwmO9BWXxLPfgh4t2qRSoPkxvSgD9TFFCGtsq29eCCanH4CL9Yi674xrU414NJtAdv1WIy34NPPlACDbTUg8exJ/ce7DY17kFaafR2DzbrebArEFb1YIQWAx6k2UM00aGJAanNXPzWCz5C7+ZBWXzbafHZPHgScbPykHrv3MWDYfHdwYPPnXvWg+pB9eCec596cGm76N3EN7tdNPPaRffgwbvXgwmK7y/s4/pL8mCKpou8XZioBxeH7nNU2Lkl7EH5dmG3qfF2UTx1qF2U7g8+U7uorMX12kXVgyuH7nDcfn+wuv3+4E5uF47sVUT3UTzH5qaO6Cez8e3CGPHRTl5EHM7Zn4gXMF16YS26Bw1hHkBQm4yd+JxH3eu0uf5U9o/xUgMGM/KCHQpxgP6i3EH0JOJ499Hue+08CDJb1E+GPBjTT4Y92L9D+z9du9lO+smoB++b2/uLZqt5cDstht83pmPMGuMm/GGWgW4zhFG9SReY7jbxeZj6/WMH/IlHyQURTXe9LKAl3QMuhGPic59cOd90072iy0sNlKBUPBa+515tvRZPIqL4eg92W84PYwWg2BAaM5zwpv6inQe1v6hmKlQtoha98vAItJEWV8bpwR0svppO0FVC9UVwOCEZJ2DJGJTVtorpRtG9cgn4A/84v/AIuyA2gGkDrRUjmCG6v/DMvOgvVQVOpuSZ0/pvqlNbfwz04pvAI9zy6/DD3bInPqkhlMW3YPyg7MF+lP3DPCiOH1QP7jd4sySXhtUHtbiNJUe2PI1832IT8cnh+U+93XVOe9lHK+JWaoOao0ehqT3zrp8D/sBm+p/mxa40k9Jijaar8c73rwQuQmaE4HssOlsOxqEZRI3L7FRp1QkaM0vC4xie3C03/ANaHDgf48HA9DLowQI92Cdm5rT7jaNXDz5NcFBxxkc3KYbaGKMsGaU22XTUEWjio90rvxB9LRLO/jERjVF/UwFltfElseLvQ8JcROcy8w3xH8QfCdwI/zPx15F4j9gFJowhquFgM6azJ3AlYidNQqo0HyO+iWnWdupB3CudhftFgm1LYvFYibaqvQut8OTcM90zXeFYi3iWe5YkPMxG/56MhHQZq6jrAp/BjNJAnS3xKOEbLSw/GbsOYOvB4WvtTEd4mMAjPLlEbD1IppPFJ65GcVMBSOGzDCjkwSValLasHtRwi6t88HELwkt1bYf8B5EXu4+57st/M7oy7CZ0u5o6dZG86Nc/YSU++pax6w+av4Y1Tmu6y03YepBaXGXTLREfIomvb96mSaoDHiSUPRiBuiqTRqO5c2ixAXLoe9wBlGP/BsaDduE/IxurJ9ML08qrGkH7ZONBi8VhRG0yovgCyxHir72JBSbEibWjPLhEi7oMk0aj0ew2rQcHxbRqG/RUi0hPNs2kFd15lEu8JeKbVdaLKwwu8eAylN5XPajRaDT3jCnirGKM6ayPWvHNxNaDA7YtrjGmk8V308K7izxIuJUH+ba6elCj0WjuGCMvq5jWg3Z0poj0ZLMpi1Rptv+f3LlFFN9N7dl0c22RBx34BWpLG0AzIVKCj8I+AP7p7ZV6UKPRaO4YIy97c6013RFxrhbHPCibThTfvDXlKXRDUPag2PvZxRzlVYParj2yHcwQ6VF67XWeQNiNX95EaurBd0lglWgJA20KdEjhzQo+wr6Ke6XRvGBo4hWjtkFPKWoxHbWkbVPFJlbTTTdguhXER6GO1jEedK8ltSu+62QTDhYNqK2MwRyxHSfs7MYV3YvWf1/Tg/RNv03XNfRRxqOiz4igq0JE77UnRHoj6tSVCJiSjj8lZMN+FVFzh9C5tcEl9yVS0wjvk2urdEyLU9iO17Gmaz24ufgoZI3bPFig+CqUV+3jcS6aTdn3LRHzBj1YX8frPqcH6QdQoH18hR5Ru0zKiqER7mdEkEqJg7VDCK/1pElvFGHJXLRkJluStChbksY4aVYJnT2FiO+bMQ8OespQi9moJYe/5JgHtxef3BA604OFmVIVbJVMiq9BtUWh0aJ931EtDvvcatFeLSpaempXoRZwuWdwFMqW3FnwCFsmviYGJS2WqMVS1KI3lZeoxYuEi7SouS08apDEJ96Zet/ycIEHW8ytFvFWo5m3Z/sGsNsaQlszuQK6ODgivkkPpiKOahHfyNPi8BFMWWpFn9IiVg9OIYuPZkWPwcCwUnEChbsHy/WMrUGKIR9JHqzQdCGUq0XJg6XowSVaXNSIquXhbeECkBpmRHz0yfS4oAdbtQ22ytF02Sj2Tx714PZ3fm5rCG3vp4CAHFwgvnGELd/qwWxfHiQfka3YdOK8QoGJZWUtPrg8jLnl53kwIL6DiOJrn6A8ZA/i96rl4Y1RD96SsWXV2YMT+Nwe/Ah5MLndg6d1PFiiB3Py4IOnRLybB+X51h/twZiG0NgCUPagqMUn9KA2k64SchmL75Zpmd8gYj2YieILeLDagwfJFTH1IOKiejDZxIMPnnhUPWgSd0Mwrh4kfPF6UNtFV4l8Q1DrwfHgJOSty75blEwXuCF4p+UcqZ/MzPKwvV65AvLuD05pkdQWheMetBO2mjcaPkKBq6+9a7vovj3I7aK33x+s1rs/WMWIL3R/kD7R7fcHAw2hKr5Vou2iK4QWpWLTieIz85k/emTYXC2aU9IVEHtwsjxcwYN2HnMsAFsPDh/B9+CeDlP2oNwTJsqDMcuQPNqDeMDRQIk80EwapUUZSXyPKQDjKj7NFpH7i8oTm7xvf1E5pLa/E/9vJePORkj/MYFtL/TBR60HB2xwWF+rxR7TGOxeC2/kiK9C8RVYAKa0KOmDE/DgAvHFeXBXfxS5PPSME6HFEH6I+CDxaYl3/9AlVx4wuMYUXu+SZxbfzLTnvuujT8eSrQcnsDPdBCYj6LxRjeIrUXw5tYPua0S97MFqifhED9Jc7cW+PIihyVjyOC3KlpSe7G359ull6CNoifdkCQwn3FML084TJb7n9CCFrip1Az++G7RVgy6TscbXVrjlAsXHy47vKySgUvQg40XEl/EgRdai14gquSxU061nOq3pXikvUbY8JrLpXvEvSa09ladFF6/jJBA/ph+l15Y8S+SexUcpqH1S9qAsPtmDiPRGz+RBDn4S8pE87WdgfjN5nm0t4jSa2Lyi6aKSsRbhx3bNlpSw5B/qa+7nfcMelMXXxCC+tnxZD2o0Gs1LpKCr9kV6lKdYfOIU1FxJfwY23WE+0mt5y6hF9aBGo9FoHpKCfMQuOyKeYpBei71L6IcGlqVv33ih0Wg0mjvFG2/N6yGcRfyY/WRvESHsXYJlqXpQo9FoxiL37QkMDJGXUDyK+ET9XsLB/kI593VldOu2MgYLD2nLrvqoa2Q2/+NoNBrNc2eJy6LW5OLxAQuQtrz/azbMCpPx6EYe9B/AQwyKm6LdcC2ZNfuabUCj0WjWS5T4ArMoyHPuyWpbb0XZcn/FY0lNkDSvm2ur3McjvHQjHHlf3EkapEezWO41Ucez/GSNRvMyWVF88uyyPDOKOIF0AMU5wBh3twZKJq1xkPk+Os3Fq8vOczFqy+RfkjXftrxr/kaMOiarGIyaPLmQd1rz1MGFBWi6W5qYgx7lUaaafUT24E7EF7fQ+v60WEP1VIBTrqP+nX3KfFsRftwLp3cjo4kLKvxE6bpLdtAhWuJ3JMurPm2FfDzL54J4Hmm3o72HJ1+gmYNouPJJeJReu7NpHN832xWAfKGQVxBaIL4AxmiRr2braDHH6qkGp6QooCyop88HYCbuJH2ia4+cRbcPS0RctYwW8wzYqpHxHIObWVLnYd5dRPHlPJMs4Vl8FL57rhY1D0qUB7crAO/mQcaoy9eNWvQrPnLK51zMcdrVFTGLRZoM1sUaLZlitTiSWjQdvTqgtiWmW4BxteSC4pHagTXrBOuydFbF963Ffup2Gem1w5a1PNxFHtUQGtDTih6cqUXTOGWvVwbt9arF4a9hOqHae0AZ/pl4wfCg+Jb4aH/Ic6SXDd8+DN1RoZ/Mpxg8b4RranFRmyqQtqla48zDv8fxAtiLr8NeXgOeXSxmYYKbSvo3wm9X7x4+KHtpCJ3pwXwxDm+UjeFpCg9wvTJoL1AZDdXgY93z4BLjNHtHXv6jaridNAuIb48ejNTivcrDhzaiRgloCU7Ia0WM8eA88U2hdPeQ2mM1d8t2/WQ20WIWjzeKL0HxJVgPHrAeZA/SrfEX92Aa9iD+rnlGD255M/FZPbgkO7Pk5h4cmknVg8+X+7WazryZ+D0eT/OwfaOYJqnZQQ+k2C6aoulGcNo4d8Po9R9d0ZXUTvoOHrxbX9On9eB2uUmp3Rk5ePDgoraLauZnSWkZNwZf7n0nD+wS1bZNJwSayrPyepVcENkpDi7R04pqk7Hyx0Dyun5beNAcf815DUyW4t3uD6oH18kt/WS6kOlkVA9q3jW5N6zAPdwr9GDlNyo6OGLJ2XpaEcl0hFwA0oxukge/J6C2zEenyTEfw/MGmIRR7oe84qgK7Sdzh6T8u03yYEiL0rgJ7S+qeZuk2E+EprT2p8NuCElAMk7raWV0PhKJr/AKwHry93UrPrgP64jPzIIXh+ebsBAfnVEtrlkAxowuVA9uEqzLvPGDEVrU8YMaTRscQJdhtxF/4QfBg6VfeRGe1sMz4geis5dGfHYvs4YLwJJ/BZP4BrwK6FYPkstM+/itKGrRZLsCUG8I7i1eeRilRakATLVjjOZtUtG0Y7SmkbfCBC0LQdNhnxBlW32KOF3EjeFhCnMSX9PQ0PmQB0Ft0x5sbSVjjPjquXgApAE4JgHxLWkIVQ8+PFgeRmnR6zyOW9aGUM3bhBZ7Rw+OrLREnUycK26UnlbEHNVGmDX+TsPZ7/UWh4GZ0x6cIz5Eq6dyPaQtGzvHFYCIcVN2qwf3FiziZC1qATgj1In3H0SdQulFUvDdMreWSNGDIwtONIRz9bQdGvE513ZCb4HCaQ9yARgjPpbXaTMcKw+xf06gAFzgQb0huPeIWmTxaQGY+KbjGYVF/CFuSrPf5HguoAcTvCGY+ks78K032VanVTATMSXx1TxlzEYePKEHF6itEnH0tejfCj6CFoCaPjT2QcWX+DUdqa1egLIlNTsKTThahTzIA+knC7EZeF4FU8Sk8W9Mwmci1VNf8gy7oKRzb+qtaDqDlYwo3GrKgwV6cGx+BvWg5r0ji4/HUUmYMIpbVi3uKBn+RCyxOqpxkMHIxC5HxE1MJ4uPPViL6xOu58FThAdHTXfaAMmDXB4Ou2YTNdWDNoRqnj8kINSTN0/B7ehZUnpfbUR9aFKcXjPsQfvVyh5MNzNdoAAkD14HFILpqnU8WMZ7cNJl5xiM1qIVn7HakimP1IOa5w8VgGMuGw70tovtcBoUIrZPzi3CpmjLrEXaK819gx4ssDNlhR6s/TEIk+Ibw49VMJGxIg/mj/AgF4AxpqtFnKHFcqYH80QbQjVvEOrrMia+4fdf67LhnGmHVQ23JVosZexfWyC2WhywfV97+pkrrf0ZaopWPf3ulq9ACzyYPEp8tT80kQZ/gOv350FZfAEtovhkD7aIHgwUgHoiap4+WGqlY+Ij01X9JaMdXz0sFFQjVmNPHpA2VeAbtVocsO3La8/VGrHdgniuapbkC1DYg87jogeT7cQne7AgD6aeBwELxFs9OCa+SQ/Gi6+ciaNaHL4y8mBx0IZQzSuG7rXVB/fYTbEuK0bF13ebqBHbC56D0pPJoSVi0Xqwxwy12JaHFs0wRvnWfq5aXC0040QperCO8OCaWPsNoQ7mu/FgtcCDc8UX78FCPah58Yw1hA4HeoZ1WTFDfP1kV6mIrMVmVIs9khbb8nDAtjwcLNk2k9Kaf3K1qOfqguQ8+SZw9YwepDlykjLgwQHv68Ebxbfcg8MX/D0JelCjeYbM8SCVadaD5sTuxof1prv0L5WQntx5sJkwLL1vMeZBu3D7zyToQS4P5/yhNOOJ9uB0v031oD1stysA1/ag3hDUPH9GPWg7qGzsQawHZ3pQ68E9hebaLXC1drkeHNHiXcRHHWPSOA/m0+2iSdCD8kAJuWPMIvEdJ5DEZ7AgDw6mM/9S8WleLuTBeka76OT9QbohKOH4/cF5BWCGtwvbfjJaAO4jGQ4nHFl4yXmcBixU/rC+abXJppPFl/k3BG8bKNG+GA89WlPejgGkqVqKkQHsTiEm6qnFw+1oXWbew54QhNrBTPOOMf1F7UnC4xdGenVy55YJtcm3/IqxO4CVrfiwY8wM8RUqvl2EJDGyDtMJ0Xn6yKqB01iIc8KkPEUMYcm7CUdTipgQ1nisRa1DlI/8a+x5MsoD3eUlAHVJeI2GMzaDqHUK+ojqshwtKWPGQyGoCyii2Y3A7E54duvp/BTJcUkjbERN0ZIyJoQpTY5diQtrpw0eTYQVaUcbBjWad4vTaJLgPXVE06Zaosss1gd8srgpM/aB+2drifeCwR8sNN0ejU2UkQZweGpDebHaonZao9G8eeg2uWyrONTf2RqIvJQXPaotfBqN5jHJEHMR6ckajUaj0Wg0Go1Go9FoNBqNRqPRaDQajWZO/g8gsb6UwEsDAA=="
+  },
+  "editor": {
+    "activeTab": "assets",
+    "selected": {
+      "sectors": "SEC-010",
+      "resources": "rss_001",
+      "items": "item_001",
+      "buildings": "advanced_weapon_factory",
+      "ships": "ship_01",
+      "vfx": "aux_light_default"
+    },
+    "activeCluster": 3,
+    "mapViewScope": "overview",
+    "mapMode": "edit",
+    "mapTool": "select",
+    "showUnplacedChunks": true
+  }
+}

@@ -1,0 +1,315 @@
+{
+  "version": 1,
+  "defaultShipId": "ship_01",
+  "ships": {
+    "ship_01": {
+      "id": "ship_01",
+      "labelKey": "ui.settings.gameplay.ship_01",
+      "fallbackLabel": "ship_01",
+      "specs": {
+        "maxSpeed": 100,
+        "minSpeed": -20,
+        "accelerationRate": 24,
+        "decelerationRate": 32,
+        "throttleAdjustRate": 36,
+        "arrivalRadius": 10,
+        "deactivationCoastDuration": 600,
+        "pitchRate": 1.45,
+        "yawRate": 1.55,
+        "rollRate": 1.8,
+        "strafeRate": 45,
+        "verticalRate": 45
+      },
+      "hyperdriveSpecs": {
+        "cooldownDuration": 5,
+        "warpEntryDuration": 0.6,
+        "warpExitDuration": 0.6,
+        "warpMinFlightDuration": 5,
+        "warpFlightSpeed": 4000
+      },
+      "visual": {
+        "modelId": "ship_01",
+        "reflectionIntensity": 0.32,
+        "highlightColor": "#ff97c2",
+        "emissiveSurface": {
+          "materialName": "EmissiveMTL_light",
+          "fallbackColor": "#ffffff"
+        },
+        "highlights": {
+          "highlight_01": {
+            "id": "highlight_01",
+            "label": "Highlight_01",
+            "materialName": "Highlight_01",
+            "defaultColor": "#ff97c2"
+          }
+        },
+        "effectBindings": [
+          {
+            "id": "vfx_light_engine_001",
+            "kind": "engine",
+            "label": "EmissivePlate_ship_01.001",
+            "effectId": "engine_light_default",
+            "target": {
+              "objectMatches": [
+                "EmissivePlate_ship_01.001"
+              ],
+              "materialMatches": []
+            },
+            "engineOutput": true,
+            "defaultLight": false,
+            "overrides": {
+              "color": "#9b9bff"
+            }
+          },
+          {
+            "id": "vfx_light_head_001",
+            "kind": "head_light",
+            "label": "EmissivePlate_ship_01.002",
+            "effectId": "head_light_default",
+            "target": {
+              "objectMatches": [
+                "EmissivePlate_ship_01.002"
+              ],
+              "materialMatches": []
+            },
+            "engineOutput": false,
+            "defaultLight": true,
+            "overrides": {}
+          },
+          {
+            "id": "vfx_light_aux_003",
+            "kind": "emissive_light",
+            "label": "EmissivePlate_ship_01.003",
+            "effectId": "aux_light_default",
+            "target": {
+              "objectMatches": [
+                "EmissivePlate_ship_01.003"
+              ],
+              "materialMatches": []
+            },
+            "engineOutput": false,
+            "defaultLight": false,
+            "overrides": {
+              "color": "#9b9bff"
+            }
+          },
+          {
+            "id": "vfx_light_aux_004",
+            "kind": "emissive_light",
+            "label": "EmissivePlate_ship_01.004",
+            "effectId": "aux_light_default",
+            "target": {
+              "objectMatches": [
+                "EmissivePlate_ship_01.004"
+              ],
+              "materialMatches": []
+            },
+            "engineOutput": false,
+            "defaultLight": false,
+            "overrides": {
+              "color": "#9b9bff"
+            }
+          },
+          {
+            "id": "vfx_light_aux_005",
+            "kind": "emissive_light",
+            "label": "EmissivePlate_ship_01.005",
+            "effectId": "aux_light_default",
+            "target": {
+              "objectMatches": [
+                "EmissivePlate_ship_01.005"
+              ],
+              "materialMatches": []
+            },
+            "engineOutput": false,
+            "defaultLight": false,
+            "overrides": {
+              "color": "#9b9bff"
+            }
+          },
+          {
+            "id": "vfx_light_aux_006",
+            "kind": "emissive_light",
+            "label": "EmissivePlate_ship_01.006",
+            "effectId": "aux_light_default",
+            "target": {
+              "objectMatches": [
+                "EmissivePlate_ship_01.006"
+              ],
+              "materialMatches": []
+            },
+            "engineOutput": false,
+            "defaultLight": false,
+            "overrides": {
+              "color": "#9b9bff"
+            }
+          }
+        ]
+      }
+    },
+    "ship_02": {
+      "id": "ship_02",
+      "labelKey": "ui.settings.gameplay.ship_02",
+      "fallbackLabel": "ship_02",
+      "specs": {
+        "maxSpeed": 100,
+        "minSpeed": -20,
+        "accelerationRate": 24,
+        "decelerationRate": 32,
+        "throttleAdjustRate": 36,
+        "arrivalRadius": 10,
+        "deactivationCoastDuration": 600,
+        "pitchRate": 1.45,
+        "yawRate": 1.55,
+        "rollRate": 1.8,
+        "strafeRate": 45,
+        "verticalRate": 45
+      },
+      "hyperdriveSpecs": {
+        "cooldownDuration": 5,
+        "warpEntryDuration": 0.6,
+        "warpExitDuration": 0.6,
+        "warpMinFlightDuration": 5,
+        "warpFlightSpeed": 4000
+      },
+      "visual": {
+        "modelId": "ship_02",
+        "reflectionIntensity": 0.32,
+        "highlightColor": "#286d4d",
+        "emissiveSurface": {
+          "materialName": "EmissiveMTL_light",
+          "fallbackColor": "#ffffff"
+        },
+        "highlights": {
+          "highlight_01": {
+            "id": "highlight_01",
+            "label": "Highlight_01",
+            "materialName": "Highlight_01",
+            "defaultColor": "#286d4d"
+          }
+        },
+        "effectBindings": [
+          {
+            "id": "vfx_light_02_engine_001",
+            "kind": "engine",
+            "label": "EmissivePlate_ship_02.001",
+            "effectId": "engine_light_default",
+            "target": {
+              "objectMatches": [
+                "EmissivePlate_ship_02.001"
+              ],
+              "materialMatches": []
+            },
+            "engineOutput": true,
+            "defaultLight": false,
+            "overrides": {
+              "color": "#9b9bff"
+            }
+          },
+          {
+            "id": "vfx_light_02_aux_002",
+            "kind": "emissive_light",
+            "label": "EmissivePlate_ship_02.002",
+            "effectId": "aux_light_default",
+            "target": {
+              "objectMatches": [
+                "EmissivePlate_ship_02.002"
+              ],
+              "materialMatches": []
+            },
+            "engineOutput": false,
+            "defaultLight": false,
+            "overrides": {
+              "color": "#9b9bff"
+            }
+          },
+          {
+            "id": "vfx_light_02_aux_003",
+            "kind": "emissive_light",
+            "label": "EmissivePlate_ship_02.003",
+            "effectId": "aux_light_default",
+            "target": {
+              "objectMatches": [
+                "EmissivePlate_ship_02.003"
+              ],
+              "materialMatches": []
+            },
+            "engineOutput": false,
+            "defaultLight": false,
+            "overrides": {
+              "color": "#9b9bff"
+            }
+          },
+          {
+            "id": "vfx_light_02_aux_004",
+            "kind": "emissive_light",
+            "label": "EmissivePlate_ship_02.004",
+            "effectId": "aux_light_default",
+            "target": {
+              "objectMatches": [
+                "EmissivePlate_ship_02.004"
+              ],
+              "materialMatches": []
+            },
+            "engineOutput": false,
+            "defaultLight": false,
+            "overrides": {
+              "color": "#9b9bff"
+            }
+          },
+          {
+            "id": "vfx_light_02_aux_005",
+            "kind": "emissive_light",
+            "label": "EmissivePlate_ship_02.005",
+            "effectId": "aux_light_default",
+            "target": {
+              "objectMatches": [
+                "EmissivePlate_ship_02.005"
+              ],
+              "materialMatches": []
+            },
+            "engineOutput": false,
+            "defaultLight": false,
+            "overrides": {
+              "color": "#9b9bff"
+            }
+          },
+          {
+            "id": "vfx_light_02_aux_006",
+            "kind": "emissive_light",
+            "label": "EmissivePlate_ship_02.006",
+            "effectId": "aux_light_default",
+            "target": {
+              "objectMatches": [
+                "EmissivePlate_ship_02.006"
+              ],
+              "materialMatches": []
+            },
+            "engineOutput": false,
+            "defaultLight": false,
+            "overrides": {
+              "color": "#9b9bff"
+            }
+          },
+          {
+            "id": "vfx_light_02_aux_007",
+            "kind": "emissive_light",
+            "label": "EmissivePlate_ship_02.007",
+            "effectId": "aux_light_default",
+            "target": {
+              "objectMatches": [
+                "EmissivePlate_ship_02.007"
+              ],
+              "materialMatches": []
+            },
+            "engineOutput": false,
+            "defaultLight": false,
+            "overrides": {
+              "color": "#9b9bff"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

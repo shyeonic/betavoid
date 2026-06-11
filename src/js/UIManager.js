@@ -1,6 +1,6 @@
 const WARP_HUD_SVG_NS = "http://www.w3.org/2000/svg";
-const WARP_HUD_BLOCK_COUNT = 72;
-const WARP_HUD_BASE_GAP_ANGLE = 1.15;
+const WARP_HUD_BLOCK_COUNT = 24;
+const WARP_HUD_BASE_GAP_ANGLE = 6;
 const WARP_HUD_MERGED_GAP_ANGLE = 0;
 const WARP_HUD_MORPH_DURATION = 1000;
 const WARP_HUD_BASE_OUTER_R = 32;
@@ -124,9 +124,7 @@ export class UIManager {
       speedGaugeFill: this.getElement("#speedGaugeFill"),
       speedZeroMark: this.getElement("#speedZeroMark"),
       speedTargetMark: this.getElement("#speedTargetMark"),
-      positionXValue: this.getElement("#positionXValue"),
-      positionYValue: this.getElement("#positionYValue"),
-      positionZValue: this.getElement("#positionZValue"),
+      locationValue: this.getElement("#locationValue"),
       touchDpad: this.getElement("#touchDpad"),
       touchDpadKnob: this.getElement("#touchDpadKnob"),
       targetingCanvas: this.getElement("#targetingCanvas"),
@@ -274,7 +272,8 @@ export class UIManager {
     onClearWorldSelection,
     onEnterTargetCam,
     onProcessBetaVoid,
-    onToggleCameraMode
+    onToggleCameraMode,
+    onOpenMinimap
   }) {
     this.onSetSpeed = onSetSpeed;
     this.onKeyBindingsChange = onKeyBindingsChange;
@@ -468,14 +467,14 @@ export class UIManager {
     this.elements.readout.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      this.openTargetPopup();
+      if (typeof onOpenMinimap === "function") onOpenMinimap();
     });
     this.elements.readout.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
 
       event.preventDefault();
       event.stopPropagation();
-      this.openTargetPopup();
+      if (typeof onOpenMinimap === "function") onOpenMinimap();
     });
     this.elements.targetPopupBackdrop.addEventListener("click", () => this.closeTargetPopup());
     this.elements.targetForm.addEventListener("click", (event) => event.stopPropagation());
@@ -1839,6 +1838,24 @@ export class UIManager {
       ? this.i18n.resolveDefinitionText(summary.currentSector, "name", summary.currentSector.name || "UNKNOWN")
       : "UNKNOWN";
     this.elements.worldCurrentChunkValue.textContent = summary.currentChunk || "UNKNOWN";
+    this.updateLocationReadout(summary);
+  }
+
+  // readout 위치 라벨 — 섹터명 / Unnamed Space(유효 청크, 이름 없음) / Void Space(유효하지 않은 빈 공간)
+  updateLocationReadout(summary) {
+    const location = summary.currentSector
+      ? this.i18n.resolveDefinitionText(summary.currentSector, "name", summary.currentSector.name || summary.currentSector.sector_id)
+      : summary.currentChunk
+        ? this.t("ui.map.unnamedSpace", "Unnamed Space")
+        : this.t("ui.map.voidSpace", "Void Space");
+    if (this.elements.locationValue.textContent !== location) {
+      this.elements.locationValue.textContent = location;
+      this.elements.locationValue.title = location;
+    }
+  }
+
+  setMinimapExpanded(visible) {
+    this.elements.readout.setAttribute("aria-expanded", visible ? "true" : "false");
   }
 
   setChunkBoundsMode(mode) {
@@ -2222,10 +2239,6 @@ export class UIManager {
     this.elements.speedTargetMark.style.left = `${targetPercent}%`;
     this.elements.speedGauge.setAttribute("aria-valuenow", snapshot.desiredSpeed.toFixed(1));
     this.elements.speedGauge.setAttribute("aria-valuetext", this.formatSignedSpeed(snapshot.desiredSpeed));
-    this.elements.positionXValue.textContent = snapshot.position.x.toFixed(0);
-    this.elements.positionYValue.textContent = snapshot.position.y.toFixed(0);
-    this.elements.positionZValue.textContent = snapshot.position.z.toFixed(0);
-
     this.navActive = snapshot.autopilot;
     this.elements.targetForm.classList.toggle("nav-active", snapshot.autopilot);
     this.elements.navToggle.textContent = snapshot.autopilot ? "Nav On" : "Nav Off";

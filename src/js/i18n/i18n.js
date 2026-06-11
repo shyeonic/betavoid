@@ -42,8 +42,8 @@ export function createI18n({
       if (!definition) return fallback;
 
       const key = getDefinitionTextKey(definition, field);
-      const legacyFallback = getDefinitionFallback(definition, field, this.locale, fallback);
-      return key ? this.t(key, {}, legacyFallback) : legacyFallback;
+      const definitionFallback = getDefinitionFallback(definition, field, this.locale, fallback);
+      return key ? this.t(key, {}, definitionFallback) : definitionFallback;
     },
     formatNumber(value, options = {}) {
       return new Intl.NumberFormat(this.locale, options).format(value);

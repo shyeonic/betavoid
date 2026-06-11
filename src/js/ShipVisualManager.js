@@ -1,20 +1,27 @@
 import * as THREE from "three";
-import { getShipVisualDefinition } from "./definitions/shipVisualDefinitions.js";
 
 function normalizeSceneName(name) {
   return String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function getShipVisualDefinition(shipDefinitions, shipId, defaultShipId) {
+  const ship = shipDefinitions?.[shipId]
+    || shipDefinitions?.[defaultShipId]
+    || Object.values(shipDefinitions || {})[0]
+    || null;
+  return ship?.visual || null;
+}
+
 function cloneLightProfiles(shipDefinition) {
   return Object.fromEntries(
-    shipDefinition.vfx.lightParts.map((definition) => [
+    (shipDefinition.vfx?.lightParts || []).map((definition) => [
       definition.id,
       {
         id: definition.id,
         type: definition.id,
         label: definition.label,
         objectMatches: [...definition.objectMatches],
-        fallbackColor: shipDefinition.materials.emissiveSurface.fallbackColor,
+        fallbackColor: shipDefinition.materials?.emissiveSurface?.fallbackColor || "#ffffff",
         ...definition.settings
       }
     ])
@@ -22,9 +29,12 @@ function cloneLightProfiles(shipDefinition) {
 }
 
 function createLightProfileMatches(shipDefinition) {
-  return shipDefinition.vfx.lightParts.map((definition) => ({
+  return (shipDefinition.vfx?.lightParts || []).map((definition) => ({
     id: definition.id,
-    normalizedNames: definition.objectMatches.map((name) => normalizeSceneName(name))
+    normalizedNames: [
+      ...(definition.objectMatches || []),
+      ...(definition.materialMatches || [])
+    ].map((name) => normalizeSceneName(name))
   }));
 }
 
@@ -42,24 +52,24 @@ function createLightControlState(lightProfiles) {
 }
 
 function createEngineOutputSettings(shipDefinition, lightProfiles) {
-  const outputDefinition = shipDefinition.vfx.engineOutput;
-  const controlledLightType = outputDefinition.controlledLightType;
-  const engineProfile = lightProfiles[controlledLightType];
+  const outputDefinition = shipDefinition.vfx?.engineOutput || {};
+  const controlledLightType = outputDefinition.controlledLightType || Object.keys(lightProfiles)[0] || null;
+  const engineProfile = lightProfiles[controlledLightType] || {};
   return {
     controlledLightType,
-    value: outputDefinition.value,
-    min: { ...outputDefinition.min },
+    value: outputDefinition.value ?? 100,
+    min: { ...(outputDefinition.min || {}) },
     max: {
-      emissiveIntensity: engineProfile.emissiveIntensity,
-      glowSpriteOpacity: engineProfile.glowSpriteOpacity,
-      pointIntensity: engineProfile.pointIntensity
+      emissiveIntensity: engineProfile.emissiveIntensity ?? 1,
+      glowSpriteOpacity: engineProfile.glowSpriteOpacity ?? 0.1,
+      pointIntensity: engineProfile.pointIntensity ?? 0.1
     }
   };
 }
 
 function createHighlightPartStates(shipDefinition) {
   return Object.fromEntries(
-    Object.entries(shipDefinition.materials.highlights).map(([partId, part]) => [
+    Object.entries(shipDefinition.materials?.highlights || {}).map(([partId, part]) => [
       partId,
       {
         id: part.id,
@@ -87,6 +97,8 @@ export class ShipVisualManager {
     this.registerBloomMaterialOverride = registerBloomMaterialOverride;
     this.registerBloomOcclusionTarget = registerBloomOcclusionTarget;
     this.unregisterBloomMaterialOverride = unregisterBloomMaterialOverride;
+    this.shipDefinitions = {};
+    this.defaultShipId = "ship_01";
     this.glowSpriteTexture = this.createGlowSpriteTexture();
     this.bloomMaskMaterial = new THREE.MeshBasicMaterial({
       color: 0x000000,
@@ -131,8 +143,14 @@ export class ShipVisualManager {
     };
   }
 
-  applyToShip({ shipId, root, object }) {
-    const definition = getShipVisualDefinition(shipId);
+  setShipDefinitions(shipDefinitions = {}, defaultShipId = "ship_01") {
+    this.shipDefinitions = shipDefinitions || {};
+    this.defaultShipId = defaultShipId;
+  }
+
+  applyToShip({ shipId, root, object, shipDefinition = null }) {
+    const definition = shipDefinition || getShipVisualDefinition(this.shipDefinitions, shipId, this.defaultShipId);
+    if (!definition) return null;
     const shipState = this.createShipVfxState(definition, root, object);
 
     object.updateWorldMatrix(true, true);
@@ -148,9 +166,13 @@ export class ShipVisualManager {
   }
 
   isEmissiveSurfaceMaterial(material, shipDefinition) {
-    return normalizeSceneName(material?.name).includes(
-      normalizeSceneName(shipDefinition.materials.emissiveSurface.materialName)
-    );
+    const materialName = normalizeSceneName(material?.name);
+    const targets = [
+      shipDefinition.materials?.emissiveSurface?.materialName,
+      ...(shipDefinition.vfx?.lightParts || []).flatMap((part) => part.materialMatches || [])
+    ].filter(Boolean).map((name) => normalizeSceneName(name));
+    if (!targets.length) return false;
+    return targets.some((target) => materialName.includes(target) || target.includes(materialName));
   }
 
   getSelectedMaterialIndices(materials, shipDefinition) {
@@ -160,6 +182,7 @@ export class ShipVisualManager {
   }
 
   getLightProfile(mesh, materials, shipState) {
+    if (Object.keys(shipState.lightProfiles).length === 0) return null;
     const names = [
       mesh.name,
       mesh.parent?.name,
@@ -174,7 +197,7 @@ export class ShipVisualManager {
     });
 
     if (match) return shipState.lightProfiles[match.id];
-    const fallbackId = shipState.definition.vfx.defaultLightType;
+    const fallbackId = shipState.definition.vfx?.defaultLightType;
     return fallbackId ? shipState.lightProfiles[fallbackId] : Object.values(shipState.lightProfiles)[0];
   }
 
@@ -473,6 +496,7 @@ export class ShipVisualManager {
       if (selectedMaterialIndices.length === 0) return;
 
       const profile = this.getLightProfile(child, originalMaterials, shipState);
+      if (!profile) return;
       let meshWasAffected = false;
       const affectedMaterials = [];
       const nextMaterials = originalMaterials.map((material, index) => {
@@ -570,6 +594,7 @@ export class ShipVisualManager {
 
   applyHighlightMaterialColor(shipState) {
     const highlightPart = this.getActiveHighlightPart(shipState);
+    if (!highlightPart) return;
     const color = new THREE.Color(highlightPart.settings.color);
 
     highlightPart.materials.forEach((material) => {
