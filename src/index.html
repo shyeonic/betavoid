@@ -359,6 +359,91 @@
       touch-action: manipulation;
     }
 
+    .beta-space-hud {
+      pointer-events: auto;
+      position: absolute;
+      z-index: 16;
+      left: 50%;
+      top: 2.2vh;
+      display: flex;
+      align-items: center;
+      gap: 1vh;
+      min-height: 4.2vh;
+      padding: 0.7vh 0.8vh 0.7vh 1.2vh;
+      transform: translateX(-50%);
+      border: 0.12vh solid rgba(255, 86, 160, 0.44);
+      border-radius: 0.8vh;
+      background: rgba(18, 20, 34, 0.72);
+      box-shadow: 0 0.8vh 2.8vh rgba(255, 86, 160, 0.16);
+      color: #f4f8ff;
+      backdrop-filter: blur(2.5vh);
+    }
+
+    .beta-space-hud[hidden] {
+      display: none;
+    }
+
+    :root[data-environment-mode="light"] .beta-space-hud {
+      background: rgba(255, 255, 255, 0.78);
+      color: var(--text);
+    }
+
+    .beta-space-hud.out-of-bounds {
+      border-color: rgba(255, 188, 102, 0.72);
+      box-shadow: 0 0.8vh 3.2vh rgba(255, 188, 102, 0.22);
+    }
+
+    .beta-space-hud.game-over-assumed {
+      border-color: rgba(255, 65, 92, 0.8);
+      box-shadow: 0 0.8vh 3.2vh rgba(255, 65, 92, 0.28);
+    }
+
+    .beta-space-timer {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2vh;
+      min-width: 9.5vh;
+      line-height: 1;
+    }
+
+    .beta-space-label {
+      color: var(--muted);
+      font-size: 1vh;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .beta-space-time {
+      font-size: 1.7vh;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
+    .beta-space-boundary {
+      min-width: 10vh;
+      color: #ffbc66;
+      font-size: 1.1vh;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .beta-space-exit {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 6.8vh;
+      height: 3vh;
+      padding: 0 1vh;
+      border-radius: 0.6vh;
+      font-size: 1.15vh;
+      white-space: nowrap;
+    }
+
     .readout-row {
       display: flex;
       line-height: 1;
@@ -2530,6 +2615,15 @@
       <div class="readout-row">
         <span class="readout-value readout-location" id="locationValue">UNKNOWN</span>
       </div>
+    </div>
+
+    <div class="beta-space-hud" id="betaSpaceHud" role="status" aria-live="polite" hidden>
+      <div class="beta-space-timer">
+        <span class="beta-space-label">Beta Space</span>
+        <span class="beta-space-time" id="betaSpaceTimeValue">00:00</span>
+      </div>
+      <span class="beta-space-boundary" id="betaSpaceBoundaryValue" hidden></span>
+      <button class="primary beta-space-exit" id="betaSpaceExitButton" type="button">Exit</button>
     </div>
 
     <div class="touch-dpad" id="touchDpad" aria-hidden="true" hidden>

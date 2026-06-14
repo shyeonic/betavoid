@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Void Rift - Distance Culling / Offscreen Pause</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #020205;
+      color: rgba(235, 245, 255, 0.9);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    canvas { display: block; cursor: grab; }
+    canvas:active { cursor: grabbing; }
+    .hud {
+      position: fixed;
+      left: 14px;
+      top: 14px;
+      width: min(360px, calc(100vw - 28px));
+      padding: 12px 13px;
+      border: 1px solid rgba(130, 220, 255, 0.18);
+      border-radius: 14px;
+      background: rgba(3, 6, 18, 0.56);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 0 28px rgba(0, 180, 255, 0.08);
+      user-select: none;
+      pointer-events: none;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .hud h1 {
+      margin: 0 0 7px;
+      font-size: 14px;
+      color: rgba(190, 245, 255, 0.98);
+    }
+    .controls {
+      opacity: 0.72;
+      margin-bottom: 9px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 12px;
+      padding-top: 9px;
+      border-top: 1px solid rgba(160, 230, 255, 0.12);
+    }
+    .stats b { color: #fff; font-weight: 650; }
+    .status-active { color: #74ffcf; }
+    .status-paused { color: #ffd36e; }
+    .status-culled { color: #ff8383; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<div class="hud">
+  <h1>Void Rift Runtime Test</h1>
+  <div class="controls">
+    W/S 또는 ↑/↓: 앞뒤 이동 · 드래그: 시점 회전 · 휠: 카메라 줌 · 더블클릭: 시점 리셋<br />
+    화면 중앙의 정육면체 = 우주선, 전방의 균열 = 랜덤 우주 오브젝트
+  </div>
+  <div class="stats">
+    <div>Spec: <b id="statSpec">--</b></div>
+    <div>Status: <b id="statStatus">--</b></div>
+    <div>Distance: <b id="statDistance">--</b></div>
+    <div>On screen: <b id="statOnscreen">--</b></div>
+    <div>FPS: <b id="statFps">--</b></div>
+    <div>Draw calls: <b id="statDraws">--</b></div>
+    <div>Particles: <b id="statParticles">--</b></div>
+    <div>CPU update: <b id="statUpdateMs">--</b></div>
+    <div>Cull dist: <b id="statCull">--</b></div>
+    <div>Anim time: <b id="statAnimTime">--</b></div>
+  </div>
+</div>
+
+<script>
+  // 최종 스펙 선택: 'mediumSparse' 또는 'highSparse'
+  const SPEC = 'mediumSparse';
+
+  const SPECS = {
+    mediumSparse: {
+      label: 'Medium Sparse',
+      branchCount: 7,
+      pointsPerBranch: 187,
+      pixelRatioCap: 1.3,
+      riftOpacity: 0.74,
+      particleSizeMultiplier: 1.72,
+      glowOpacity: 0.153,
+      glowSizeScale: 5.55,
+      autoRotateSpeed: 0.045,
+      cullDistance: 150
+    },
+    highSparse: {
+      label: 'High Sparse',
+      branchCount: 11,
+      pointsPerBranch: 322,
+      pixelRatioCap: 1.7,
+      riftOpacity: 0.74,
+      particleSizeMultiplier: 1.72,
+      glowOpacity: 0.18,
+      glowSizeScale: 6.25,
+      autoRotateSpeed: 0.045,
+      cullDistance: 180
+    }
+  };
+
+  const config = SPECS[SPEC];
+  const coreRadius = 1.75;
+  const riftBoundsRadius = 12.5;
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x020205, 0.012);
+
+  const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    powerPreference: 'high-performance'
+  });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, config.pixelRatioCap));
+  renderer.setClearColor(0x020205, 1);
+  if ('outputEncoding' in renderer) renderer.outputEncoding = THREE.sRGBEncoding;
+  document.body.appendChild(renderer.domElement);
+
+  const clock = new THREE.Clock();
+
+  const ui = {
+    spec: document.getElementById('statSpec'),
+    status: document.getElementById('statStatus'),
+    distance: document.getElementById('statDistance'),
+    onscreen: document.getElementById('statOnscreen'),
+    fps: document.getElementById('statFps'),
+    draws: document.getElementById('statDraws'),
+    particles: document.getElementById('statParticles'),
+    updateMs: document.getElementById('statUpdateMs'),
+    cull: document.getElementById('statCull'),
+    animTime: document.getElementById('statAnimTime')
+  };
+
+  // -----------------------------
+  // Ship-centered camera rig
+  // -----------------------------
+  const ship = new THREE.Mesh(
+    new THREE.BoxGeometry(1.25, 1.25, 1.25),
+    new THREE.MeshBasicMaterial({ color: 0x9bd7ff, wireframe: true })
+  );
+  ship.position.set(0, 0, 0);
+  scene.add(ship);
+
+  const shipCore = new THREE.Mesh(
+    new THREE.BoxGeometry(0.78, 0.78, 0.78),
+    new THREE.MeshBasicMaterial({ color: 0x1f5b76 })
+  );
+  ship.add(shipCore);
+
+  const orbit = {
+    theta: 0,
+    phi: 1.34,
+    radius: 10.5,
+    targetTheta: 0,
+    targetPhi: 1.34,
+    targetRadius: 10.5,
+    minRadius: 5.5,
+    maxRadius: 20,
+    isDragging: false,
+    lastX: 0,
+    lastY: 0,
+    pinchDistance: 0
+  };
+
+  const shipState = {
+    riftDistance: 42,
+    minDistance: 6,
+    maxDistance: 240,
+    speed: 28,
+    keys: Object.create(null)
+  };
+
+  function updateCamera() {
+    orbit.theta += (orbit.targetTheta - orbit.theta) * 0.12;
+    orbit.phi += (orbit.targetPhi - orbit.phi) * 0.12;
+    orbit.radius += (orbit.targetRadius - orbit.radius) * 0.16;
+
+    const sinPhi = Math.sin(orbit.phi);
+    camera.position.set(
+      orbit.radius * sinPhi * Math.sin(orbit.theta),
+      orbit.radius * Math.cos(orbit.phi),
+      orbit.radius * sinPhi * Math.cos(orbit.theta)
+    );
+    camera.lookAt(ship.position);
+  }
+
+  const canvas = renderer.domElement;
+
+  canvas.addEventListener('pointerdown', (e) => {
+    orbit.isDragging = true;
+    orbit.lastX = e.clientX;
+    orbit.lastY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!orbit.isDragging) return;
+    const dx = e.clientX - orbit.lastX;
+    const dy = e.clientY - orbit.lastY;
+    orbit.lastX = e.clientX;
+    orbit.lastY = e.clientY;
+
+    orbit.targetTheta -= dx * 0.006;
+    orbit.targetPhi = THREE.MathUtils.clamp(orbit.targetPhi + dy * 0.005, 0.22, Math.PI - 0.22);
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    orbit.isDragging = false;
+    orbit.pinchDistance = 0;
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const zoom = Math.exp(e.deltaY * 0.0012);
+    orbit.targetRadius = THREE.MathUtils.clamp(orbit.targetRadius * zoom, orbit.minRadius, orbit.maxRadius);
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 2) return;
+    e.preventDefault();
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+
+    if (orbit.pinchDistance > 0) {
+      const ratio = orbit.pinchDistance / dist;
+      orbit.targetRadius = THREE.MathUtils.clamp(orbit.targetRadius * ratio, orbit.minRadius, orbit.maxRadius);
+    }
+    orbit.pinchDistance = dist;
+  }, { passive: false });
+
+  canvas.addEventListener('dblclick', () => {
+    orbit.targetTheta = 0;
+    orbit.targetPhi = 1.34;
+    orbit.targetRadius = 10.5;
+  });
+
+  window.addEventListener('keydown', (e) => { shipState.keys[e.code] = true; });
+  window.addEventListener('keyup', (e) => { shipState.keys[e.code] = false; });
+
+  function updateShipDistance(delta) {
+    const forward = shipState.keys.KeyW || shipState.keys.ArrowUp;
+    const backward = shipState.keys.KeyS || shipState.keys.ArrowDown;
+
+    if (forward) shipState.riftDistance -= shipState.speed * delta;
+    if (backward) shipState.riftDistance += shipState.speed * delta;
+
+    shipState.riftDistance = THREE.MathUtils.clamp(
+      shipState.riftDistance,
+      shipState.minDistance,
+      shipState.maxDistance
+    );
+  }
+
+  // -----------------------------
+  // Materials
+  // -----------------------------
+  function makeParticleMaterial({ baseOpacity, sizeScale }) {
+    return new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uBaseOpacity: { value: baseOpacity },
+        uSizeScale: { value: sizeScale },
+        uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, config.pixelRatioCap) }
+      },
+      vertexShader: `
+        attribute vec3 color;
+        attribute float aProgress;
+        attribute float aSeed;
+        attribute float aSize;
+        attribute float aAlpha;
+
+        varying vec3 vColor;
+        varying float vAlpha;
+
+        uniform float uTime;
+        uniform float uSizeScale;
+        uniform float uPixelRatio;
+
+        void main() {
+          vColor = color;
+          float pulse = 0.88 + 0.16 * sin(uTime * 2.15 + aSeed * 6.283 + aProgress * 9.0);
+          vAlpha = aAlpha * pulse;
+
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          float perspective = 300.0 / max(1.0, -mvPosition.z);
+          gl_PointSize = aSize * uSizeScale * perspective * uPixelRatio;
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        varying float vAlpha;
+        uniform float uBaseOpacity;
+
+        void main() {
+          vec2 uv = gl_PointCoord - 0.5;
+          float d = length(uv);
+          float core = smoothstep(0.5, 0.05, d);
+          float haze = smoothstep(0.5, 0.22, d) * 0.38;
+          float alpha = (core + haze) * vAlpha * uBaseOpacity;
+
+          if (alpha < 0.01) discard;
+          gl_FragColor = vec4(vColor, alpha);
+        }
+      `
+    });
+  }
+
+  function makeCoreMaterial() {
+    return new THREE.ShaderMaterial({
+      transparent: false,
+      depthWrite: true,
+      depthTest: true,
+      uniforms: {
+        uTime: { value: 0 },
+        uEdgeStrength: { value: 0.6 },
+        uBaseColor: { value: new THREE.Color(0x000006) },
+        uEdgeColor: { value: new THREE.Color(0x5d00d6) }
+      },
+      vertexShader: `
+        varying vec3 vViewNormal;
+        varying vec3 vViewPosition;
+
+        void main() {
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          vViewPosition = mvPosition.xyz;
+          vViewNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vViewNormal;
+        varying vec3 vViewPosition;
+
+        uniform float uTime;
+        uniform float uEdgeStrength;
+        uniform vec3 uBaseColor;
+        uniform vec3 uEdgeColor;
+
+        void main() {
+          vec3 viewDir = normalize(-vViewPosition);
+          float facing = abs(dot(normalize(vViewNormal), viewDir));
+          float edge = 1.0 - smoothstep(0.02, 0.82, facing);
+          edge = pow(edge, 1.18);
+
+          float pulse = 0.92 + 0.08 * sin(uTime * 1.7);
+          vec3 color = uBaseColor + uEdgeColor * edge * uEdgeStrength * pulse;
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `
+    });
+  }
+
+  // -----------------------------
+  // Rift geometry
+  // -----------------------------
+  function randomUnitVector() {
+    const z = Math.random() * 2 - 1;
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(1 - z * z);
+    return new THREE.Vector3(r * Math.cos(a), r * Math.sin(a), z);
+  }
+
+  const positions = [];
+  const basePositions = [];
+  const colors = [];
+  const progress = [];
+  const seeds = [];
+  const sizes = [];
+  const alphas = [];
+  const drift = [];
+
+  function addBranch(dir, branchLength, branchSeed) {
+    const tangent = Math.abs(dir.y) < 0.92 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+    const sideA = new THREE.Vector3().crossVectors(dir, tangent).normalize();
+    const sideB = new THREE.Vector3().crossVectors(dir, sideA).normalize();
+
+    for (let j = 0; j < config.pointsPerBranch; j++) {
+      const rawT = j / (config.pointsPerBranch - 1);
+      const t = Math.pow(rawT, 1.42);
+
+      if (t > 0.74 && Math.random() < (t - 0.74) * 2.65) continue;
+
+      const radius = t * (coreRadius + branchLength);
+      const spiral = t * 10.5 + branchSeed * 6.283;
+      const rootSpread = THREE.MathUtils.smoothstep(t, 0.045, 0.28);
+      const taper = Math.pow(1.0 - t, 0.78);
+      const branchWidth = (0.012 + 0.46 * rootSpread * taper) * (0.45 + Math.random() * 0.8);
+      const jitter = (Math.random() - 0.5) * 0.24 * rootSpread * taper;
+
+      const curlX = Math.cos(spiral) * branchWidth + jitter;
+      const curlY = Math.sin(spiral) * branchWidth + jitter * 0.5;
+
+      const x = dir.x * radius + sideA.x * curlX + sideB.x * curlY;
+      const y = dir.y * radius + sideA.y * curlX + sideB.y * curlY;
+      const z = dir.z * radius + sideA.z * curlX + sideB.z * curlY;
+
+      positions.push(x, y, z);
+      basePositions.push(x, y, z);
+      progress.push(t);
+
+      const seed = Math.random();
+      seeds.push(seed);
+
+      const fade = 1.0 - t;
+      const c = new THREE.Color();
+      c.setHSL(0.54 + t * 0.24, 0.95, 0.34 + fade * 0.32);
+      colors.push(c.r, c.g, c.b);
+
+      sizes.push((0.055 + (1 - t) * 0.055 + Math.random() * 0.025) * config.particleSizeMultiplier);
+      alphas.push(0.18 + fade * 0.82);
+
+      const driftDir = randomUnitVector().multiplyScalar(0.05 + t * 0.2);
+      drift.push(driftDir.x, driftDir.y, driftDir.z);
+    }
+  }
+
+  for (let i = 0; i < config.branchCount; i++) {
+    addBranch(randomUnitVector(), 5.6 + Math.random() * 4.4, Math.random());
+  }
+
+  const positionArray = new Float32Array(positions);
+  const baseArray = new Float32Array(basePositions);
+  const driftArray = new Float32Array(drift);
+  const progressArray = new Float32Array(progress);
+  const seedArray = new Float32Array(seeds);
+
+  const riftGeometry = new THREE.BufferGeometry();
+  riftGeometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
+  riftGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  riftGeometry.setAttribute('aProgress', new THREE.Float32BufferAttribute(progress, 1));
+  riftGeometry.setAttribute('aSeed', new THREE.Float32BufferAttribute(seeds, 1));
+  riftGeometry.setAttribute('aSize', new THREE.Float32BufferAttribute(sizes, 1));
+  riftGeometry.setAttribute('aAlpha', new THREE.Float32BufferAttribute(alphas, 1));
+
+  const riftGroup = new THREE.Group();
+  scene.add(riftGroup);
+
+  const coreMaterial = makeCoreMaterial();
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(coreRadius * 0.92, 48, 32),
+    coreMaterial
+  );
+  riftGroup.add(core);
+
+  const riftMaterial = makeParticleMaterial({
+    baseOpacity: config.riftOpacity,
+    sizeScale: 1.0
+  });
+
+  const glowMaterial = makeParticleMaterial({
+    baseOpacity: config.glowOpacity,
+    sizeScale: config.glowSizeScale
+  });
+
+  const riftGlow = new THREE.Points(riftGeometry, glowMaterial);
+  const riftParticles = new THREE.Points(riftGeometry, riftMaterial);
+  riftGroup.add(riftGlow);
+  riftGroup.add(riftParticles);
+
+  // 시야 판정용 재사용 객체
+  const frustum = new THREE.Frustum();
+  const projScreenMatrix = new THREE.Matrix4();
+  const riftSphere = new THREE.Sphere(new THREE.Vector3(), riftBoundsRadius);
+
+  let riftAnimTime = 0;
+  let cpuUpdateMs = 0;
+  let fpsFrames = 0;
+  let fpsLastTime = performance.now();
+  let fpsValue = 0;
+
+  function isRiftOnScreen() {
+    camera.updateMatrixWorld();
+    camera.updateProjectionMatrix();
+    projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    frustum.setFromProjectionMatrix(projScreenMatrix);
+
+    riftSphere.center.copy(riftGroup.position);
+    return frustum.intersectsSphere(riftSphere);
+  }
+
+  function updateRiftParticles(time) {
+    const t0 = performance.now();
+
+    for (let i = 0, p = 0; i < progressArray.length; i++, p += 3) {
+      const t = progressArray[i];
+      const seed = seedArray[i];
+      const wave = 1.0 + Math.sin(time * 1.9 + t * 7.4 + seed * 12.0) * (0.018 + t * 0.085);
+      const flow = Math.sin(time * (0.8 + seed * 0.6) + seed * 24.0) * (0.045 + t * 0.18);
+
+      positionArray[p + 0] = baseArray[p + 0] * wave + driftArray[p + 0] * flow;
+      positionArray[p + 1] = baseArray[p + 1] * wave + driftArray[p + 1] * flow;
+      positionArray[p + 2] = baseArray[p + 2] * wave + driftArray[p + 2] * flow;
+    }
+
+    riftGeometry.attributes.position.needsUpdate = true;
+    cpuUpdateMs = cpuUpdateMs * 0.85 + (performance.now() - t0) * 0.15;
+  }
+
+  function updateHud(status, isOnScreen, distance) {
+    ui.spec.textContent = config.label;
+    ui.distance.textContent = `${distance.toFixed(1)}`;
+    ui.onscreen.textContent = isOnScreen ? 'yes' : 'no';
+    ui.fps.textContent = fpsValue ? String(fpsValue) : '--';
+    ui.draws.textContent = String(renderer.info.render.calls);
+    ui.particles.textContent = riftGeometry.attributes.position.count.toLocaleString();
+    ui.updateMs.textContent = status === 'ACTIVE' ? `${cpuUpdateMs.toFixed(3)} ms` : 'paused';
+    ui.cull.textContent = String(config.cullDistance);
+    ui.animTime.textContent = `${riftAnimTime.toFixed(1)}s`;
+
+    ui.status.className = '';
+    if (status === 'ACTIVE') {
+      ui.status.textContent = 'ACTIVE';
+      ui.status.classList.add('status-active');
+    } else if (status === 'OFFSCREEN_PAUSED') {
+      ui.status.textContent = 'OFFSCREEN PAUSED';
+      ui.status.classList.add('status-paused');
+    } else {
+      ui.status.textContent = 'DISTANCE CULLED';
+      ui.status.classList.add('status-culled');
+    }
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    const delta = Math.min(clock.getDelta(), 0.05);
+    updateShipDistance(delta);
+    updateCamera();
+
+    // 우주선 앞쪽(-Z)에 균열이 있다고 가정한다.
+    riftGroup.position.set(0, 0, -shipState.riftDistance);
+
+    const distance = shipState.riftDistance;
+    const distanceCulled = distance > config.cullDistance;
+    riftGroup.visible = !distanceCulled;
+
+    const onScreen = !distanceCulled && isRiftOnScreen();
+    let status = 'ACTIVE';
+
+    if (distanceCulled) {
+      status = 'DISTANCE_CULLED';
+    } else if (!onScreen) {
+      status = 'OFFSCREEN_PAUSED';
+    }
+
+    // 핵심: 거리 culling 또는 화면 밖이면 파티클 CPU 업데이트를 하지 않는다.
+    if (status === 'ACTIVE') {
+      riftAnimTime += delta;
+      riftMaterial.uniforms.uTime.value = riftAnimTime;
+      glowMaterial.uniforms.uTime.value = riftAnimTime;
+      coreMaterial.uniforms.uTime.value = riftAnimTime;
+
+      riftGroup.rotation.y = riftAnimTime * config.autoRotateSpeed;
+      riftGroup.rotation.x = Math.sin(riftAnimTime * 0.18) * 0.08;
+      core.scale.setScalar(1 + Math.sin(riftAnimTime * 2.1) * 0.025);
+
+      updateRiftParticles(riftAnimTime);
+    }
+
+    ship.rotation.y += delta * 0.9;
+    ship.rotation.x = Math.sin(performance.now() * 0.0015) * 0.1;
+
+    renderer.render(scene, camera);
+
+    fpsFrames++;
+    const now = performance.now();
+    if (now - fpsLastTime > 500) {
+      fpsValue = Math.round((fpsFrames * 1000) / (now - fpsLastTime));
+      fpsFrames = 0;
+      fpsLastTime = now;
+      updateHud(status, onScreen, distance);
+    }
+  }
+
+  updateCamera();
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    const pr = Math.min(window.devicePixelRatio || 1, config.pixelRatioCap);
+    renderer.setPixelRatio(pr);
+    riftMaterial.uniforms.uPixelRatio.value = pr;
+    glowMaterial.uniforms.uPixelRatio.value = pr;
+  });
+</script>
+</body>
+</html>

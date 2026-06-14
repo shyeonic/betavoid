@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { BloomRenderPipeline } from "./BloomRenderPipeline.js";
+import { BetaSpaceManager } from "./BetaSpaceManager.js";
 import { HyperdriveWarpLayer } from "./HyperdriveWarpLayer.js";
 import { CONFIG, CONTROL_SETTINGS, DEFAULT_KEY_BINDINGS, KEY_BINDING_GROUPS } from "./config.js";
 import { MinimapManager } from "./MinimapManager.js";
@@ -117,6 +118,11 @@ export class GameManager {
       config: this.worldConfig,
       gameData
     });
+    this.betaSpaceManager = new BetaSpaceManager({
+      worldConfig: this.worldConfig
+    });
+    this.betaSpaceSession = null;
+    this.betaSpaceExitPending = false;
     this.worldMapManager = null;
     this.minimapManager = null;
     this.targetingOverlay = new TargetingOverlay({
@@ -305,7 +311,8 @@ export class GameManager {
       onNavigateToWorldObject: (object) => this.navigateToWorldObject(object),
       onClearWorldSelection: () => this.clearWorldSelection(),
       onEnterTargetCam: () => this.enterTargetCameraMode(),
-      onProcessBetaVoid: (object) => this.processBetaVoidFromUi(object),
+      onEnterBetaSpace: (object) => this.enterBetaSpaceFromUi(object),
+      onExitBetaSpace: () => this.exitBetaSpace({ reason: "manual" }),
       onToggleCameraMode: () => this.requestCameraToggle(),
       onOpenMinimap: () => this.minimapManager?.open()
     });
@@ -720,6 +727,7 @@ export class GameManager {
       resize: () => this.onResize(),
       pagehide: () => {
         if (this.state.phase === "running") {
+          if (this.isBetaSpaceActive()) return;
           // 임시 비활성화용 coast navLog가 있으면 취소하고 즉시 정지 navLog로 교체
           if (this._deactivationLog) {
             void this.worldDataManager.updateNavLog(this._deactivationLog.id, { status: "cancelled", cancelled_at: Date.now() });
@@ -731,6 +739,7 @@ export class GameManager {
       },
       visibilitychange: () => {
         if (this.state.phase !== "running") return;
+        if (this.isBetaSpaceActive()) return;
         if (document.visibilityState === "hidden") {
           this._commitPreflightSnapshot();
           this._commitDeactivationNavLog();
@@ -1532,25 +1541,43 @@ export class GameManager {
       flight_duration: flightDuration
     };
 
-    this.activeNavLogId = this.worldDataManager.createNavLog({
-      target: { x, y, z },
-      from_position: from,
-      flight_start_at: flightStartAt,
-      peak_speed: peakSpeed,
-      flight_duration: flightDuration
-    });
+    if (this.isBetaSpaceActive()) {
+      this.activeNavLogId = this.betaSpaceManager.createNavLog(this.betaSpaceSession, {
+        target: { x, y, z },
+        from_position: from,
+        flight_start_at: flightStartAt,
+        peak_speed: peakSpeed,
+        flight_duration: flightDuration
+      });
+    } else {
+      this.activeNavLogId = this.worldDataManager.createNavLog({
+        target: { x, y, z },
+        from_position: from,
+        flight_start_at: flightStartAt,
+        peak_speed: peakSpeed,
+        flight_duration: flightDuration
+      });
 
-    this.savePlayerShipState({ force: true });
+      this.savePlayerShipState({ force: true });
+    }
   }
 
   clearTarget(message, completed = false) {
     const now = Date.now();
+    const inBetaSpace = this.isBetaSpaceActive();
     const wasHyperdrive = this.isHyperdrive || !!this.hyperdriveLogId;
     if (this.hyperdriveLogId) {
-      void this.worldDataManager.updateNavLog(this.hyperdriveLogId, completed
-        ? { status: "completed", committed: true, completed_at: now }
-        : { status: "cancelled", cancel_reason: "user_manual", cancelled_at: now }
-      );
+      if (inBetaSpace) {
+        this.betaSpaceManager.updateNavLog(this.betaSpaceSession, this.hyperdriveLogId, completed
+          ? { status: "completed", committed: true, completed_at: now }
+          : { status: "cancelled", cancel_reason: "user_manual", cancelled_at: now }
+        );
+      } else {
+        void this.worldDataManager.updateNavLog(this.hyperdriveLogId, completed
+          ? { status: "completed", committed: true, completed_at: now }
+          : { status: "cancelled", cancel_reason: "user_manual", cancelled_at: now }
+        );
+      }
       this.hyperdriveLogId = null;
       this.hyperdriveLog = null;
       this.isHyperdrive = false;
@@ -1561,10 +1588,14 @@ export class GameManager {
       this.isHyperdrive = false;
     }
     if (this.activeNavLogId) {
-      void this.worldDataManager.updateNavLog(this.activeNavLogId, completed
+      const patch = completed
         ? { status: "completed", completed_at: now }
-        : { status: "cancelled", cancelled_at: now }
-      );
+        : { status: "cancelled", cancelled_at: now };
+      if (inBetaSpace) {
+        this.betaSpaceManager.updateNavLog(this.betaSpaceSession, this.activeNavLogId, patch);
+      } else {
+        void this.worldDataManager.updateNavLog(this.activeNavLogId, patch);
+      }
       this.activeNavLogId = null;
     }
     this.state.autopilotPhase = null;
@@ -1573,14 +1604,19 @@ export class GameManager {
     this.activeNavLog = null;
     this.targetMarker.visible = false;
     if (message && !(wasHyperdrive && message === "arrived")) this.ui.showToast(message);
-    this.savePlayerShipState({ force: true });
+    if (!inBetaSpace) this.savePlayerShipState({ force: true });
   }
 
   cancelAutopilot() {
     if (this.state.autopilotPhase === null) return;
     if (this.isHyperdrive) return;
     if (this.activeNavLogId) {
-      this.worldDataManager.updateNavLog(this.activeNavLogId, { status: "cancelled", cancelled_at: Date.now() });
+      const patch = { status: "cancelled", cancelled_at: Date.now() };
+      if (this.isBetaSpaceActive()) {
+        this.betaSpaceManager.updateNavLog(this.betaSpaceSession, this.activeNavLogId, patch);
+      } else {
+        this.worldDataManager.updateNavLog(this.activeNavLogId, patch);
+      }
       this.activeNavLogId = null;
     }
     this.state.autopilotPhase = null;
@@ -1592,6 +1628,10 @@ export class GameManager {
 
   initiateHyperdrive({ x, y, z }) {
     if (this.isHyperdrive) return;
+    if (this.isBetaSpaceActive()) {
+      this.ui.showToast("hyperdrive unavailable in Beta Space");
+      return;
+    }
     if (this.state.autopilotPhase !== null) this.cancelAutopilot();
 
     const { decelerationRate, accelerationRate, pitchRate, yawRate, hyperdriveSpecs } = this.shipStats;
@@ -2113,6 +2153,7 @@ export class GameManager {
   }
 
   _commitDeactivationNavLog(overrideStartAt = null, overrideDesiredSpeed = null) {
+    if (this.isBetaSpaceActive()) return;
     if (this.isHyperdrive && this.state.autopilotPhase === "warping") return;
     if (this.state.autopilotPhase !== null || this.state.speed === 0) return;
 
@@ -2676,6 +2717,8 @@ export class GameManager {
   }
 
   getBgmIdForPosition(dataPosition) {
+    if (this.isBetaSpaceActive()) return "bgm_danger_01";
+
     const sector = this.worldDataManager.getSectorAtPosition(
       dataPosition.x,
       dataPosition.y,
@@ -2729,7 +2772,7 @@ export class GameManager {
   }
 
   async refreshWorldSummary({ force = false } = {}) {
-    if (!this.worldDataManager.db) return;
+    if (!this.worldDataManager.db && !this.isBetaSpaceActive()) return;
     if (!force) {
       const now = performance.now();
       if (this.worldSummaryPending || now - this.worldSummaryLastUpdatedAt < 500) return;
@@ -2739,6 +2782,13 @@ export class GameManager {
     this.worldSummaryPending = true;
     const dataPosition = this.syncWorldRuntimeWithPlayer({ force }) || this.getPlayerDataPosition();
     try {
+      if (this.isBetaSpaceActive()) {
+        const summary = this.betaSpaceManager.getSummary(this.betaSpaceSession, dataPosition);
+        this.worldMapManager.setCurrentSectorId(summary.currentSector?.sector_id || null);
+        this.ui.setWorldSummary(summary);
+        return;
+      }
+
       const summary = await this.worldDataManager.getSummary(dataPosition);
       this.worldMapManager.setCurrentSectorId(summary.currentSector?.sector_id || null);
       this.ui.setWorldSummary(summary);
@@ -2748,7 +2798,8 @@ export class GameManager {
   }
 
   update(dt) {
-    void this.updateBetaVoidLifecycle();
+    if (this.isBetaSpaceActive() && this.updateBetaSpaceState()) return;
+    if (!this.isBetaSpaceActive()) void this.updateBetaVoidLifecycle();
     this.updateAutopilot(dt);
     this.updateThrottleTarget(dt);
     this.updateSpeed(dt);
@@ -2763,6 +2814,7 @@ export class GameManager {
     }
     this.updatePosition(dt);
     this.syncWorldRuntimeWithPlayer();
+    if (this.isBetaSpaceActive() && this.updateBetaSpaceState()) return;
     this.updateCamera(dt);
     this.updateStars();
     this.worldMapManager.update(dt);
@@ -2770,6 +2822,7 @@ export class GameManager {
   }
 
   async savePlayerShipState({ force = false } = {}) {
+    if (this.isBetaSpaceActive()) return;
     if (!this.worldDataManager.db || this.playerShipSavePending || this.worldDataResetting) return;
 
     const now = performance.now();
@@ -3056,6 +3109,10 @@ export class GameManager {
           : "unavailable",
         statusLabel: object.status || "unknown",
         status: object.status || null,
+        activeResetAt: object.active_reset_at ?? null,
+        activeResetIntervalMinutes: object.active_reset_interval_minutes ?? null,
+        variantId: object.variant_id ?? null,
+        sectorId: object.sector_id ?? null,
         hpLabel: object.hp != null ? String(object.hp) : "unavailable",
         sectorName: sectorDefinition
           ? this.i18n.resolveDefinitionText(sectorDefinition, "name", sectorDefinition.name || sectorDefinition.sector_id)
@@ -3089,6 +3146,186 @@ export class GameManager {
     this.initiateHyperdrive(object.target);
   }
 
+  isBetaSpaceActive() {
+    return !!this.betaSpaceSession;
+  }
+
+  findBetaVoidRecord(id) {
+    if (!id) return null;
+    const snapshots = [
+      this.worldDataManager?.snapshot,
+      this.worldMapManager?.snapshot
+    ];
+    for (const snapshot of snapshots) {
+      const betaVoid = (snapshot?.betaVoids || []).find((item) => item.id === id);
+      if (betaVoid) return betaVoid;
+    }
+    return null;
+  }
+
+  createBetaSpaceReturnState() {
+    return {
+      position: {
+        x: this.ship.position.x,
+        y: this.ship.position.y,
+        z: this.ship.position.z
+      },
+      rotation: {
+        x: this.ship.quaternion.x,
+        y: this.ship.quaternion.y,
+        z: this.ship.quaternion.z,
+        w: this.ship.quaternion.w
+      },
+      speed: this.state.speed,
+      desiredSpeed: this.state.desiredSpeed
+    };
+  }
+
+  restoreBetaSpaceReturnState(returnState) {
+    if (!returnState) return;
+    this.ship.position.set(
+      returnState.position?.x ?? 0,
+      returnState.position?.y ?? 0,
+      returnState.position?.z ?? 0
+    );
+    this.ship.quaternion.set(
+      returnState.rotation?.x ?? 0,
+      returnState.rotation?.y ?? 0,
+      returnState.rotation?.z ?? 0,
+      returnState.rotation?.w ?? 1
+    ).normalize();
+    this.state.speed = returnState.speed ?? 0;
+    this.state.desiredSpeed = returnState.desiredSpeed ?? this.state.speed;
+  }
+
+  async enterBetaSpaceFromUi(object) {
+    if (!object?.id || object.kind !== "betaVoid" || this.isBetaSpaceActive()) return;
+    if (!this.worldDataManager.db) {
+      this.ui.showErrorToast("world database unavailable");
+      return;
+    }
+
+    const sourceBetaVoid = this.findBetaVoidRecord(object.id) || {
+      ...object,
+      active_reset_at: object.activeResetAt,
+      sector_id: object.sectorId
+    };
+    if (sourceBetaVoid.status && sourceBetaVoid.status !== "active") {
+      this.ui.showToast("Beta Void unavailable");
+      return;
+    }
+
+    const now = Date.now();
+    const activeResetAt = Number(sourceBetaVoid.active_reset_at ?? object.activeResetAt);
+    if (Number.isFinite(activeResetAt) && activeResetAt <= now) {
+      await this.updateBetaVoidLifecycle({ force: true });
+      this.ui.showToast("Beta Void has reset");
+      return;
+    }
+
+    const returnState = this.createBetaSpaceReturnState();
+    if (this.state.autopilotPhase !== null || this.isHyperdrive) {
+      this.clearTarget(null);
+    }
+    this.exitTargetCameraMode();
+    this.clearWorldSelection();
+    this.activeActions.clear();
+    await this.savePlayerShipState({ force: true });
+
+    const session = this.betaSpaceManager.enter({
+      sourceBetaVoid,
+      returnState,
+      now
+    });
+    this.betaSpaceSession = session;
+    this.betaSpaceExitPending = false;
+
+    this.state.speed = 0;
+    this.state.desiredSpeed = 0;
+    this.state.autopilotPhase = null;
+    this.state.autopilotPeakSpeed = 0;
+    this.navTarget = null;
+    this.activeNavLog = null;
+    this.activeNavLogId = null;
+    this.hyperdriveLog = null;
+    this.hyperdriveLogId = null;
+    this.isHyperdrive = false;
+    this.targetMarker.visible = false;
+
+    const spawnPosition = this.worldMapManager.toRenderVector(session.spawnPosition);
+    this.ship.position.copy(spawnPosition);
+    this.worldMapManager.renderWorld(session.snapshot, session.spawnPosition);
+    this.worldMapManager.setCurrentSectorId("BETA-SPACE");
+    this.syncWorldRuntimeWithPlayer({ force: true });
+    await this.refreshWorldSummary({ force: true });
+    this.updateBetaSpaceState({ showToasts: false });
+    this.ui.showToast("entered Beta Space");
+  }
+
+  async exitBetaSpace({ reason = "manual" } = {}) {
+    const session = this.betaSpaceSession;
+    if (!session || this.betaSpaceExitPending) return;
+    this.betaSpaceExitPending = true;
+
+    this.clearTarget(null);
+    this.activeActions.clear();
+    this.exitTargetCameraMode();
+    this.clearWorldSelection();
+    this.restoreBetaSpaceReturnState(session.returnState);
+    this.betaSpaceSession = null;
+    this.ui.setBetaSpaceState({ active: false });
+
+    try {
+      await this.worldDataManager.processBetaVoidLifecycle();
+      const snapshot = await this.worldDataManager.getWorldSnapshot();
+      this.worldMapManager.renderWorld(snapshot, this.getPlayerDataPosition());
+      this.syncWorldRuntimeWithPlayer({ force: true });
+      await this.refreshWorldSummary({ force: true });
+      await this.savePlayerShipState({ force: true });
+      this.ui.showToast(reason === "expired" ? "Beta Space expired" : "exited Beta Space");
+    } catch (error) {
+      this.ui.showErrorToast(error instanceof Error ? error.message : "Beta Space exit failed");
+    } finally {
+      this.betaSpaceExitPending = false;
+    }
+  }
+
+  updateBetaSpaceState({ showToasts = true } = {}) {
+    const session = this.betaSpaceSession;
+    if (!session) return false;
+
+    const state = this.betaSpaceManager.update(session, {
+      position: this.getPlayerDataPosition(),
+      now: Date.now()
+    });
+    if (!state) return false;
+
+    this.ui.setBetaSpaceState({
+      active: true,
+      remainingMs: state.remainingMs,
+      outOfBoundsRemainingMs: state.outOfBoundsRemainingMs,
+      gameOverAssumed: state.gameOverAssumed
+    });
+
+    if (state.expired) {
+      void this.exitBetaSpace({ reason: "expired" });
+      return true;
+    }
+
+    if (showToasts) {
+      if (state.boundaryEvent === "left") {
+        this.ui.showToast("return to Beta Space within 10s");
+      } else if (state.boundaryEvent === "returned") {
+        this.ui.showToast("Beta Space boundary restored");
+      } else if (state.boundaryEvent === "gameOverAssumed" && !session.gameOverToastShown) {
+        session.gameOverToastShown = true;
+        this.ui.showToast("game over assumed");
+      }
+    }
+
+    return false;
+  }
+
   async processBetaVoidFromUi(object) {
     if (!object?.id || object.kind !== "betaVoid") return;
     if (!this.worldDataManager.db) {
@@ -3110,6 +3347,7 @@ export class GameManager {
   }
 
   async updateBetaVoidLifecycle({ force = false } = {}) {
+    if (this.isBetaSpaceActive()) return;
     if (!this.worldDataManager.db || this.betaVoidLifecyclePending) return;
 
     const now = performance.now();

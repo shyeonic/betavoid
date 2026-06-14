@@ -3,7 +3,7 @@ import { WORLD_CONFIG } from "./worldDefinitions.js";
 
 const DEFAULT_GAME_DATA_BASE_URL = new URL("../gamedata/", import.meta.url);
 const DEFAULT_GMAP_FILE_NAME = "galaxyMapData.gmap";
-const RUNTIME_DATA_SCHEMA_VERSION = 2;
+const RUNTIME_DATA_SCHEMA_VERSION = 3;
 
 const DEFAULT_SHIP_ID = "ship_01";
 const DEFAULT_SHIP_LIGHT_SETTINGS = {
@@ -676,7 +676,9 @@ function createRuntimeWorldConfigSignature(config) {
     resourceMinDistance: config.resourceMinDistance,
     buildingMinDistance: config.buildingMinDistance,
     betaVoidMinDistance: config.betaVoidMinDistance,
-    betaVoidPlacementMargin: config.betaVoidPlacementMargin
+    betaVoidPlacementMargin: config.betaVoidPlacementMargin,
+    betaVoidActiveResetMinMinutes: config.betaVoidActiveResetMinMinutes,
+    betaVoidActiveResetMaxMinutes: config.betaVoidActiveResetMaxMinutes
   };
 }
 

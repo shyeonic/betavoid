@@ -1,6 +1,9 @@
 import { WORLD_CONFIG } from "./worldDefinitions.js";
 
 const STORE_NAMES = ["sectors", "chunks", "resourceNodes", "buildings", "betaVoids", "meta", "settings"];
+const BETA_VOID_ENEMY_TYPES = ["pirate_squad", "raider_group", "hostile_fleet"];
+const BETA_VOID_RISK_LEVELS = [1, 2, 3, 4, 5];
+const BETA_VOID_REWARD_TABLE_IDS = ["loot_91", "loot_92", "loot_93"];
 
 function requireDefinitionMap(gameData, key) {
   const definitions = gameData?.[key];
@@ -607,6 +610,7 @@ export class WorldDataManager {
         const betaVoid = this.createBetaVoidRecord({
           createdAt,
           position,
+          rng,
           sector,
           sectorIndex: placedCount + 1
         });
@@ -647,6 +651,7 @@ export class WorldDataManager {
         const betaVoid = this.createBetaVoidRecord({
           createdAt,
           position,
+          rng,
           sector,
           sectorIndex
         });
@@ -674,9 +679,17 @@ export class WorldDataManager {
     return Math.max(0, Math.round(Number(value) || 0));
   }
 
-  createBetaVoidRecord({ createdAt, position, sector, sectorIndex }) {
+  createBetaVoidRecord({ createdAt, position, rng = null, sector, sectorIndex }) {
     const chunkData = this.getChunkDataAtPosition(position);
     const sectorId = sector?.sector_id || "GLOBAL";
+    const activeRng = typeof rng === "function"
+      ? rng
+      : createSeededRandom(`${sectorId}:${sectorIndex}:${createdAt}:beta-void`);
+    const lifecycleState = this.createBetaVoidActiveLifecycleState({
+      generation: 1,
+      now: createdAt,
+      rng: activeRng
+    });
     return {
       id: `BETA-VOID-${sectorId}-${sectorIndex}`,
       sector_id: sector?.sector_id || null,
@@ -688,9 +701,57 @@ export class WorldDataManager {
       status: "active",
       defeated_at: null,
       next_regeneration_checkpoint: null,
+      ...lifecycleState,
       created_at: createdAt,
       last_updated: createdAt
     };
+  }
+
+  createBetaVoidActiveLifecycleState({ generation = 1, now = Date.now(), rng }) {
+    return {
+      ...this.createBetaVoidVariant({ generation, now, rng }),
+      ...this.createBetaVoidActiveResetSchedule(now, rng)
+    };
+  }
+
+  createBetaVoidVariant({ generation = 1, now = Date.now(), rng }) {
+    const random = typeof rng === "function" ? rng : Math.random;
+    const enemyType = pickRandom(BETA_VOID_ENEMY_TYPES, random) || BETA_VOID_ENEMY_TYPES[0];
+    const riskLevel = pickRandom(BETA_VOID_RISK_LEVELS, random) || BETA_VOID_RISK_LEVELS[0];
+    const rewardTableId = pickRandom(BETA_VOID_REWARD_TABLE_IDS, random) || BETA_VOID_REWARD_TABLE_IDS[0];
+    const variantSuffix = Math.floor(random() * 0xffffffff).toString(36).padStart(7, "0");
+
+    return {
+      variant_id: `variant_${now}_${variantSuffix}`,
+      variant_created_at: now,
+      variant_generation: Math.max(1, Math.round(Number(generation) || 1)),
+      enemy_type: enemyType,
+      enemy_power: 500 + riskLevel * 250,
+      risk_level: riskLevel,
+      reward_table_id: rewardTableId
+    };
+  }
+
+  createBetaVoidActiveResetSchedule(now = Date.now(), rng = Math.random) {
+    const minMinutes = this.getBetaVoidActiveResetMinMinutes();
+    const maxMinutes = this.getBetaVoidActiveResetMaxMinutes();
+    const random = typeof rng === "function" ? rng : Math.random;
+    const resetMinutes = Math.floor(random() * (maxMinutes - minMinutes + 1)) + minMinutes;
+
+    return {
+      active_reset_interval_minutes: resetMinutes,
+      active_reset_at: now + resetMinutes * 60 * 1000
+    };
+  }
+
+  getBetaVoidActiveResetMinMinutes() {
+    return Math.max(1, Math.round(Number(this.config.betaVoidActiveResetMinMinutes) || 30));
+  }
+
+  getBetaVoidActiveResetMaxMinutes() {
+    const minMinutes = this.getBetaVoidActiveResetMinMinutes();
+    const configuredMax = Math.round(Number(this.config.betaVoidActiveResetMaxMinutes) || 240);
+    return Math.max(minMinutes, configuredMax);
   }
 
   findAvailableBetaVoidPositionInSector({ sector, placedObjects, rng }) {
@@ -769,6 +830,8 @@ export class WorldDataManager {
       status: "defeated",
       defeated_at: processedAt,
       next_regeneration_checkpoint: this.getNext6HourCheckpoint(processedAt),
+      active_reset_at: null,
+      active_reset_interval_minutes: null,
       last_updated: processedAt
     };
     await this.putStoreValue("betaVoids", updated);
@@ -815,28 +878,65 @@ export class WorldDataManager {
     ];
 
     for (const betaVoid of betaVoids) {
-      if (betaVoid.status !== "defeated" || !betaVoid.next_regeneration_checkpoint) continue;
-      if (now < betaVoid.next_regeneration_checkpoint) continue;
+      if (betaVoid.status === "defeated") {
+        if (!betaVoid.next_regeneration_checkpoint) continue;
+        if (now < betaVoid.next_regeneration_checkpoint) continue;
 
-      const sector = sectors.find((item) => item.sector_id === betaVoid.sector_id);
-      if (!sector) continue;
+        const rng = createSeededRandom(`${worldMeta.seed}:${betaVoid.id}:defeated:${betaVoid.next_regeneration_checkpoint}`);
+        const position = this.findAvailableBetaVoidResetPosition({
+          betaVoid,
+          chunks,
+          placedObjects,
+          rng,
+          sectors
+        });
+        if (!position) continue;
 
-      const position = this.findAvailableBetaVoidPositionInSector({
-        sector,
-        placedObjects: placedObjects.filter((item) => item.id !== betaVoid.id),
-        rng: createSeededRandom(`${worldMeta.seed}:${betaVoid.id}:${now}`)
+        this.resetBetaVoidToActive({
+          betaVoid,
+          now,
+          position,
+          rng
+        });
+        changed = true;
+        continue;
+      }
+
+      if (betaVoid.status !== "active") continue;
+
+      if (!betaVoid.active_reset_at) {
+        const rng = createSeededRandom(`${worldMeta.seed}:${betaVoid.id}:active-backfill:${now}`);
+        Object.assign(
+          betaVoid,
+          this.createBetaVoidActiveLifecycleState({
+            generation: Math.max(1, Math.round(Number(betaVoid.variant_generation) || 1)),
+            now,
+            rng
+          }),
+          { last_updated: now }
+        );
+        changed = true;
+        continue;
+      }
+
+      if (now < betaVoid.active_reset_at) continue;
+
+      const rng = createSeededRandom(`${worldMeta.seed}:${betaVoid.id}:active:${betaVoid.active_reset_at}`);
+      const position = this.findAvailableBetaVoidResetPosition({
+        betaVoid,
+        chunks,
+        placedObjects,
+        rng,
+        sectors
       });
       if (!position) continue;
-      const chunkData = this.getChunkDataAtPosition(position);
 
-      betaVoid.position = position;
-      betaVoid.chunk_id = chunkData.chunk_id;
-      betaVoid.chunk = chunkData.chunk;
-      betaVoid.local_position = chunkData.local_position;
-      betaVoid.status = "active";
-      betaVoid.defeated_at = null;
-      betaVoid.next_regeneration_checkpoint = null;
-      betaVoid.last_updated = now;
+      this.resetBetaVoidToActive({
+        betaVoid,
+        now,
+        position,
+        rng
+      });
       changed = true;
     }
 
@@ -852,6 +952,53 @@ export class WorldDataManager {
       changed,
       betaVoids
     };
+  }
+
+  findAvailableBetaVoidResetPosition({ betaVoid, chunks = [], placedObjects, rng, sectors = [] }) {
+    const sector = sectors.find((item) => item.sector_id === betaVoid.sector_id);
+    const otherObjects = placedObjects.filter((item) => item.id !== betaVoid.id);
+    if (sector) {
+      return this.findAvailableBetaVoidPositionInSector({
+        sector,
+        placedObjects: otherObjects,
+        rng
+      });
+    }
+
+    const chunk = chunks.find((item) => item.chunk_id === betaVoid.chunk_id);
+    if (chunk) {
+      return this.findAvailableBetaVoidPositionInBounds({
+        bounds: chunk.global_bounds,
+        placedObjects: otherObjects,
+        rng
+      });
+    }
+
+    return betaVoid.position ? { ...betaVoid.position } : null;
+  }
+
+  resetBetaVoidToActive({ betaVoid, now = Date.now(), position, rng }) {
+    const chunkData = this.getChunkDataAtPosition(position);
+    const nextGeneration = Math.max(1, Math.round(Number(betaVoid.variant_generation) || 1) + 1);
+    const lifecycleState = this.createBetaVoidActiveLifecycleState({
+      generation: nextGeneration,
+      now,
+      rng
+    });
+
+    Object.assign(betaVoid, {
+      position,
+      chunk_id: chunkData.chunk_id,
+      chunk: chunkData.chunk,
+      local_position: chunkData.local_position,
+      status: "active",
+      defeated_at: null,
+      next_regeneration_checkpoint: null,
+      ...lifecycleState,
+      last_updated: now
+    });
+
+    return betaVoid;
   }
 
   createResourceManager(createdAt = Date.now(), resourceNodes = [], buildings = []) {
@@ -1512,6 +1659,12 @@ function hashSeed(seed) {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+function pickRandom(items, rng = Math.random) {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  const index = Math.min(items.length - 1, Math.floor(rng() * items.length));
+  return items[index];
 }
 
 function lerp(min, max, t) {

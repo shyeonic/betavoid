@@ -59,7 +59,8 @@ export class UIManager {
     this.onNavigateToWorldObject = null;
     this.onClearWorldSelection = null;
     this.onEnterTargetCam = null;
-    this.onProcessBetaVoid = null;
+    this.onEnterBetaSpace = null;
+    this.onExitBetaSpace = null;
     this.boundBindingKeyDown = (event) => this.onBindingKeyDown(event);
     this.boundSelectionSummaryGlobalPointerDown = (event) => this.onSelectionSummaryGlobalPointerDown(event);
     this.elements = {
@@ -147,6 +148,10 @@ export class UIManager {
       warpHudCurrentArc: this.getElement("#warpHudCurrentArc"),
       warpHudCurrentDot: this.getElement("#warpHudCurrentDot"),
       warpHudValue: this.getElement("#warpHudValue"),
+      betaSpaceHud: this.getElement("#betaSpaceHud"),
+      betaSpaceTimeValue: this.getElement("#betaSpaceTimeValue"),
+      betaSpaceBoundaryValue: this.getElement("#betaSpaceBoundaryValue"),
+      betaSpaceExitButton: this.getElement("#betaSpaceExitButton"),
       bottomNavMenuButton: this.getElement("#bottomNavMenuButton"),
       bottomNavMenuStack: this.getElement("#bottomNavMenuStack"),
       bottomNavScanButton: this.getElement("#bottomNavScanButton"),
@@ -271,7 +276,8 @@ export class UIManager {
     onNavigateToWorldObject,
     onClearWorldSelection,
     onEnterTargetCam,
-    onProcessBetaVoid,
+    onEnterBetaSpace,
+    onExitBetaSpace,
     onToggleCameraMode,
     onOpenMinimap
   }) {
@@ -283,7 +289,8 @@ export class UIManager {
     this.onHyperdriveToWorldObject = typeof onHyperdriveToWorldObject === "function" ? onHyperdriveToWorldObject : null;
     this.onClearWorldSelection = typeof onClearWorldSelection === "function" ? onClearWorldSelection : null;
     this.onEnterTargetCam = typeof onEnterTargetCam === "function" ? onEnterTargetCam : null;
-    this.onProcessBetaVoid = typeof onProcessBetaVoid === "function" ? onProcessBetaVoid : null;
+    this.onEnterBetaSpace = typeof onEnterBetaSpace === "function" ? onEnterBetaSpace : null;
+    this.onExitBetaSpace = typeof onExitBetaSpace === "function" ? onExitBetaSpace : null;
 
     this.elements.startGateScene.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
@@ -608,13 +615,13 @@ export class UIManager {
         return;
       }
 
-      const processButton = target?.closest("[data-beta-void-process-id]");
-      if (processButton) {
+      const betaSpaceButton = target?.closest("[data-beta-space-enter-id]");
+      if (betaSpaceButton) {
         event.preventDefault();
-        const object = this.findRenderedObject(processButton.dataset.betaVoidProcessId);
-        if (!object || !this.onProcessBetaVoid) return;
+        const object = this.findRenderedObject(betaSpaceButton.dataset.betaSpaceEnterId);
+        if (!object || !this.onEnterBetaSpace) return;
 
-        this.onProcessBetaVoid(object);
+        this.onEnterBetaSpace(object);
         this.closeObjectList({ restoreFocus: false });
         return;
       }
@@ -666,6 +673,11 @@ export class UIManager {
     this.elements.speedControl.addEventListener("pointerup", (event) => this.onSpeedPointerEnd(event));
     this.elements.speedControl.addEventListener("pointercancel", (event) => this.onSpeedPointerEnd(event));
     this.elements.speedGauge.addEventListener("keydown", (event) => this.onSpeedKeyDown(event));
+    this.elements.betaSpaceExitButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.onExitBetaSpace?.();
+    });
     this.elements.errorToast.addEventListener("click", () => this.dismissErrorToast());
     document.addEventListener("pointerdown", this.boundSelectionSummaryGlobalPointerDown, true);
   }
@@ -975,14 +987,14 @@ export class UIManager {
       return;
     }
 
-    const processButton = target?.closest("[data-beta-void-process-id]");
-    if (processButton) {
+    const betaSpaceButton = target?.closest("[data-beta-space-enter-id]");
+    if (betaSpaceButton) {
       event.preventDefault();
       event.stopPropagation();
-      const object = this.findRenderedObject(processButton.dataset.betaVoidProcessId);
-      if (!object || !this.onProcessBetaVoid) return;
+      const object = this.findRenderedObject(betaSpaceButton.dataset.betaSpaceEnterId);
+      if (!object || !this.onEnterBetaSpace) return;
 
-      this.onProcessBetaVoid(object);
+      this.onEnterBetaSpace(object);
       this.closeObjectList({ restoreFocus: false });
       return;
     }
@@ -1053,6 +1065,14 @@ export class UIManager {
 
     if (includeSelect) bubble.append(select);
     bubble.append(detail, nav, hyperNav);
+    if (object.kind === "betaVoid" && object.status === "active") {
+      const enter = document.createElement("button");
+      enter.className = "object-bubble-button";
+      enter.type = "button";
+      enter.dataset.betaSpaceEnterId = object.id;
+      enter.textContent = this.t("ui.scanner.enterBetaSpace", "Enter Beta Space");
+      bubble.append(enter);
+    }
     return bubble;
   }
 
@@ -1129,12 +1149,12 @@ export class UIManager {
 
     const actions = [nav, hyperNav];
     if (object.kind === "betaVoid" && object.status === "active") {
-      const process = document.createElement("button");
-      process.className = "object-navigate-button";
-      process.type = "button";
-      process.dataset.betaVoidProcessId = object.id;
-      process.textContent = "Process";
-      actions.push(process);
+      const enter = document.createElement("button");
+      enter.className = "object-navigate-button";
+      enter.type = "button";
+      enter.dataset.betaSpaceEnterId = object.id;
+      enter.textContent = this.t("ui.scanner.enterBetaSpace", "Enter Beta Space");
+      actions.push(enter);
     }
 
     popup.append(header, ...lines, ...actions);
@@ -1191,6 +1211,15 @@ export class UIManager {
         event.preventDefault();
         event.stopPropagation();
         if (this.onHyperdriveToWorldObject) this.onHyperdriveToWorldObject(object);
+        this.closeSelectionSummaryBubble();
+        return;
+      }
+
+      const betaSpaceButton = target?.closest("[data-beta-space-enter-id]");
+      if (betaSpaceButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (this.onEnterBetaSpace) this.onEnterBetaSpace(object);
         this.closeSelectionSummaryBubble();
       }
     });
@@ -1261,13 +1290,13 @@ export class UIManager {
     popup.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
       const navButton = target?.closest("[data-object-nav-id]");
-      const processButton = target?.closest("[data-beta-void-process-id]");
-      if (!navButton && !processButton) return;
+      const betaSpaceButton = target?.closest("[data-beta-space-enter-id]");
+      if (!navButton && !betaSpaceButton) return;
 
       event.preventDefault();
       event.stopPropagation();
       if (navButton && this.onNavigateToWorldObject) this.onNavigateToWorldObject(object);
-      if (processButton && this.onProcessBetaVoid) this.onProcessBetaVoid(object);
+      if (betaSpaceButton && this.onEnterBetaSpace) this.onEnterBetaSpace(object);
       this.closeStandaloneObjectDetailPopup();
     });
 
@@ -2221,6 +2250,47 @@ export class UIManager {
   dismissErrorToast() {
     this.elements.errorToast.classList.remove("visible");
     window.setTimeout(() => this.showNextErrorToast(), 180);
+  }
+
+  setBetaSpaceState({
+    active = false,
+    remainingMs = 0,
+    outOfBoundsRemainingMs = null,
+    gameOverAssumed = false
+  } = {}) {
+    this.elements.betaSpaceHud.hidden = !active;
+    this.elements.betaSpaceHud.classList.toggle("visible", active);
+    this.elements.betaSpaceHud.classList.toggle("out-of-bounds", active && outOfBoundsRemainingMs !== null);
+    this.elements.betaSpaceHud.classList.toggle("game-over-assumed", active && gameOverAssumed);
+    if (!active) {
+      this.elements.betaSpaceTimeValue.textContent = "00:00";
+      this.elements.betaSpaceBoundaryValue.hidden = true;
+      this.elements.betaSpaceBoundaryValue.textContent = "";
+      return;
+    }
+
+    this.elements.betaSpaceTimeValue.textContent = this.formatBetaSpaceDuration(remainingMs);
+    if (gameOverAssumed) {
+      this.elements.betaSpaceBoundaryValue.hidden = false;
+      this.elements.betaSpaceBoundaryValue.textContent = "GAME OVER FLAG";
+    } else if (outOfBoundsRemainingMs !== null) {
+      this.elements.betaSpaceBoundaryValue.hidden = false;
+      this.elements.betaSpaceBoundaryValue.textContent = `BOUNDARY ${this.formatBetaSpaceDuration(outOfBoundsRemainingMs)}`;
+    } else {
+      this.elements.betaSpaceBoundaryValue.hidden = true;
+      this.elements.betaSpaceBoundaryValue.textContent = "";
+    }
+  }
+
+  formatBetaSpaceDuration(ms) {
+    const totalSeconds = Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const pad = (value) => String(value).padStart(2, "0");
+    return hours > 0
+      ? `${hours}:${pad(minutes)}:${pad(seconds)}`
+      : `${pad(minutes)}:${pad(seconds)}`;
   }
 
   updateHud(snapshot) {

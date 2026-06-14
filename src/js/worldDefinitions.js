@@ -24,5 +24,7 @@ export const WORLD_CONFIG = {
   buildingMinDistance: 1600,
   buildingResourceMinDistance: 800,
   betaVoidMinDistance: 200,
-  betaVoidPlacementMargin: 500
+  betaVoidPlacementMargin: 500,
+  betaVoidActiveResetMinMinutes: 30,
+  betaVoidActiveResetMaxMinutes: 240
 };
