@@ -1,0 +1,1668 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Void Zero HUD Design System Editor</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel: rgba(10, 20, 36, 0.86);
+      --panel-strong: #0a1624;
+      --line: rgba(60, 128, 190, 0.28);
+      --text: #c4e2f6;
+      --muted: #4e7a94;
+      --accent: #63d2ff;
+      --warn: #ffbc66;
+      --danger: #e36f6f;
+      --svg-default-color: #5278a8;
+      --ui_color: #ffffff;
+      --ui_target_color: #00ff66;
+      --bg: #060e1a;
+      --speed-gauge-bg: rgba(10, 22, 38, 0.85);
+      --speed-gauge-border: rgba(60, 128, 190, 0.55);
+      --speed-values-color: rgba(180, 220, 248, 0.90);
+      --speed-gauge-zero-color: rgba(255, 255, 255, 0.25);
+      --speed-gauge-target-color: #63d2ff;
+      --speed-gauge-target-shadow: rgba(99, 210, 255, 0.35);
+      --selection-bg: rgba(10, 20, 36, 0.88);
+      --selection-border: rgba(60, 128, 190, 0.30);
+      --selection-hover-border: rgba(80, 160, 220, 0.50);
+      --selection-hover-bg: rgba(10, 22, 40, 0.96);
+      --bubble-bg: #0d1e30;
+      --bubble-border: rgba(60, 128, 190, 0.22);
+      --bubble-button-bg: #0d1e30;
+      --backdrop-bg: rgba(4, 10, 20, 0.60);
+      --backdrop-blur: 0.6vh;
+      --list-panel-shadow: rgba(0, 30, 70, 0.50);
+      --row-hover-bg: rgba(255, 255, 255, 0.06);
+      --row-active-bg: rgba(20, 50, 80, 0.70);
+      --row-active-shadow: rgba(60, 180, 255, 0.60);
+      --navigate-border: rgba(60, 180, 255, 0.55);
+      --navigate-bg: rgba(60, 180, 255, 0.14);
+      --btn-active-bg: rgba(15, 42, 72, 0.80);
+      --selection-active-bg: rgba(8, 26, 50, 0.98);
+      --list-inner: rgba(0, 255, 102, 0.75);
+      --icon-close: url("../rss/svg/ui_close.svg");
+      --icon-settings: url("../rss/svg/ui_settings.svg");
+      --icon-scan: url("../rss/svg/ui_scan.svg");
+      --icon-player: url("../rss/svg/ui_player.svg");
+      --icon-menu: url("../rss/svg/ui_menu.svg");
+      --icon-main: url("../rss/svg/ui_main.svg");
+      --icon-toggle: url("../rss/svg/ui_main_toggle.svg");
+      --icon-arrow: url("../rss/svg/ui_arrow_right_01.svg");
+      --icon-logo: url("../rss/svg/logo_void.svg");
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .editor-shell {
+      display: grid;
+      grid-template-columns: minmax(340px, 1fr) minmax(340px, 1fr) minmax(320px, 0.84fr);
+      width: 100vw;
+      height: 100vh;
+      min-height: 0;
+      background: var(--line);
+      gap: 1px;
+    }
+
+    .column {
+      min-width: 0;
+      min-height: 0;
+      background: var(--panel);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .column-header {
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-strong);
+    }
+
+    .column-title {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 750;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .column-title::before {
+      content: "";
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+      background: currentColor;
+      -webkit-mask: var(--icon-logo) center / contain no-repeat;
+      mask: var(--icon-logo) center / contain no-repeat;
+      color: var(--accent);
+    }
+
+    .column-kicker {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .preview-panel {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      place-items: stretch;
+      background:
+        linear-gradient(90deg, var(--line) 1px, transparent 1px),
+        linear-gradient(0deg, var(--line) 1px, transparent 1px),
+        var(--bg);
+      background-size: 28px 28px;
+      padding: 14px;
+    }
+
+    .preview {
+      --bg: #f3fbff;
+      --panel: rgba(246, 251, 255, 0.74);
+      --panel-strong: #edf7ff;
+      --line: rgba(43, 98, 140, 0.22);
+      --text: #133047;
+      --muted: #537083;
+      --accent: #63d2ff;
+      --warn: #ffbc66;
+      --danger: #e36f6f;
+      --svg-default-color: #6975A0;
+      --ui_color: #6975A0;
+      --ui_target_color: #7373ff;
+      --speed-gauge-bg: rgba(255, 255, 255, 0.8);
+      --speed-gauge-border: rgba(43, 98, 140, 0.6);
+      --speed-values-color: rgba(19, 48, 71, 0.88);
+      --speed-gauge-zero-color: #00000066;
+      --speed-gauge-target-color: #6975a0;
+      --speed-gauge-target-shadow: rgb(10 17 113 / 30%);
+      --selection-bg: rgba(246, 251, 255, 0.82);
+      --selection-border: rgba(43, 98, 140, 0.26);
+      --selection-hover-border: rgba(43, 98, 140, 0.44);
+      --selection-hover-bg: rgba(246, 251, 255, 0.94);
+      --bubble-bg: #fff;
+      --bubble-border: rgba(43, 98, 140, 0.16);
+      --bubble-button-bg: #fff;
+      --backdrop-bg: rgb(237 249 255 / 45%);
+      --backdrop-blur: 0.4vh;
+      --list-panel-shadow: rgba(66, 139, 190, 0.22);
+      --row-hover-bg: rgba(255, 255, 255, 0.45);
+      --row-active-bg: rgba(229, 246, 255, 0.78);
+      --row-active-shadow: rgba(99, 210, 255, 0.78);
+      --navigate-border: rgba(99, 210, 255, 0.62);
+      --navigate-bg: rgba(99, 210, 255, 0.18);
+      --btn-active-bg: rgba(206, 238, 255, 0.85);
+      --selection-active-bg: rgba(200, 238, 255, 0.92);
+      --list-inner: rgba(0, 0, 255, 0.45);
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      color: var(--text);
+      background:
+        linear-gradient(90deg, var(--line) 1px, transparent 1px),
+        linear-gradient(0deg, var(--line) 1px, transparent 1px),
+        var(--bg);
+      background-size: 44px 44px, 44px 44px, auto;
+      border: 0.12vh solid var(--line);
+      border-radius: 8px;
+      isolation: isolate;
+    }
+
+    .preview::before,
+    .preview::after {
+      content: "";
+      position: absolute;
+      inset: 10%;
+      z-index: -1;
+      border: 0.12vh solid var(--line);
+      transform: rotate(16deg);
+      opacity: 0.7;
+      pointer-events: none;
+    }
+
+    .preview::after {
+      inset: 22%;
+      transform: rotate(-19deg);
+      border-color: var(--navigate-border);
+    }
+
+    .preview[data-mode="dark"] {
+      color-scheme: dark;
+    }
+
+    .preview[data-mode="light"] {
+      color-scheme: light;
+    }
+
+    .hud-layout {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      min-height: 0;
+      padding: 14px;
+      gap: 12px;
+    }
+
+    .hud-topbar {
+      height: 42px;
+      display: grid;
+      grid-template-columns: minmax(120px, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 0 10px;
+      border: 0.12vh solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+    }
+
+    .identity {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .identity .logo {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      color: var(--accent);
+      background: currentColor;
+      -webkit-mask: var(--icon-logo) center / contain no-repeat;
+      mask: var(--icon-logo) center / contain no-repeat;
+    }
+
+    .sync-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .sync-state i {
+      width: 7px;
+      height: 7px;
+      flex: 0 0 auto;
+      background: var(--ui_target_color);
+      box-shadow: 0 0 10px var(--ui_target_color);
+    }
+
+    .hud-stage {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(150px, 0.86fr) minmax(100px, 0.68fr);
+      align-items: start;
+      gap: 12px;
+    }
+
+    .target-rings {
+      position: absolute;
+      left: 50%;
+      top: 48%;
+      width: min(34vw, 210px);
+      max-width: 46%;
+      aspect-ratio: 1;
+      transform: translate(-50%, -50%);
+      border: 0.12vh solid var(--navigate-border);
+      border-radius: 50%;
+      pointer-events: none;
+      opacity: 0.88;
+    }
+
+    .target-rings::before,
+    .target-rings::after {
+      content: "";
+      position: absolute;
+      inset: 16%;
+      border: 0.12vh solid var(--selection-border);
+      border-radius: 50%;
+    }
+
+    .target-rings::after {
+      inset: 47%;
+      border-color: var(--danger);
+      border-radius: 0;
+      transform: rotate(45deg);
+    }
+
+    .hud-card {
+      min-width: 0;
+      border: 0.12vh solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 0.4vh 1.6vh rgba(66, 139, 190, 0.18);
+    }
+
+    .selection-panel {
+      align-self: start;
+      display: grid;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      border-bottom: 0.12vh solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 720;
+    }
+
+    .panel-header span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .target-list {
+      display: grid;
+    }
+
+    .target-row {
+      width: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 46px;
+      padding: 8px 10px;
+      border: 0;
+      border-bottom: 0.12vh solid var(--line);
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+    }
+
+    .target-row:hover {
+      background: var(--selection-hover-bg);
+    }
+
+    .target-row.active {
+      background: var(--row-active-bg);
+      box-shadow: inset 0.32vh 0 0 var(--row-active-shadow);
+    }
+
+    .target-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .target-meta {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .target-tag {
+      justify-self: end;
+      min-width: 42px;
+      padding: 4px 6px;
+      border: 0.12vh solid var(--bubble-border);
+      border-radius: 6px;
+      color: var(--ui_target_color);
+      background: var(--navigate-bg);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+    }
+
+    .telemetry-panel {
+      align-self: start;
+      padding: 10px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .meter-block {
+      display: grid;
+      gap: 6px;
+    }
+
+    .meter-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 720;
+    }
+
+    .meter-label b {
+      color: var(--text);
+      font-weight: 760;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .bar {
+      position: relative;
+      height: 9px;
+      overflow: hidden;
+      border: 0.12vh solid var(--line);
+      border-radius: 5px;
+      background: var(--selection-border);
+    }
+
+    .bar span {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--value);
+      background: var(--ui_target_color);
+    }
+
+    .bar.warning span {
+      background: var(--danger);
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      padding: 4px;
+      border: 0.12vh solid var(--line);
+      border-radius: 8px;
+      background: var(--selection-bg);
+    }
+
+    .segment-btn {
+      min-width: 0;
+      min-height: 28px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 720;
+    }
+
+    .segment-btn.active {
+      border-color: var(--navigate-border);
+      background: var(--navigate-bg);
+      color: var(--text);
+    }
+
+    .hud-bottom {
+      display: grid;
+      grid-template-columns: minmax(150px, 1fr) auto;
+      align-items: end;
+      gap: 12px;
+    }
+
+    .speed-panel {
+      min-width: 0;
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+    }
+
+    .speed-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 720;
+    }
+
+    .speed-header b {
+      color: var(--text);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .speed-range {
+      width: 100%;
+      height: 22px;
+      margin: 0;
+      accent-color: var(--accent);
+    }
+
+    .speed-track {
+      position: relative;
+      height: 8px;
+      overflow: hidden;
+      border: 0.12vh solid var(--speed-gauge-border);
+      border-radius: 5px;
+      background: var(--speed-gauge-bg);
+    }
+
+    .speed-track span {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--speed-fill);
+      background: var(--speed-gauge-target-color);
+      box-shadow: 0 0 1.6vh var(--speed-gauge-target-shadow);
+    }
+
+    .bottom-nav {
+      display: grid;
+      grid-template-columns: repeat(5, 40px);
+      gap: 6px;
+      padding: 6px;
+      border: 0.12vh solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+    }
+
+    .icon-btn {
+      position: relative;
+      width: 40px;
+      height: 40px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--muted);
+    }
+
+    .icon-btn::before {
+      content: "";
+      position: absolute;
+      inset: 9px;
+      background: currentColor;
+      -webkit-mask: var(--icon) center / contain no-repeat;
+      mask: var(--icon) center / contain no-repeat;
+    }
+
+    .icon-btn:hover,
+    .icon-btn.active {
+      border-color: var(--navigate-border);
+      background: var(--navigate-bg);
+      color: var(--text);
+    }
+
+    .icon-btn[data-action="open-scanner"] {
+      --icon: var(--icon-scan);
+    }
+
+    .icon-btn[data-action="open-pilot"] {
+      --icon: var(--icon-player);
+    }
+
+    .icon-btn[data-action="open-settings"] {
+      --icon: var(--icon-settings);
+    }
+
+    .icon-btn[data-action="toggle-route"] {
+      --icon: var(--icon-toggle);
+    }
+
+    .icon-btn[data-action="toggle-warp"] {
+      --icon: var(--icon-main);
+    }
+
+    .hud-popup-layer {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: var(--backdrop-bg);
+      backdrop-filter: blur(var(--backdrop-blur));
+      z-index: 5;
+    }
+
+    .preview.popup-open .hud-popup-layer {
+      display: flex;
+    }
+
+    .popup-panel {
+      width: min(420px, 100%);
+      max-height: min(520px, 90%);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      border: 0.12vh solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-strong);
+      box-shadow: 0 2.4vh 7vh var(--list-panel-shadow);
+    }
+
+    .popup-header {
+      min-height: 46px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 10px 8px 14px;
+      border-bottom: 0.12vh solid var(--line);
+    }
+
+    .popup-title {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+      font-weight: 780;
+    }
+
+    .close-btn {
+      --icon: var(--icon-close);
+      width: 34px;
+      height: 34px;
+    }
+
+    .popup-body {
+      min-height: 0;
+      overflow: auto;
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .data-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .data-cell {
+      min-width: 0;
+      padding: 10px;
+      border: 0.12vh solid var(--line);
+      border-radius: 8px;
+      background: var(--bubble-bg);
+    }
+
+    .data-label {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 720;
+    }
+
+    .data-value {
+      margin-top: 5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 780;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .popup-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .text-btn {
+      min-width: 0;
+      min-height: 34px;
+      border: 0.12vh solid var(--line);
+      border-radius: 7px;
+      background: var(--bubble-button-bg);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 730;
+    }
+
+    .text-btn.primary,
+    .text-btn.active {
+      border-color: var(--navigate-border);
+      background: var(--navigate-bg);
+    }
+
+    .text-btn.danger {
+      border-color: var(--danger);
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .palette-panel {
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      display: grid;
+      align-content: start;
+      gap: 14px;
+      padding: 14px;
+      background: var(--panel-strong);
+    }
+
+    .palette-toolbar {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .editor-btn {
+      min-width: 0;
+      min-height: 34px;
+      border: 0.12vh solid rgba(43, 98, 140, 0.17);
+      border-radius: 0.8vh;
+      background: rgba(255, 255, 255, 0.6);
+      color: var(--text);
+      font-size: 1.3vh;
+      font-weight: 730;
+      text-transform: uppercase;
+    }
+
+    .editor-btn:hover {
+      border-color: rgba(99, 210, 255, 0.7);
+    }
+
+    .token-table {
+      display: grid;
+      gap: 1px;
+      overflow: hidden;
+      max-height: clamp(260px, 46vh, 520px);
+      overflow-y: auto;
+      scrollbar-color: var(--accent) transparent;
+      border: 0.12vh solid var(--line);
+      border-radius: 1.1vh;
+      background: var(--line);
+    }
+
+    .token-table::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    .token-table::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .token-table::-webkit-scrollbar-thumb {
+      border: 2px solid var(--panel-strong);
+      border-radius: 999px;
+      background: var(--accent);
+    }
+
+    .token-row {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(88px, 0.7fr) minmax(92px, 1fr) minmax(92px, 1fr);
+      gap: 1px;
+      background: var(--line);
+    }
+
+    .token-cell {
+      min-width: 0;
+      min-height: 46px;
+      display: grid;
+      align-content: center;
+      gap: 4px;
+      padding: 8px;
+      background: var(--panel);
+    }
+
+    .token-row.head .token-cell {
+      min-height: 34px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 760;
+      background: var(--panel-strong);
+    }
+
+    .token-row.head {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    .token-name {
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 760;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .token-var {
+      color: var(--muted);
+      font-size: 10px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .color-field {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 7px;
+      align-items: center;
+    }
+
+    .color-field input[type="color"] {
+      width: 28px;
+      height: 28px;
+      border: 0.12vh solid var(--line);
+      border-radius: 0.8vh;
+      padding: 0;
+      background: transparent;
+    }
+
+    .color-field input[type="text"],
+    .token-value-field {
+      min-width: 0;
+      height: 28px;
+      border: 0.12vh solid rgba(43, 98, 140, 0.16);
+      border-radius: 0.8vh;
+      padding: 0 7px;
+      background: rgba(255, 255, 255, 0.58);
+      color: var(--text);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      outline: none;
+    }
+
+    .color-field input[type="text"]:focus,
+    .token-value-field:focus {
+      border-color: rgba(99, 210, 255, 0.7);
+    }
+
+    .swatch-board {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .swatch {
+      min-width: 0;
+      min-height: 58px;
+      display: grid;
+      align-content: end;
+      gap: 3px;
+      padding: 8px;
+      border: 0.12vh solid var(--bubble-border);
+      border-radius: 1.1vh;
+      color: var(--label-color, #fff);
+      background: var(--swatch-color);
+      font-size: 10px;
+      font-weight: 720;
+      overflow: hidden;
+    }
+
+    .swatch small {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 9px;
+      font-weight: 640;
+      opacity: 0.86;
+    }
+
+    .code-output {
+      min-height: 140px;
+      resize: vertical;
+      border: 0.12vh solid var(--line);
+      border-radius: 1.1vh;
+      padding: 10px;
+      background: var(--panel);
+      color: var(--text);
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.55;
+      outline: none;
+    }
+
+    .status-line {
+      min-height: 16px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    @media (max-width: 1180px) {
+      body {
+        overflow: auto;
+      }
+
+      .editor-shell {
+        height: auto;
+        min-height: 100vh;
+        grid-template-columns: 1fr;
+      }
+
+      .preview-panel {
+        height: 720px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .preview-panel {
+        padding: 8px;
+        height: 680px;
+      }
+
+      .hud-layout {
+        padding: 10px;
+      }
+
+      .hud-stage {
+        grid-template-columns: 1fr;
+      }
+
+      .telemetry-panel {
+        max-width: 220px;
+      }
+
+      .hud-bottom {
+        grid-template-columns: 1fr;
+      }
+
+      .bottom-nav {
+        justify-self: end;
+      }
+
+      .token-row {
+        grid-template-columns: minmax(72px, 0.6fr) minmax(84px, 1fr) minmax(84px, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="editor-shell" aria-label="HUD design system editor">
+    <section class="column">
+      <header class="column-header">
+        <div class="column-title">Light Mode</div>
+        <div class="column-kicker">Synced HUD</div>
+      </header>
+      <div class="preview-panel">
+        <section class="preview" id="lightPreview" data-mode="light" aria-label="Light mode preview"></section>
+      </div>
+    </section>
+
+    <section class="column">
+      <header class="column-header">
+        <div class="column-title">Dark Mode</div>
+        <div class="column-kicker">Synced HUD</div>
+      </header>
+      <div class="preview-panel">
+        <section class="preview" id="darkPreview" data-mode="dark" aria-label="Dark mode preview"></section>
+      </div>
+    </section>
+
+    <aside class="column">
+      <header class="column-header">
+        <div class="column-title">Palette</div>
+        <div class="column-kicker" id="stateKicker">Idle</div>
+      </header>
+      <section class="palette-panel" aria-label="Color palette panel">
+        <div class="palette-toolbar">
+          <button class="editor-btn" type="button" data-command="reset-palette">Reset</button>
+          <button class="editor-btn" type="button" data-command="randomize-accent">Accent</button>
+          <button class="editor-btn" type="button" data-command="copy-css">CSS</button>
+        </div>
+
+        <div class="token-table" id="tokenTable" aria-label="Theme tokens"></div>
+
+        <div class="swatch-board" id="swatchBoard" aria-label="Active swatches"></div>
+
+        <textarea class="code-output" id="codeOutput" spellcheck="false" aria-label="CSS token output"></textarea>
+        <div class="status-line" id="statusLine" aria-live="polite"></div>
+      </section>
+    </aside>
+  </main>
+
+  <script>
+    const tokenDefs = [
+      { key: "panel", label: "Panel", css: "--panel", kind: "color" },
+      { key: "panelStrong", label: "Panel Strong", css: "--panel-strong", kind: "color" },
+      { key: "line", label: "Line", css: "--line", kind: "color" },
+      { key: "text", label: "Text", css: "--text", kind: "color" },
+      { key: "muted", label: "Muted", css: "--muted", kind: "color" },
+      { key: "accent", label: "Accent", css: "--accent", kind: "color" },
+      { key: "warn", label: "Warning", css: "--warn", kind: "color" },
+      { key: "danger", label: "Danger", css: "--danger", kind: "color" },
+      { key: "svgDefaultColor", label: "SVG Default", css: "--svg-default-color", kind: "color" },
+      { key: "uiColor", label: "UI Color", css: "--ui_color", kind: "color" },
+      { key: "uiTargetColor", label: "UI Target", css: "--ui_target_color", kind: "color" },
+      { key: "bg", label: "Background", css: "--bg", kind: "color" },
+      { key: "speedGaugeBg", label: "Speed Gauge BG", css: "--speed-gauge-bg", kind: "color" },
+      { key: "speedGaugeBorder", label: "Speed Gauge Border", css: "--speed-gauge-border", kind: "color" },
+      { key: "speedValuesColor", label: "Speed Values", css: "--speed-values-color", kind: "color" },
+      { key: "speedGaugeZeroColor", label: "Speed Zero", css: "--speed-gauge-zero-color", kind: "color" },
+      { key: "speedGaugeTargetColor", label: "Speed Target", css: "--speed-gauge-target-color", kind: "color" },
+      { key: "speedGaugeTargetShadow", label: "Speed Shadow", css: "--speed-gauge-target-shadow", kind: "color" },
+      { key: "selectionBg", label: "Selection BG", css: "--selection-bg", kind: "color" },
+      { key: "selectionBorder", label: "Selection Border", css: "--selection-border", kind: "color" },
+      { key: "selectionHoverBorder", label: "Selection Hover Border", css: "--selection-hover-border", kind: "color" },
+      { key: "selectionHoverBg", label: "Selection Hover BG", css: "--selection-hover-bg", kind: "color" },
+      { key: "bubbleBg", label: "Bubble BG", css: "--bubble-bg", kind: "color" },
+      { key: "bubbleBorder", label: "Bubble Border", css: "--bubble-border", kind: "color" },
+      { key: "bubbleButtonBg", label: "Bubble Button BG", css: "--bubble-button-bg", kind: "color" },
+      { key: "backdropBg", label: "Backdrop BG", css: "--backdrop-bg", kind: "color" },
+      { key: "backdropBlur", label: "Backdrop Blur", css: "--backdrop-blur", kind: "value" },
+      { key: "listPanelShadow", label: "List Shadow", css: "--list-panel-shadow", kind: "color" },
+      { key: "rowHoverBg", label: "Row Hover BG", css: "--row-hover-bg", kind: "color" },
+      { key: "rowActiveBg", label: "Row Active BG", css: "--row-active-bg", kind: "color" },
+      { key: "rowActiveShadow", label: "Row Active Shadow", css: "--row-active-shadow", kind: "color" },
+      { key: "navigateBorder", label: "Navigate Border", css: "--navigate-border", kind: "color" },
+      { key: "navigateBg", label: "Navigate BG", css: "--navigate-bg", kind: "color" },
+      { key: "btnActiveBg", label: "Button Active BG", css: "--btn-active-bg", kind: "color" },
+      { key: "selectionActiveBg", label: "Selection Active BG", css: "--selection-active-bg", kind: "color" },
+      { key: "listInner", label: "List Inner", css: "--list-inner", kind: "color" }
+    ];
+
+    const defaultTokens = {
+      light: {
+        panel: "rgba(246, 251, 255, 0.74)",
+        panelStrong: "#edf7ff",
+        line: "rgba(43, 98, 140, 0.22)",
+        text: "#133047",
+        muted: "#537083",
+        accent: "#63d2ff",
+        warn: "#ffbc66",
+        danger: "#e36f6f",
+        svgDefaultColor: "#6975A0",
+        uiColor: "#6975A0",
+        uiTargetColor: "#7373ff",
+        bg: "#f3fbff",
+        speedGaugeBg: "rgba(255, 255, 255, 0.8)",
+        speedGaugeBorder: "rgba(43, 98, 140, 0.6)",
+        speedValuesColor: "rgba(19, 48, 71, 0.88)",
+        speedGaugeZeroColor: "#00000066",
+        speedGaugeTargetColor: "#6975a0",
+        speedGaugeTargetShadow: "rgb(10 17 113 / 30%)",
+        selectionBg: "rgba(246, 251, 255, 0.82)",
+        selectionBorder: "rgba(43, 98, 140, 0.26)",
+        selectionHoverBorder: "rgba(43, 98, 140, 0.44)",
+        selectionHoverBg: "rgba(246, 251, 255, 0.94)",
+        bubbleBg: "#fff",
+        bubbleBorder: "rgba(43, 98, 140, 0.16)",
+        bubbleButtonBg: "#fff",
+        backdropBg: "rgb(237 249 255 / 45%)",
+        backdropBlur: "0.4vh",
+        listPanelShadow: "rgba(66, 139, 190, 0.22)",
+        rowHoverBg: "rgba(255, 255, 255, 0.45)",
+        rowActiveBg: "rgba(229, 246, 255, 0.78)",
+        rowActiveShadow: "rgba(99, 210, 255, 0.78)",
+        navigateBorder: "rgba(99, 210, 255, 0.62)",
+        navigateBg: "rgba(99, 210, 255, 0.18)",
+        btnActiveBg: "rgba(206, 238, 255, 0.85)",
+        selectionActiveBg: "rgba(200, 238, 255, 0.92)",
+        listInner: "rgba(0, 0, 255, 0.45)"
+      },
+      dark: {
+        panel: "rgba(10, 20, 36, 0.86)",
+        panelStrong: "#0a1624",
+        line: "rgba(60, 128, 190, 0.28)",
+        text: "#c4e2f6",
+        muted: "#4e7a94",
+        accent: "#63d2ff",
+        warn: "#ffbc66",
+        danger: "#e36f6f",
+        svgDefaultColor: "#5278a8",
+        uiColor: "#ffffff",
+        uiTargetColor: "#00ff66",
+        bg: "#060e1a",
+        speedGaugeBg: "rgba(10, 22, 38, 0.85)",
+        speedGaugeBorder: "rgba(60, 128, 190, 0.55)",
+        speedValuesColor: "rgba(180, 220, 248, 0.90)",
+        speedGaugeZeroColor: "rgba(255, 255, 255, 0.25)",
+        speedGaugeTargetColor: "#63d2ff",
+        speedGaugeTargetShadow: "rgba(99, 210, 255, 0.35)",
+        selectionBg: "rgba(10, 20, 36, 0.88)",
+        selectionBorder: "rgba(60, 128, 190, 0.30)",
+        selectionHoverBorder: "rgba(80, 160, 220, 0.50)",
+        selectionHoverBg: "rgba(10, 22, 40, 0.96)",
+        bubbleBg: "#0d1e30",
+        bubbleBorder: "rgba(60, 128, 190, 0.22)",
+        bubbleButtonBg: "#0d1e30",
+        backdropBg: "rgba(4, 10, 20, 0.60)",
+        backdropBlur: "0.6vh",
+        listPanelShadow: "rgba(0, 30, 70, 0.50)",
+        rowHoverBg: "rgba(255, 255, 255, 0.06)",
+        rowActiveBg: "rgba(20, 50, 80, 0.70)",
+        rowActiveShadow: "rgba(60, 180, 255, 0.60)",
+        navigateBorder: "rgba(60, 180, 255, 0.55)",
+        navigateBg: "rgba(60, 180, 255, 0.14)",
+        btnActiveBg: "rgba(15, 42, 72, 0.80)",
+        selectionActiveBg: "rgba(8, 26, 50, 0.98)",
+        listInner: "rgba(0, 255, 102, 0.75)"
+      }
+    };
+
+    const targets = [
+      { name: "Relay Node Aster", meta: "Sector LI-03", range: "2.4u", heat: 24 },
+      { name: "Ore Carrier V-19", meta: "Neutral transponder", range: "7.8u", heat: 41 },
+      { name: "Beta Rift Marker", meta: "Unstable beacon", range: "12u", heat: 73 }
+    ];
+
+    const state = {
+      tokens: clone(defaultTokens),
+      popup: null,
+      targetIndex: 0,
+      speed: 68,
+      navMode: "NAV",
+      routeActive: true,
+      warpActive: false,
+      alertLevel: 42
+    };
+
+    const paletteHistory = {
+      limit: 80,
+      undo: [],
+      redo: []
+    };
+
+    const views = {
+      light: document.querySelector("#lightPreview"),
+      dark: document.querySelector("#darkPreview")
+    };
+    const tokenTable = document.querySelector("#tokenTable");
+    const swatchBoard = document.querySelector("#swatchBoard");
+    const codeOutput = document.querySelector("#codeOutput");
+    const statusLine = document.querySelector("#statusLine");
+    const stateKicker = document.querySelector("#stateKicker");
+
+    function clone(value) {
+      return JSON.parse(JSON.stringify(value));
+    }
+
+    function normalizeHex(value) {
+      const raw = String(value || "").trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(raw)) {
+        return raw.toLowerCase();
+      }
+      if (/^#[0-9a-fA-F]{8}$/.test(raw)) {
+        return raw.slice(0, 7).toLowerCase();
+      }
+      if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
+        return "#" + raw.slice(1).split("").map((char) => char + char).join("").toLowerCase();
+      }
+      return null;
+    }
+
+    function byteToHex(value) {
+      return Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0");
+    }
+
+    function cssColorToHex(value) {
+      const hex = normalizeHex(value);
+      if (hex) {
+        return hex;
+      }
+      const raw = String(value || "").trim();
+      if (!/^rgba?\(/i.test(raw)) {
+        return null;
+      }
+      const parts = raw.match(/-?\d*\.?\d+%?/g);
+      if (!parts || parts.length < 3) {
+        return null;
+      }
+      const channels = parts.slice(0, 3).map((part) => {
+        if (part.endsWith("%")) {
+          return parseFloat(part) * 2.55;
+        }
+        return parseFloat(part);
+      });
+      return `#${channels.map(byteToHex).join("")}`;
+    }
+
+    function normalizeTokenValue(value) {
+      return String(value || "").trim();
+    }
+
+    function setStatus(message) {
+      statusLine.textContent = message;
+      stateKicker.textContent = message || "Idle";
+      window.clearTimeout(setStatus.timer);
+      if (message) {
+        setStatus.timer = window.setTimeout(() => {
+          statusLine.textContent = "";
+          stateKicker.textContent = "Idle";
+        }, 1800);
+      }
+    }
+
+    function tokensMatch(left, right) {
+      return JSON.stringify(left) === JSON.stringify(right);
+    }
+
+    function pushPaletteUndo(previousTokens) {
+      if (tokensMatch(previousTokens, state.tokens)) {
+        return;
+      }
+      paletteHistory.undo.push(clone(previousTokens));
+      if (paletteHistory.undo.length > paletteHistory.limit) {
+        paletteHistory.undo.shift();
+      }
+      paletteHistory.redo = [];
+    }
+
+    function applyPaletteChange(mutator, message, options = {}) {
+      const previousTokens = clone(state.tokens);
+      mutator();
+      if (tokensMatch(previousTokens, state.tokens)) {
+        return false;
+      }
+      pushPaletteUndo(previousTokens);
+      if (options.patchOnly) {
+        refreshPaletteSurface();
+      } else {
+        renderEditor(options);
+      }
+      setStatus(message);
+      return true;
+    }
+
+    function undoPaletteChange() {
+      if (!paletteHistory.undo.length) {
+        setStatus("Nothing to undo");
+        return;
+      }
+      const currentTokens = clone(state.tokens);
+      const previousTokens = paletteHistory.undo.pop();
+      paletteHistory.redo.push(currentTokens);
+      state.tokens = previousTokens;
+      renderEditor({ keepTokenScroll: true });
+      setStatus("Palette undo");
+    }
+
+    function redoPaletteChange() {
+      if (!paletteHistory.redo.length) {
+        setStatus("Nothing to redo");
+        return;
+      }
+      const currentTokens = clone(state.tokens);
+      const nextTokens = paletteHistory.redo.pop();
+      paletteHistory.undo.push(currentTokens);
+      if (paletteHistory.undo.length > paletteHistory.limit) {
+        paletteHistory.undo.shift();
+      }
+      state.tokens = nextTokens;
+      renderEditor({ keepTokenScroll: true });
+      setStatus("Palette redo");
+    }
+
+    function applyTokens(view, mode) {
+      tokenDefs.forEach((token) => {
+        view.style.setProperty(token.css, state.tokens[mode][token.key]);
+      });
+    }
+
+    function refreshPaletteSurface() {
+      applyTokens(document.documentElement, "dark");
+      applyTokens(views.light, "light");
+      applyTokens(views.dark, "dark");
+      renderSwatches();
+      codeOutput.value = buildCssOutput();
+    }
+
+    function renderPreview(mode) {
+      const view = views[mode];
+      const target = targets[state.targetIndex];
+      applyTokens(view, mode);
+      view.classList.toggle("popup-open", Boolean(state.popup));
+      view.innerHTML = `
+        <div class="hud-layout">
+          <header class="hud-topbar">
+            <div class="identity"><span class="logo" aria-hidden="true"></span><span>VZ HUD / ${mode.toUpperCase()}</span></div>
+            <div class="sync-state"><i aria-hidden="true"></i><span>${state.navMode} ${state.speed}%</span></div>
+          </header>
+
+          <section class="hud-stage" aria-label="${mode} HUD surface">
+            <div class="target-rings" aria-hidden="true"></div>
+            <aside class="hud-card selection-panel">
+              <div class="panel-header"><span>Targets</span><span>${targets.length}</span></div>
+              <div class="target-list">
+                ${targets.map((item, index) => `
+                  <button class="target-row ${index === state.targetIndex ? "active" : ""}" type="button" data-action="select-target" data-target-index="${index}">
+                    <span>
+                      <span class="target-name">${item.name}</span>
+                      <span class="target-meta">${item.meta}</span>
+                    </span>
+                    <span class="target-tag">${item.range}</span>
+                  </button>
+                `).join("")}
+              </div>
+            </aside>
+
+            <aside class="hud-card telemetry-panel">
+              <div class="meter-block">
+                <div class="meter-label"><span>Signal</span><b>${Math.max(8, 100 - target.heat)}%</b></div>
+                <div class="bar" style="--value: ${Math.max(8, 100 - target.heat)}%"><span></span></div>
+              </div>
+              <div class="meter-block">
+                <div class="meter-label"><span>Heat</span><b>${target.heat}%</b></div>
+                <div class="bar warning" style="--value: ${target.heat}%"><span></span></div>
+              </div>
+              <div class="segmented" role="group" aria-label="Navigation mode">
+                ${["SCAN", "NAV", "FIT"].map((label) => `
+                  <button class="segment-btn ${state.navMode === label ? "active" : ""}" type="button" data-action="set-nav-mode" data-nav-mode="${label}">${label}</button>
+                `).join("")}
+              </div>
+              <div class="popup-actions">
+                <button class="text-btn ${state.routeActive ? "active" : ""}" type="button" data-action="toggle-route">Route</button>
+                <button class="text-btn ${state.warpActive ? "active" : ""}" type="button" data-action="toggle-warp">Warp</button>
+              </div>
+            </aside>
+          </section>
+
+          <footer class="hud-bottom">
+            <section class="hud-card speed-panel">
+              <div class="speed-header"><span>Velocity</span><b>${state.speed}</b></div>
+              <input class="speed-range" type="range" min="0" max="100" value="${state.speed}" data-action="set-speed" aria-label="Velocity">
+              <div class="speed-track" style="--speed-fill: ${state.speed}%"><span></span></div>
+            </section>
+
+            <nav class="bottom-nav" aria-label="HUD actions">
+              <button class="icon-btn ${state.popup === "scanner" ? "active" : ""}" type="button" data-action="open-scanner" aria-label="Scanner" title="Scanner"></button>
+              <button class="icon-btn ${state.popup === "pilot" ? "active" : ""}" type="button" data-action="open-pilot" aria-label="Pilot" title="Pilot"></button>
+              <button class="icon-btn ${state.popup === "settings" ? "active" : ""}" type="button" data-action="open-settings" aria-label="Settings" title="Settings"></button>
+              <button class="icon-btn ${state.routeActive ? "active" : ""}" type="button" data-action="toggle-route" aria-label="Route" title="Route"></button>
+              <button class="icon-btn ${state.warpActive ? "active" : ""}" type="button" data-action="toggle-warp" aria-label="Warp" title="Warp"></button>
+            </nav>
+          </footer>
+        </div>
+
+        <div class="hud-popup-layer">
+          ${renderPopup(target)}
+        </div>
+      `;
+    }
+
+    function renderPopup(target) {
+      if (!state.popup) {
+        return "";
+      }
+      const titleMap = {
+        scanner: "Scanner",
+        pilot: "Pilot",
+        settings: "Settings"
+      };
+      if (state.popup === "settings") {
+        return `
+          <section class="popup-panel" role="dialog" aria-modal="true" aria-label="Settings">
+            <header class="popup-header">
+              <div class="popup-title">${titleMap[state.popup]}</div>
+              <button class="icon-btn close-btn" type="button" data-action="close-popup" aria-label="Close" title="Close"></button>
+            </header>
+            <div class="popup-body">
+              <div class="segmented" role="group" aria-label="Render scale">
+                ${["50", "75", "100"].map((label) => `<button class="segment-btn ${label === "100" ? "active" : ""}" type="button">${label}</button>`).join("")}
+              </div>
+              <div class="data-grid">
+                <div class="data-cell"><div class="data-label">Theme</div><div class="data-value">Dual</div></div>
+                <div class="data-cell"><div class="data-label">Route</div><div class="data-value">${state.routeActive ? "Active" : "Idle"}</div></div>
+                <div class="data-cell"><div class="data-label">Warp</div><div class="data-value">${state.warpActive ? "Armed" : "Cold"}</div></div>
+                <div class="data-cell"><div class="data-label">Mode</div><div class="data-value">${state.navMode}</div></div>
+              </div>
+              <div class="popup-actions">
+                <button class="text-btn primary" type="button" data-action="toggle-route">Route</button>
+                <button class="text-btn danger" type="button" data-action="close-popup">Close</button>
+              </div>
+            </div>
+          </section>
+        `;
+      }
+
+      return `
+        <section class="popup-panel" role="dialog" aria-modal="true" aria-label="${titleMap[state.popup]}">
+          <header class="popup-header">
+            <div class="popup-title">${titleMap[state.popup]}</div>
+            <button class="icon-btn close-btn" type="button" data-action="close-popup" aria-label="Close" title="Close"></button>
+          </header>
+          <div class="popup-body">
+            <div class="data-grid">
+              <div class="data-cell"><div class="data-label">Target</div><div class="data-value">${target.name}</div></div>
+              <div class="data-cell"><div class="data-label">Range</div><div class="data-value">${target.range}</div></div>
+              <div class="data-cell"><div class="data-label">Velocity</div><div class="data-value">${state.speed}</div></div>
+              <div class="data-cell"><div class="data-label">Signal</div><div class="data-value">${Math.max(8, 100 - target.heat)}%</div></div>
+            </div>
+            <div class="meter-block">
+              <div class="meter-label"><span>Alert</span><b>${state.alertLevel}%</b></div>
+              <div class="bar warning" style="--value: ${state.alertLevel}%"><span></span></div>
+            </div>
+            <div class="popup-actions">
+              <button class="text-btn primary" type="button" data-action="toggle-warp">Warp</button>
+              <button class="text-btn" type="button" data-action="select-next-target">Next</button>
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    function renderTokenTable() {
+      tokenTable.innerHTML = `
+        <div class="token-row head">
+          <div class="token-cell">Token</div>
+          <div class="token-cell">Light</div>
+          <div class="token-cell">Dark</div>
+        </div>
+        ${tokenDefs.map((token) => `
+          <div class="token-row">
+            <div class="token-cell">
+              <div class="token-name">${token.label}</div>
+              <div class="token-var">${token.css}</div>
+            </div>
+            ${["light", "dark"].map((mode) => `
+              <div class="token-cell">
+                ${renderTokenInput(token, mode)}
+              </div>
+            `).join("")}
+          </div>
+        `).join("")}
+      `;
+    }
+
+    function renderTokenInput(token, mode) {
+      const value = state.tokens[mode][token.key];
+      if (token.kind !== "color") {
+        return `<input class="token-value-field" type="text" value="${escapeAttribute(value)}" data-token-mode="${mode}" data-token-key="${token.key}" data-token-kind="${token.kind}" aria-label="${mode} ${token.label} value">`;
+      }
+      return `
+        <label class="color-field">
+          <input type="color" value="${cssColorToHex(value) || cssColorToHex(defaultTokens.dark.bg)}" data-token-mode="${mode}" data-token-key="${token.key}" data-token-kind="${token.kind}" aria-label="${mode} ${token.label} picker">
+          <input type="text" value="${escapeAttribute(value)}" data-token-mode="${mode}" data-token-key="${token.key}" data-token-kind="${token.kind}" aria-label="${mode} ${token.label} CSS value">
+        </label>
+      `;
+    }
+
+    function escapeAttribute(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function renderSwatches() {
+      const selected = ["bg", "panel", "panelStrong", "line", "text", "accent", "uiTargetColor", "navigateBg", "rowActiveBg", "danger"];
+      swatchBoard.innerHTML = selected.map((key) => {
+        const token = tokenDefs.find((item) => item.key === key);
+        const color = state.tokens.dark[key];
+        const labelColor = getReadableTextColor(color);
+        return `<div class="swatch" style="--swatch-color: ${color}; --label-color: ${labelColor}"><span>${token.label}</span><small>${color}</small></div>`;
+      }).join("");
+    }
+
+    function getReadableTextColor(hex) {
+      const value = cssColorToHex(hex) || cssColorToHex(defaultTokens.dark.bg);
+      const r = parseInt(value.slice(1, 3), 16);
+      const g = parseInt(value.slice(3, 5), 16);
+      const b = parseInt(value.slice(5, 7), 16);
+      const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+      return yiq >= 145 ? state.tokens.dark.bg : state.tokens.dark.text;
+    }
+
+    function buildCssOutput() {
+      const lines = [];
+      ["light", "dark"].forEach((mode) => {
+        lines.push(`[data-environment-mode="${mode}"] {`);
+        tokenDefs.forEach((token) => {
+          lines.push(`  ${token.css}: ${state.tokens[mode][token.key]};`);
+        });
+        lines.push("}");
+        lines.push("");
+      });
+      return lines.join("\n").trim();
+    }
+
+    function syncTokenControl(mode, key, sourceInput) {
+      const value = state.tokens[mode][key];
+      const selector = `[data-token-mode="${mode}"][data-token-key="${key}"]`;
+      tokenTable.querySelectorAll(selector).forEach((input) => {
+        if (input === sourceInput && input.type !== "color") {
+          return;
+        }
+        if (input.type === "color") {
+          input.value = cssColorToHex(value) || cssColorToHex(defaultTokens.dark.bg);
+        } else {
+          input.value = value;
+        }
+      });
+    }
+
+    function renderEditor(options = {}) {
+      const tokenScrollTop = options.keepTokenScroll ? tokenTable.scrollTop : 0;
+      applyTokens(document.documentElement, "dark");
+      renderPreview("light");
+      renderPreview("dark");
+      renderTokenTable();
+      if (options.keepTokenScroll) {
+        tokenTable.scrollTop = tokenScrollTop;
+      }
+      renderSwatches();
+      codeOutput.value = buildCssOutput();
+    }
+
+    function renderPreviewOnly() {
+      renderPreview("light");
+      renderPreview("dark");
+    }
+
+    function handleAction(action, element) {
+      if (action === "open-scanner") {
+        state.popup = state.popup === "scanner" ? null : "scanner";
+      } else if (action === "open-pilot") {
+        state.popup = state.popup === "pilot" ? null : "pilot";
+      } else if (action === "open-settings") {
+        state.popup = state.popup === "settings" ? null : "settings";
+      } else if (action === "close-popup") {
+        state.popup = null;
+      } else if (action === "select-target") {
+        state.targetIndex = Number(element.dataset.targetIndex) || 0;
+        state.alertLevel = targets[state.targetIndex].heat;
+      } else if (action === "select-next-target") {
+        state.targetIndex = (state.targetIndex + 1) % targets.length;
+        state.alertLevel = targets[state.targetIndex].heat;
+      } else if (action === "set-nav-mode") {
+        state.navMode = element.dataset.navMode || state.navMode;
+      } else if (action === "toggle-route") {
+        state.routeActive = !state.routeActive;
+      } else if (action === "toggle-warp") {
+        state.warpActive = !state.warpActive;
+      }
+      renderPreviewOnly();
+    }
+
+    document.addEventListener("click", (event) => {
+      const actionElement = event.target.closest("[data-action]");
+      if (actionElement) {
+        handleAction(actionElement.dataset.action, actionElement);
+        return;
+      }
+
+      const commandElement = event.target.closest("[data-command]");
+      if (!commandElement) {
+        return;
+      }
+      const command = commandElement.dataset.command;
+      if (command === "reset-palette") {
+        applyPaletteChange(() => {
+          state.tokens = clone(defaultTokens);
+        }, "Palette reset");
+      } else if (command === "randomize-accent") {
+        const accents = [
+          defaultTokens.light.accent,
+          defaultTokens.light.warn,
+          defaultTokens.light.danger,
+          defaultTokens.light.uiTargetColor,
+          defaultTokens.dark.uiTargetColor
+        ];
+        const next = accents[Math.floor(Math.random() * accents.length)];
+        applyPaletteChange(() => {
+          state.tokens.light.accent = next;
+          state.tokens.dark.accent = next;
+        }, "Accent changed", { keepTokenScroll: true });
+      } else if (command === "copy-css") {
+        const css = buildCssOutput();
+        codeOutput.value = css;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(css).then(() => setStatus("CSS copied")).catch(() => setStatus("CSS ready"));
+        } else {
+          codeOutput.focus();
+          codeOutput.select();
+          setStatus("CSS ready");
+        }
+      }
+    });
+
+    document.addEventListener("input", (event) => {
+      const speedInput = event.target.closest('[data-action="set-speed"]');
+      if (speedInput) {
+        state.speed = Number(speedInput.value);
+        renderPreviewOnly();
+        return;
+      }
+
+      const tokenInput = event.target.closest("[data-token-mode][data-token-key]");
+      if (!tokenInput) {
+        return;
+      }
+      const value = tokenInput.type === "color"
+        ? normalizeHex(tokenInput.value)
+        : normalizeTokenValue(tokenInput.value);
+      if (!value) {
+        return;
+      }
+      applyPaletteChange(() => {
+        state.tokens[tokenInput.dataset.tokenMode][tokenInput.dataset.tokenKey] = value;
+      }, "Token changed", { patchOnly: true });
+      syncTokenControl(tokenInput.dataset.tokenMode, tokenInput.dataset.tokenKey, tokenInput);
+    });
+
+    document.addEventListener("keydown", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const isUndoRedoKey = (event.ctrlKey || event.metaKey) && !event.altKey;
+      const key = event.key.toLowerCase();
+      const wantsUndo = isUndoRedoKey && key === "z" && !event.shiftKey;
+      const wantsRedo = isUndoRedoKey && (key === "y" || (key === "z" && event.shiftKey));
+      const isCodeOutput = target?.closest("#codeOutput");
+
+      if ((!wantsUndo && !wantsRedo) || isCodeOutput) {
+        return;
+      }
+
+      event.preventDefault();
+      if (wantsRedo) {
+        redoPaletteChange();
+      } else {
+        undoPaletteChange();
+      }
+    });
+
+    renderEditor();
+  </script>
+</body>
+</html>

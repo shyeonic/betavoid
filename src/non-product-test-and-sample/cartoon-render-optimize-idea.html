@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>INKLINE — Hull Outline Toon Renderer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#0a0a0a;--paper:#ece8df;--paper-2:#e3ded2;--mono:"Space Mono",ui-monospace,Menlo,monospace;--disp:"Space Grotesk",ui-sans-serif,system-ui,sans-serif}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#cfcabd;overflow:hidden;font-family:var(--disp);color:var(--ink)}
+  #stage{position:fixed;inset:0}canvas{display:block;width:100%;height:100%}
+  #overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#cfcabd;z-index:40;transition:opacity .4s;font-family:var(--mono)}
+  #overlay.hide{opacity:0;pointer-events:none}
+  .ov-card{border:1px solid var(--ink);background:var(--paper);padding:22px 24px;max-width:min(92vw,440px);text-align:center}
+  .ov-card h1{font-family:var(--disp);font-weight:700;letter-spacing:-.02em;margin:0 0 6px;font-size:20px}
+  .ov-card p{font-size:12px;line-height:1.6;margin:8px 0;color:#0a0a0acc}
+  .ov-card .sp{display:inline-block;width:18px;height:18px;border:2px solid var(--ink);border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px;margin-right:8px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .ov-row{display:flex;gap:6px;margin-top:12px}
+  .ov-row input{flex:1;min-width:0;font-family:var(--mono);font-size:11px;padding:8px;border:1px solid var(--ink);background:#fff}
+  .ov-row button,.drop{font-family:var(--mono);font-size:11px;padding:8px 12px;border:1px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer}
+  .drop{display:block;background:transparent;color:var(--ink);margin-top:10px;padding:14px;border-style:dashed;cursor:pointer}
+  #brand{position:fixed;left:18px;top:16px;z-index:20;pointer-events:none;mix-blend-mode:multiply}
+  #brand .reg{display:inline-block;width:14px;height:14px;position:relative;vertical-align:-2px;margin-right:9px}
+  #brand .reg::before,#brand .reg::after{content:"";position:absolute;background:var(--ink)}
+  #brand .reg::before{left:6px;top:0;width:1px;height:14px}#brand .reg::after{top:6px;left:0;height:1px;width:14px}
+  #brand h1{font-family:var(--disp);font-weight:700;font-size:15px;letter-spacing:.16em;margin:0;text-transform:uppercase}
+  #brand small{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:#0a0a0a99;display:block;margin-top:3px;margin-left:23px}
+  #toggle{position:fixed;right:18px;top:16px;z-index:30;font-family:var(--mono);font-size:11px;border:1px solid var(--ink);background:var(--ink);color:var(--paper);padding:8px 12px;cursor:pointer;letter-spacing:.08em}
+  #panel{position:fixed;right:18px;top:54px;z-index:25;width:290px;max-height:calc(100vh - 74px);overflow-y:auto;background:var(--paper);border:1px solid var(--ink);box-shadow:6px 6px 0 #0a0a0a18;scrollbar-width:thin;scrollbar-color:var(--ink) transparent}
+  #panel::-webkit-scrollbar{width:8px}#panel::-webkit-scrollbar-thumb{background:var(--ink)}
+  #panel.hide{display:none}
+  .grp{border-bottom:1px solid var(--ink)}.grp:last-child{border-bottom:none}
+  .grp>summary{list-style:none;cursor:pointer;padding:11px 13px;display:flex;align-items:baseline;gap:9px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;user-select:none;background:var(--paper-2)}
+  .grp>summary::-webkit-details-marker{display:none}
+  .grp>summary .n{font-weight:700;opacity:.45;font-size:10px}.grp>summary .t{font-weight:700;text-transform:uppercase}
+  .grp[open]>summary{background:var(--ink);color:var(--paper)}
+  .grp .body{padding:11px 13px 14px}
+  .ctl{margin:0 0 11px}.ctl:last-child{margin-bottom:2px}
+  .ctl .lab{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:10.5px;margin-bottom:6px}
+  .ctl .val{font-weight:700;font-variant-numeric:tabular-nums;background:var(--ink);color:var(--paper);padding:1px 5px}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:1px;background:var(--ink);outline:none;margin:7px 0}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;background:var(--paper);border:1.5px solid var(--ink);border-radius:50%;cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;background:var(--paper);border:1.5px solid var(--ink);border-radius:50%;cursor:pointer}
+  .row{display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);font-size:10.5px;margin:0 0 11px}.row:last-child{margin-bottom:2px}
+  .sw{position:relative;width:38px;height:18px;border:1px solid var(--ink);background:var(--paper);cursor:pointer;flex:0 0 auto}
+  .sw::after{content:"";position:absolute;top:1px;left:1px;width:14px;height:14px;background:var(--ink);transition:transform .12s}
+  .sw.on{background:var(--ink)}.sw.on::after{background:var(--paper);transform:translateX(20px)}
+  input[type=color]{-webkit-appearance:none;appearance:none;width:34px;height:20px;border:1px solid var(--ink);background:none;cursor:pointer;padding:0}
+  input[type=color]::-webkit-color-swatch-wrapper{padding:2px}input[type=color]::-webkit-color-swatch{border:none}
+  select{font-family:var(--mono);font-size:10.5px;border:1px solid var(--ink);background:var(--paper);padding:4px 6px;cursor:pointer}
+  .btn{font-family:var(--mono);font-size:10.5px;border:1px solid var(--ink);background:transparent;color:var(--ink);padding:8px 10px;cursor:pointer;width:100%;text-transform:uppercase}
+  .btn:hover{background:var(--ink);color:var(--paper)}
+  .stat{font-family:var(--mono);font-size:10px;line-height:1.5;background:var(--paper-2);border:1px solid var(--ink);padding:7px 8px;margin-bottom:11px}
+  .stat b{font-weight:700}
+  #hint{position:fixed;left:18px;bottom:14px;z-index:20;font-family:var(--mono);font-size:10px;color:#0a0a0a99;mix-blend-mode:multiply}
+  @media (max-width:720px){#panel{right:10px;left:10px;width:auto;top:auto;bottom:10px;max-height:62vh}#toggle{right:10px}#brand{left:12px}}
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="brand"><h1><span class="reg"></span>Inkline</h1><small>three.js · single-pass hull build</small></div>
+  <div id="hint">drag = orbit · scroll = zoom · 유휴 시 렌더 정지</div>
+  <button id="toggle">CONTROLS −</button>
+  <div id="panel"></div>
+  <div id="overlay"><div class="ov-card">
+    <h1>Inkline</h1><p id="ovmsg"><span class="sp"></span>모델을 불러오는 중…</p>
+    <div class="ov-row" style="display:none" id="urlrow"><input id="urlin" type="text" spellcheck="false"/><button id="urlgo">LOAD</button></div>
+    <label class="drop" id="dropzone" style="display:none">.glb / .gltf 파일을 끌어다 놓거나 클릭<input id="filepick" type="file" accept=".glb,.gltf" style="display:none"/></label>
+  </div></div>
+
+<script type="importmap">
+{ "imports": {
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader }   from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader }  from 'three/addons/loaders/DRACOLoader.js';
+
+const isMobile = matchMedia('(pointer:coarse)').matches || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const PRESETS = {
+  perf:     { maxDPR:isMobile?1.0:1.25, renderScale:isMobile?0.65:0.85 },
+  balanced: { maxDPR:isMobile?1.25:1.5, renderScale:isMobile?0.85:1.0 },
+  quality:  { maxDPR:2.0,               renderScale:1.0 },
+};
+const P = {
+  preset:'perf', maxDPR:PRESETS.perf.maxDPR, renderScale:PRESETS.perf.renderScale,
+  outline:true, outlineWidth:2.2,
+  halo:true,    haloWidth:1.6, haloColor:'#ffffff',
+  lineColor:'#0a0a0a',
+  toneSteps:3,  brightness:0.6, bw:false, flat:true,
+  bgColor:'#dad6cb',
+  autoRotate:false, spin:0.5, lightAz:0.7, lightEl:0.85,
+};
+const MODEL_URL='https://raw.githubusercontent.com/shyeonic/storage/b0cbf73176b80640677088b64ba4411c45245cb5/ship_01.glb';
+
+/* ── 렌더러: 백버퍼 MSAA, 오프스크린 없음 ─────────────────── */
+const stage=document.getElementById('stage');
+const renderer=new THREE.WebGLRenderer({ antialias:true, alpha:false, powerPreference:'high-performance' });
+renderer.autoClear=false;            // 흰껍질→검은껍질→모델을 한 프레임에 누적
+renderer.info.autoReset=false;       // 누적 draw call 수 집계용
+stage.appendChild(renderer.domElement);
+
+const scene=new THREE.Scene(); scene.background=null;
+const camera=new THREE.PerspectiveCamera(42,1,0.1,100); camera.position.set(3,2,5);
+const controls=new OrbitControls(camera,renderer.domElement); controls.enableDamping=true; controls.dampingFactor=0.09;
+const dirLight=new THREE.DirectionalLight(0xffffff,2.6), ambient=new THREE.AmbientLight(0xffffff,0.55);
+scene.add(dirLight,ambient);
+
+/* ── 셀 음영 램프 (해상도 독립 톤) ────────────────────────── */
+let gradientTex=null;
+function makeGradientTex(steps,floor){
+  steps=Math.max(1,steps|0); const data=new Uint8Array(steps);
+  for(let i=0;i<steps;i++){ const t=steps===1?1:i/(steps-1); data[i]=Math.round((floor+(1-floor)*t)*255); }
+  const tex=new THREE.DataTexture(data,steps,1,THREE.RedFormat);
+  tex.minFilter=tex.magFilter=THREE.NearestFilter; tex.colorSpace=THREE.NoColorSpace; tex.needsUpdate=true; return tex;
+}
+
+/* ── 역껍질 외곽선 (화면 고정폭, BackSide, 코드 구운 매끈노멀) ─ */
+const outlineMat=new THREE.ShaderMaterial({
+  side:THREE.BackSide,
+  uniforms:{ uColor:{value:new THREE.Color('#0a0a0a')}, uWidthPx:{value:2}, uExtrudeScale:{value:0.001} },
+  vertexShader:`
+    attribute vec3 aSmoothNormal;
+    uniform float uWidthPx,uExtrudeScale;
+    void main(){
+      vec4 vp=modelViewMatrix*vec4(position,1.0);
+      vec3 vn=normalize(normalMatrix*aSmoothNormal);
+      float d=max(-vp.z,1e-3);
+      vp.xyz+=vn*(uWidthPx*uExtrudeScale*d);
+      gl_Position=projectionMatrix*vp;
+    }`,
+  fragmentShader:`uniform vec3 uColor; void main(){ gl_FragColor=vec4(uColor,1.0); }`
+});
+
+/* ── 매끈 노멀 베이킹 (위치 용접 후 평균) ─────────────────── */
+function bakeSmoothNormals(geo){
+  geo.computeBoundingBox();
+  const s=geo.boundingBox.getSize(new THREE.Vector3());
+  const eps=Math.max((s.x+s.y+s.z)/3*1e-4,1e-6);
+  const pos=geo.attributes.position, nor=geo.attributes.normal;
+  const key=(x,y,z)=>Math.round(x/eps)+'_'+Math.round(y/eps)+'_'+Math.round(z/eps);
+  const acc=new Map();
+  for(let i=0;i<pos.count;i++){ const k=key(pos.getX(i),pos.getY(i),pos.getZ(i)); let a=acc.get(k); if(!a){a=[0,0,0];acc.set(k,a);} a[0]+=nor.getX(i);a[1]+=nor.getY(i);a[2]+=nor.getZ(i); }
+  const out=new Float32Array(pos.count*3);
+  for(let i=0;i<pos.count;i++){ const a=acc.get(key(pos.getX(i),pos.getY(i),pos.getZ(i))); const l=Math.hypot(a[0],a[1],a[2])||1; out[i*3]=a[0]/l;out[i*3+1]=a[1]/l;out[i*3+2]=a[2]/l; }
+  geo.setAttribute('aSmoothNormal',new THREE.BufferAttribute(out,3));
+}
+
+/* ── 모델 로드 (원본 머티리얼 색 보존) ────────────────────── */
+let modelRoot=null; const toonMats=[];
+const draco=new DRACOLoader(); draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
+const loader=new GLTFLoader(); loader.setDRACOLoader(draco);
+
+function lum(c){ const g=0.299*c.r+0.587*c.g+0.114*c.b; return new THREE.Color(g,g,g); }
+function disposeModel(o){ o.traverse(m=>{ if(m.isMesh&&m.geometry) m.geometry.dispose(); }); }
+function frameModel(obj){
+  const box=new THREE.Box3().setFromObject(obj), size=box.getSize(new THREE.Vector3()), center=box.getCenter(new THREE.Vector3());
+  obj.position.sub(center);
+  const radius=Math.max(size.x,size.y,size.z)*0.5||1;
+  camera.near=radius*0.02; camera.far=radius*40; camera.updateProjectionMatrix();
+  const dist=radius/Math.tan(THREE.MathUtils.degToRad(camera.fov*0.5))*1.5;
+  camera.position.set(dist*0.7,dist*0.45,dist*0.8); controls.target.set(0,0,0);
+  controls.minDistance=radius*0.4; controls.maxDistance=radius*12; controls.update();
+  updateExtrude();
+}
+function applyModel(gltf){
+  if(modelRoot){ scene.remove(modelRoot); disposeModel(modelRoot); }
+  toonMats.length=0; const cache=new Map();
+  if(!gradientTex) gradientTex=makeGradientTex(P.toneSteps,P.brightness);
+  modelRoot=gltf.scene||gltf.scenes[0];
+  modelRoot.traverse(o=>{
+    if(o.isMesh){
+      const g=o.geometry;
+      if(!g.attributes.normal) g.computeVertexNormals();
+      if(!g.attributes.aSmoothNormal) bakeSmoothNormals(g);
+      const src=Array.isArray(o.material)?o.material[0]:o.material;
+      const id=src?src.uuid:'def';
+      let tm=cache.get(id);
+      if(!tm){
+        const base=(src&&src.color)?src.color.clone():new THREE.Color(0xdddddd);
+        tm=new THREE.MeshToonMaterial({ color:base.clone() }); tm._base=base;
+        tm.gradientMap=gradientTex; tm.flatShading=P.flat;
+        toonMats.push(tm); cache.set(id,tm);
+      }
+      o.material=tm;
+    }
+  });
+  scene.add(modelRoot); frameModel(modelRoot); applyAll();
+  document.getElementById('overlay').classList.add('hide'); requestRender();
+}
+function loadFromURL(url){ setOvMsg('<span class="sp"></span>모델을 불러오는 중…',false,false);
+  loader.load(url,applyModel,undefined,err=>{ console.error(err); setOvMsg('이 URL을 불러오지 못했습니다. 다른 raw 링크나 파일을 올려주세요.',true,true); }); }
+function loadFromFile(file){ const fr=new FileReader();
+  fr.onload=()=>loader.parse(fr.result,'',applyModel,e=>{ console.error(e); setOvMsg('이 파일을 해석하지 못했습니다 (.glb/.gltf 확인).',true,true); }); fr.readAsArrayBuffer(file); }
+
+/* ── 동기화 ───────────────────────────────────────────────── */
+let _tone=-1,_bri=-1,_flat=null,_bw=null;
+function applyAll(){
+  if(P.toneSteps!==_tone||P.brightness!==_bri){ if(gradientTex)gradientTex.dispose(); gradientTex=makeGradientTex(P.toneSteps,P.brightness); toonMats.forEach(m=>m.gradientMap=gradientTex); _tone=P.toneSteps; _bri=P.brightness; }
+  if(P.flat!==_flat){ toonMats.forEach(m=>{m.flatShading=P.flat;m.needsUpdate=true;}); _flat=P.flat; }
+  if(P.bw!==_bw){ toonMats.forEach(m=>m.color.copy(P.bw?lum(m._base):m._base)); _bw=P.bw; }
+  controls.autoRotate=P.autoRotate; controls.autoRotateSpeed=P.spin*2.0;
+  const r=6; dirLight.position.set(r*Math.cos(P.lightEl)*Math.sin(P.lightAz), r*Math.sin(P.lightEl), r*Math.cos(P.lightEl)*Math.cos(P.lightAz));
+  requestRender();
+}
+
+/* ── 리사이즈 / 외곽선 스케일 ─────────────────────────────── */
+let bufW=0,bufH=0,PR=1;
+function currentPR(){ return Math.min(window.devicePixelRatio||1,P.maxDPR)*P.renderScale; }
+function updateExtrude(){ if(bufH>0) outlineMat.uniforms.uExtrudeScale.value=2.0*Math.tan(THREE.MathUtils.degToRad(camera.fov*0.5))/bufH; }
+function resize(){
+  const w=stage.clientWidth,h=stage.clientHeight; PR=currentPR();
+  renderer.setPixelRatio(PR); renderer.setSize(w,h,true);
+  const db=renderer.getDrawingBufferSize(new THREE.Vector2()); bufW=db.x; bufH=db.y;
+  camera.aspect=w/h; camera.updateProjectionMatrix();
+  updateExtrude(); requestRender(); updateStat();
+}
+let rzT; function scheduleResize(){ clearTimeout(rzT); rzT=setTimeout(resize,140); }
+window.addEventListener('resize',scheduleResize); window.addEventListener('orientationchange',scheduleResize);
+
+/* ── 온디맨드 렌더 ────────────────────────────────────────── */
+let needsRender=true,paused=false;
+function requestRender(){ needsRender=true; }
+controls.addEventListener('change',requestRender);
+document.addEventListener('visibilitychange',()=>{ paused=document.hidden; if(!paused)requestRender(); });
+
+/* ── 렌더: 흰껍질 → 검은껍질 → 모델, 백버퍼 직행 ──────────── */
+const bg=new THREE.Color();
+let frames=0,fpsT=performance.now(),fps=0,calls=0;
+function renderFrame(){
+  renderer.info.reset();
+  renderer.setRenderTarget(null);
+  renderer.setClearColor(bg.set(P.bgColor),1.0); renderer.clear();
+  if(modelRoot){
+    if(P.outline){
+      scene.overrideMaterial=outlineMat;
+      if(P.halo){ outlineMat.uniforms.uColor.value.set(P.haloColor); outlineMat.uniforms.uWidthPx.value=(P.outlineWidth+P.haloWidth)*PR; renderer.render(scene,camera); }
+      outlineMat.uniforms.uColor.value.set(P.lineColor); outlineMat.uniforms.uWidthPx.value=P.outlineWidth*PR; renderer.render(scene,camera);
+      scene.overrideMaterial=null;
+    }
+    renderer.render(scene,camera);
+  }
+  calls=renderer.info.render.calls;
+  frames++; const now=performance.now();
+  if(now-fpsT>500){ fps=Math.round(frames*1000/(now-fpsT)); frames=0; fpsT=now; updateStat(); }
+}
+function loop(){ requestAnimationFrame(loop); if(paused)return; controls.update(); if(needsRender){ renderFrame(); needsRender=false; } }
+
+/* ── 패널 ─────────────────────────────────────────────────── */
+const panel=document.getElementById('panel'); const UI={}; const RES_KEYS=new Set(['renderScale','maxDPR']);
+function group(no,title,open){ const d=document.createElement('details'); d.className='grp'; if(open)d.open=true;
+  d.innerHTML=`<summary><span class="n">${no}</span><span class="t">${title}</span></summary>`;
+  const b=document.createElement('div'); b.className='body'; d.appendChild(b); panel.appendChild(d); return b; }
+function slider(p,key,min,max,step,label,fmt){ fmt=fmt||(v=>v);
+  const c=document.createElement('div'); c.className='ctl';
+  c.innerHTML=`<div class="lab"><span>${label}</span><span class="val"></span></div>`;
+  const inp=document.createElement('input'); inp.type='range'; inp.min=min; inp.max=max; inp.step=step; inp.value=P[key];
+  const val=c.querySelector('.val'); val.textContent=fmt(P[key]);
+  inp.addEventListener('input',()=>{ P[key]=parseFloat(inp.value); val.textContent=fmt(P[key]); applyAll(); if(RES_KEYS.has(key))scheduleResize(); });
+  c.appendChild(inp); p.appendChild(c); UI[key]={set:v=>{inp.value=v;val.textContent=fmt(v);}}; }
+function toggle(p,key,label){ const r=document.createElement('div'); r.className='row'; r.innerHTML=`<span>${label}</span>`;
+  const sw=document.createElement('div'); sw.className='sw'+(P[key]?' on':'');
+  sw.addEventListener('click',()=>{ P[key]=!P[key]; sw.classList.toggle('on',P[key]); applyAll(); }); r.appendChild(sw); p.appendChild(r); }
+function color(p,key,label){ const r=document.createElement('div'); r.className='row'; r.innerHTML=`<span>${label}</span>`;
+  const inp=document.createElement('input'); inp.type='color'; inp.value=P[key];
+  inp.addEventListener('input',()=>{ P[key]=inp.value; applyAll(); }); r.appendChild(inp); p.appendChild(r); }
+function select(p,key,label,opts,onChange){ const r=document.createElement('div'); r.className='row'; r.innerHTML=`<span>${label}</span>`;
+  const sel=document.createElement('select');
+  opts.forEach(o=>{ const op=document.createElement('option'); op.value=o.v; op.textContent=o.t; if(o.v==P[key])op.selected=true; sel.appendChild(op); });
+  sel.addEventListener('change',()=>{ const v=isNaN(+sel.value)?sel.value:+sel.value; P[key]=v; (onChange||applyAll)(v); }); r.appendChild(sel); p.appendChild(r); }
+function button(p,label,fn){ const b=document.createElement('button'); b.className='btn'; b.textContent=label; b.onclick=fn; p.appendChild(b); }
+function applyPreset(name){ const q=PRESETS[name]; if(!q)return; P.maxDPR=q.maxDPR; P.renderScale=q.renderScale; UI.maxDPR&&UI.maxDPR.set(q.maxDPR); UI.renderScale&&UI.renderScale.set(q.renderScale); applyAll(); scheduleResize(); }
+
+let g=group('00','Performance',true);
+const statDiv=document.createElement('div'); statDiv.className='stat'; g.appendChild(statDiv);
+function updateStat(){ statDiv.innerHTML=`buffer <b>${bufW}×${bufH}</b> · pr <b>${PR.toFixed(2)}</b><br>draw <b>${calls}</b> calls · ~<b>${fps}</b> fps · <b>1</b>-pass`; }
+select(g,'preset','품질 프리셋',[{v:'perf',t:'Performance'},{v:'balanced',t:'Balanced'},{v:'quality',t:'Quality'}],v=>applyPreset(v));
+slider(g,'renderScale',0.4,1.5,0.05,'렌더 배율',v=>v.toFixed(2)+'×');
+slider(g,'maxDPR',0.75,2,0.05,'픽셀비 상한',v=>v.toFixed(2));
+
+g=group('01','Outline · 역껍질',true);
+toggle(g,'outline','외곽선 (검정 안쪽)');
+slider(g,'outlineWidth',0,8,0.1,'두께(화면 px)',v=>v.toFixed(1));
+toggle(g,'halo','흰 외곽 (바깥)');
+slider(g,'haloWidth',0,8,0.1,'흰 외곽 두께',v=>v.toFixed(1));
+color(g,'haloColor','흰 외곽 색'); color(g,'lineColor','잉크(선) 색');
+
+g=group('02','Tone · 셀 음영',true);
+select(g,'toneSteps','음영 단계',[{v:1,t:'flat (1)'},{v:2,t:'2단'},{v:3,t:'3단'},{v:4,t:'4단'},{v:5,t:'5단'}]);
+slider(g,'brightness',0,1,0.01,'밝기(저음영)',v=>v.toFixed(2));
+toggle(g,'bw','B&W 그레이스케일'); toggle(g,'flat','플랫 셰이딩(각진 면)');
+
+g=group('03','Paper'); color(g,'bgColor','배경(종이) 색');
+
+g=group('04','Stage');
+toggle(g,'autoRotate','자동 회전 · 상시 렌더');
+slider(g,'spin',0,3,0.05,'회전 속도',v=>v.toFixed(2));
+slider(g,'lightAz',-3.14,3.14,0.02,'빛 방위각',v=>v.toFixed(2));
+slider(g,'lightEl',-1.2,1.5,0.02,'빛 고도',v=>v.toFixed(2));
+button(g,'View reset',()=>{ if(modelRoot)frameModel(modelRoot); requestRender(); });
+
+document.getElementById('toggle').addEventListener('click',e=>{ const h=panel.classList.toggle('hide'); e.target.textContent=h?'CONTROLS +':'CONTROLS −'; });
+
+/* ── 오버레이/폴백 ────────────────────────────────────────── */
+function setOvMsg(html,showUrl,showDrop){ document.getElementById('overlay').classList.remove('hide');
+  document.getElementById('ovmsg').innerHTML=html;
+  document.getElementById('urlrow').style.display=showUrl?'flex':'none';
+  document.getElementById('dropzone').style.display=showDrop?'block':'none'; }
+document.getElementById('urlin').value=MODEL_URL;
+document.getElementById('urlgo').onclick=()=>loadFromURL(document.getElementById('urlin').value.trim());
+const dz=document.getElementById('dropzone'), fp=document.getElementById('filepick');
+fp.onchange=()=>{ if(fp.files[0])loadFromFile(fp.files[0]); };
+['dragover','dragenter'].forEach(ev=>dz.addEventListener(ev,e=>e.preventDefault()));
+dz.addEventListener('drop',e=>{ e.preventDefault(); if(e.dataTransfer.files[0])loadFromFile(e.dataTransfer.files[0]); });
+
+/* ── 부팅 ─────────────────────────────────────────────────── */
+resize(); applyAll(); loop(); loadFromURL(MODEL_URL);
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "models": {
+    "gas_01": "rss/ore_planets/gas_01.glb",
+    "hq_01": "rss/buildings/station_03.glb",
+    "mine_01": "rss/buildings/station_02.glb",
+    "ore_01": "rss/ore_planets/ore_01.glb",
+    "power_01": "rss/buildings/station_01.glb",
+    "ship_01": "rss/ships/ship_01.glb",
+    "ship_02": "rss/ships/ship_02.glb",
+    "water_01": "rss/ore_planets/water_01.glb"
+  },
+  "audio": {
+    "bgm_sector_01": "rss/sounds/bgm_sector_01.ogg"
+  }
+}

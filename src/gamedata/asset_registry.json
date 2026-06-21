@@ -11,6 +11,7 @@
     "water_01": "rss/ore_planets/water_01.glb"
   },
   "audio": {
+    "bgm_hanger_01": "rss/sounds/bgm_hanger_01.ogg",
     "bgm_sector_01": "rss/sounds/bgm_sector_01.ogg"
   }
 }

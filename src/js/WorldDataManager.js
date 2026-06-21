@@ -1,6 +1,10 @@
 import { WORLD_CONFIG } from "./worldDefinitions.js";
 
-const STORE_NAMES = ["sectors", "chunks", "resourceNodes", "buildings", "betaVoids", "meta", "settings"];
+const WORLD_STORE_NAMES = ["sectors", "chunks", "resourceNodes", "buildings", "betaVoids", "meta", "settings"];
+const PLAYER_STORE_NAMES = ["characterProfiles", "storageLocations", "quantityItems", "uniqueItems", "slotAssignments"];
+const STORE_NAMES = [...WORLD_STORE_NAMES, ...PLAYER_STORE_NAMES];
+const DEFAULT_CHARACTER_ID = "default";
+const COMBAT_SLOT_TYPES = ["weapon", "shield", "equipment"];
 const BETA_VOID_ENEMY_TYPES = ["pirate_squad", "raider_group", "hostile_fleet"];
 const BETA_VOID_RISK_LEVELS = [1, 2, 3, 4, 5];
 const BETA_VOID_REWARD_TABLE_IDS = ["loot_91", "loot_92", "loot_93"];
@@ -30,6 +34,11 @@ export class WorldDataManager {
     this.buildingDefinitions = requireDefinitionMap(gameData, "buildingDefinitions");
     this.itemDefinitions = requireDefinitionMap(gameData, "itemDefinitions");
     this.resourceDefinitions = requireDefinitionMap(gameData, "resourceDefinitions");
+    this.shipDefinitions = requireDefinitionMap(gameData, "shipDefinitions");
+    this.weaponDefinitions = gameData.weaponDefinitions || {};
+    this.shieldDefinitions = gameData.shieldDefinitions || {};
+    this.equipmentDefinitions = gameData.equipmentDefinitions || {};
+    this.defaultShipId = gameData.defaultShipId || Object.keys(this.shipDefinitions)[0] || "ship_01";
     this.sectorTemplates = requireDefinitionList(gameData, "sectorTemplates");
     this.initialResourceTypes = requireDefinitionList(gameData, "initialResourceTypes");
     this.chunkMap = gameData.chunkMap || null;
@@ -59,6 +68,11 @@ export class WorldDataManager {
         this.ensureStore(db, "meta", "key");
         this.ensureStore(db, "settings", "key");
         this.ensureStore(db, "navLogs", "id");
+        this.ensureStore(db, "characterProfiles", "character_id");
+        this.ensureStore(db, "storageLocations", "storage_id");
+        this.ensureStore(db, "quantityItems", "entry_id");
+        this.ensureStore(db, "uniqueItems", "item_uid");
+        this.ensureStore(db, "slotAssignments", "assignment_id");
       };
 
       request.onsuccess = () => {
@@ -128,8 +142,9 @@ export class WorldDataManager {
       generated_at: now
     };
     const playerShip = this.createDefaultPlayerShipState(now, sectors);
+    const playerAssets = this.createDefaultPlayerAssets({ createdAt: now });
 
-    await this.replaceWorldData({ sectors, chunks, resourceNodes, buildings, betaVoids, meta, playerShip, resourceManager });
+    await this.replaceWorldData({ sectors, chunks, resourceNodes, buildings, betaVoids, meta, playerShip, resourceManager, playerAssets });
     this.snapshot = await this.getWorldSnapshot();
     return this.snapshot;
   }
@@ -1304,6 +1319,288 @@ export class WorldDataManager {
     };
   }
 
+  createDefaultPlayerAssets({ createdAt = Date.now(), characterId = DEFAULT_CHARACTER_ID } = {}) {
+    const shipId = this.defaultShipId;
+    const activeShipUid = `ship-${characterId}-${shipId}-001`;
+    const activeShipStorageId = `storage-${activeShipUid}-active`;
+    const cargoStorageId = `storage-${activeShipUid}-cargo`;
+    const profile = {
+      character_id: characterId,
+      display_name: "Pilot",
+      portrait_id: "portrait_01",
+      sic: 0,
+      playtime_sec: 0,
+      skill_nodes: {},
+      achievements: {},
+      blueprint_ids: [],
+      active_ship_uid: activeShipUid,
+      selected_ship_id: shipId,
+      created_at: createdAt,
+      updated_at: createdAt
+    };
+    const storageLocations = [
+      {
+        storage_id: activeShipStorageId,
+        storage_type: "active_ship",
+        owner_character_id: characterId,
+        world_object_id: null,
+        parent_item_uid: null,
+        capacity: null,
+        created_at: createdAt,
+        updated_at: createdAt
+      },
+      {
+        storage_id: cargoStorageId,
+        storage_type: "ship_cargo",
+        owner_character_id: characterId,
+        world_object_id: null,
+        parent_item_uid: activeShipUid,
+        capacity: this.getShipBaseCargoCapacity(shipId),
+        created_at: createdAt,
+        updated_at: createdAt
+      }
+    ];
+    const quantityItems = [];
+    const uniqueItems = [
+      {
+        item_uid: activeShipUid,
+        item_id: shipId,
+        kind: "ship",
+        owner_character_id: characterId,
+        storage_id: activeShipStorageId,
+        seed: null,
+        fixed_options: {},
+        created_at: createdAt,
+        updated_at: createdAt
+      }
+    ];
+    const slotAssignments = [];
+
+    const ship = this.shipDefinitions[shipId] || {};
+    const slots = ship.combat?.slots || {};
+    for (const type of COMBAT_SLOT_TYPES) {
+      for (const slot of Array.isArray(slots[type]) ? slots[type] : []) {
+        if (!slot.equipped_id || !this.getCombatDefinition(type, slot.equipped_id)) continue;
+        slotAssignments.push(this.createSlotAssignment({
+          ownerItemUid: activeShipUid,
+          slotType: type,
+          slotId: slot.id,
+          itemId: slot.equipped_id,
+          itemUid: null,
+          createdAt
+        }));
+      }
+    }
+
+    return {
+      profile,
+      storageLocations,
+      quantityItems,
+      uniqueItems,
+      slotAssignments
+    };
+  }
+
+  createQuantityItemEntry({ storageId, itemId, quantity = 0, createdAt = Date.now() }) {
+    const item = this.itemDefinitions[itemId] || {};
+    return {
+      entry_id: `qty-${storageId}-${itemId}`,
+      storage_id: storageId,
+      item_id: itemId,
+      kind: item.kind || item.category || "item",
+      quantity: Math.max(0, Number(quantity) || 0),
+      created_at: createdAt,
+      updated_at: createdAt
+    };
+  }
+
+  createSlotAssignment({ ownerItemUid, slotType, slotId, itemId, itemUid = null, createdAt = Date.now() }) {
+    const item = this.itemDefinitions[itemId] || {};
+    return {
+      assignment_id: `${ownerItemUid}:${slotType}:${slotId}`,
+      owner_item_uid: ownerItemUid,
+      slot_type: slotType,
+      slot_id: slotId,
+      item_id: itemId,
+      item_uid: itemUid,
+      kind: item.kind || item.category || slotType,
+      item_identity: itemUid ? "unique" : "quantity",
+      quantity: 1,
+      location_type: "ship_slot",
+      created_at: createdAt,
+      updated_at: createdAt
+    };
+  }
+
+  createUniqueEquipmentItem({ characterId, itemId, type, storageId, activeShipUid, createdAt, uidSuffix }) {
+    return {
+      item_uid: `item-${characterId}-${uidSuffix}`,
+      item_id: itemId,
+      kind: type,
+      owner_character_id: characterId,
+      storage_id: storageId,
+      parent_item_uid: activeShipUid,
+      seed: `${itemId}:${uidSuffix}`,
+      fixed_options: {},
+      created_at: createdAt,
+      updated_at: createdAt
+    };
+  }
+
+  getShipBaseCargoCapacity(shipId) {
+    return Number(this.shipDefinitions[shipId]?.combat?.base_stats?.cargo_capacity) || 0;
+  }
+
+  getCombatDefinition(type, definitionId) {
+    if (type === "weapon") return this.weaponDefinitions[definitionId] || null;
+    if (type === "shield") return this.shieldDefinitions[definitionId] || null;
+    if (type === "equipment") return this.equipmentDefinitions[definitionId] || null;
+    return null;
+  }
+
+  async loadOrCreatePlayerAssets(characterId = DEFAULT_CHARACTER_ID) {
+    const profile = await this.getStoreValue("characterProfiles", characterId);
+    if (!profile) {
+      const playerAssets = this.createDefaultPlayerAssets({ createdAt: Date.now(), characterId });
+      await this.insertPlayerAssets(playerAssets);
+    }
+    return this.getPlayerAssetSnapshot(characterId);
+  }
+
+  async insertPlayerAssets(playerAssets) {
+    const transaction = this.db.transaction(PLAYER_STORE_NAMES, "readwrite");
+    const stores = Object.fromEntries(PLAYER_STORE_NAMES.map((storeName) => [storeName, transaction.objectStore(storeName)]));
+    if (playerAssets.profile) stores.characterProfiles.put(playerAssets.profile);
+    (playerAssets.storageLocations || []).forEach((storage) => stores.storageLocations.put(storage));
+    (playerAssets.quantityItems || []).forEach((item) => stores.quantityItems.put(item));
+    (playerAssets.uniqueItems || []).forEach((item) => stores.uniqueItems.put(item));
+    (playerAssets.slotAssignments || []).forEach((assignment) => stores.slotAssignments.put(assignment));
+    await transactionDone(transaction);
+  }
+
+  async putCharacterProfile(profile) {
+    if (!profile?.character_id) return null;
+    const nextProfile = {
+      ...profile,
+      updated_at: Date.now()
+    };
+    await this.putStoreValue("characterProfiles", nextProfile);
+    return nextProfile;
+  }
+
+  async getPlayerAssetSnapshot(characterId = DEFAULT_CHARACTER_ID) {
+    const [profile, storageLocations, quantityItems, uniqueItems, slotAssignments] = await Promise.all([
+      this.getStoreValue("characterProfiles", characterId),
+      this.getAll("storageLocations"),
+      this.getAll("quantityItems"),
+      this.getAll("uniqueItems"),
+      this.getAll("slotAssignments")
+    ]);
+    const ownedStorageLocations = storageLocations.filter((storage) => storage.owner_character_id === characterId);
+    const ownedStorageIds = new Set(ownedStorageLocations.map((storage) => storage.storage_id));
+    const ownedItemIds = new Set(uniqueItems
+      .filter((item) => item.owner_character_id === characterId || ownedStorageIds.has(item.storage_id))
+      .map((item) => item.item_uid));
+    return {
+      character_id: characterId,
+      profile: profile || null,
+      storageLocations: ownedStorageLocations,
+      quantityItems: quantityItems.filter((item) => ownedStorageIds.has(item.storage_id)),
+      uniqueItems: uniqueItems.filter((item) => item.owner_character_id === characterId || ownedStorageIds.has(item.storage_id)),
+      slotAssignments: slotAssignments.filter((assignment) => ownedItemIds.has(assignment.owner_item_uid))
+    };
+  }
+
+  async putUniqueItems(items = []) {
+    if (!items.length) return;
+    const transaction = this.db.transaction("uniqueItems", "readwrite");
+    const store = transaction.objectStore("uniqueItems");
+    items.forEach((item) => store.put(item));
+    await transactionDone(transaction);
+  }
+
+  // Single-transaction read-modify-write: reads the authoritative player-asset
+  // state from IndexedDB and feeds it to a SYNCHRONOUS computeMutation(assets)
+  // callback, then writes the returned mutation in the SAME transaction. Because
+  // the decision is made from the freshly-read data (not an in-memory snapshot),
+  // overlapping mutations — including from other tabs — are serialized by
+  // IndexedDB and cannot lose updates. computeMutation must not perform async
+  // work or issue its own IndexedDB requests, or the transaction will close.
+  runPlayerAssetMutation(characterId = DEFAULT_CHARACTER_ID, computeMutation = () => null) {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(PLAYER_STORE_NAMES, "readwrite");
+      const stores = Object.fromEntries(PLAYER_STORE_NAMES.map((name) => [name, transaction.objectStore(name)]));
+      const reads = {};
+      let pending = 0;
+      let settled = false;
+
+      const fail = (error) => {
+        if (settled) return;
+        settled = true;
+        try { transaction.abort(); } catch { /* already inactive */ }
+        reject(error instanceof Error ? error : new Error("Player asset mutation failed."));
+      };
+
+      const onAllRead = () => {
+        const ownedStorageLocations = (reads.storageLocations || []).filter((storage) => storage.owner_character_id === characterId);
+        const ownedStorageIds = new Set(ownedStorageLocations.map((storage) => storage.storage_id));
+        const ownedUniqueItems = (reads.uniqueItems || []).filter((item) => item.owner_character_id === characterId || ownedStorageIds.has(item.storage_id));
+        const ownedItemIds = new Set(ownedUniqueItems.map((item) => item.item_uid));
+        const assets = {
+          character_id: characterId,
+          profile: reads.characterProfiles || null,
+          storageLocations: ownedStorageLocations,
+          quantityItems: (reads.quantityItems || []).filter((item) => ownedStorageIds.has(item.storage_id)),
+          uniqueItems: ownedUniqueItems,
+          slotAssignments: (reads.slotAssignments || []).filter((assignment) => ownedItemIds.has(assignment.owner_item_uid))
+        };
+
+        let mutation = null;
+        try {
+          mutation = computeMutation(assets);
+        } catch (error) {
+          fail(error);
+          return;
+        }
+
+        if (mutation) {
+          (mutation.storageLocationsToPut || []).forEach((storage) => stores.storageLocations.put(storage));
+          (mutation.storageLocationIdsToDelete || []).forEach((id) => stores.storageLocations.delete(id));
+          (mutation.quantityItemIdsToDelete || []).forEach((id) => stores.quantityItems.delete(id));
+          (mutation.quantityItemsToPut || []).forEach((item) => stores.quantityItems.put(item));
+          (mutation.uniqueItemsToPut || []).forEach((item) => stores.uniqueItems.put(item));
+          (mutation.slotAssignmentIdsToDelete || []).forEach((id) => stores.slotAssignments.delete(id));
+          (mutation.slotAssignmentsToPut || []).forEach((assignment) => stores.slotAssignments.put(assignment));
+        }
+
+        transaction.oncomplete = () => {
+          if (settled) return;
+          settled = true;
+          resolve({ committed: Boolean(mutation), assets });
+        };
+      };
+
+      const issueRead = (storeName, mode) => {
+        pending += 1;
+        const request = mode === "get" ? stores[storeName].get(characterId) : stores[storeName].getAll();
+        request.onsuccess = () => {
+          reads[storeName] = request.result;
+          pending -= 1;
+          if (pending === 0 && !settled) onAllRead();
+        };
+      };
+
+      transaction.onerror = () => fail(transaction.error || new Error("IndexedDB transaction failed."));
+      transaction.onabort = () => fail(transaction.error || new Error("IndexedDB transaction aborted."));
+
+      issueRead("characterProfiles", "get");
+      issueRead("storageLocations", "getAll");
+      issueRead("quantityItems", "getAll");
+      issueRead("uniqueItems", "getAll");
+      issueRead("slotAssignments", "getAll");
+    });
+  }
+
   async loadOrCreatePlayerShipState() {
     let state = await this.getStoreValue("meta", "playerShip");
     if (!state) {
@@ -1335,7 +1632,7 @@ export class WorldDataManager {
     return nextState;
   }
 
-  async replaceWorldData({ sectors, chunks, resourceNodes, buildings, betaVoids = [], meta, playerShip, resourceManager }) {
+  async replaceWorldData({ sectors, chunks, resourceNodes, buildings, betaVoids = [], meta, playerShip, resourceManager, playerAssets = null }) {
     const transaction = this.db.transaction(STORE_NAMES, "readwrite");
 
     const stores = Object.fromEntries(STORE_NAMES.map((storeName) => [storeName, transaction.objectStore(storeName)]));
@@ -1348,6 +1645,11 @@ export class WorldDataManager {
     stores.meta.put(meta);
     if (playerShip) stores.meta.put(playerShip);
     if (resourceManager) stores.meta.put(resourceManager);
+    if (playerAssets?.profile) stores.characterProfiles.put(playerAssets.profile);
+    (playerAssets?.storageLocations || []).forEach((storage) => stores.storageLocations.put(storage));
+    (playerAssets?.quantityItems || []).forEach((item) => stores.quantityItems.put(item));
+    (playerAssets?.uniqueItems || []).forEach((item) => stores.uniqueItems.put(item));
+    (playerAssets?.slotAssignments || []).forEach((assignment) => stores.slotAssignments.put(assignment));
     await transactionDone(transaction);
   }
 

@@ -1,0 +1,538 @@
+{
+  "version": 2,
+  "sourceGmap": "galaxyMapData.gmap",
+  "clusters": {
+    "cl_2118_4_43_42_17_60_59_du1c22": {
+      "id": "cl_2118_4_43_42_17_60_59_du1c22",
+      "name": "Cluster 1",
+      "enabled": false,
+      "chunkCount": 2118,
+      "bounds": {
+        "min": [
+          4,
+          43,
+          42
+        ],
+        "max": [
+          17,
+          60,
+          59
+        ]
+      }
+    },
+    "cl_2596_5_6_28_16_18_58_17qwpq3": {
+      "id": "cl_2596_5_6_28_16_18_58_17qwpq3",
+      "name": "Cluster 2",
+      "enabled": false,
+      "chunkCount": 2596,
+      "bounds": {
+        "min": [
+          5,
+          6,
+          28
+        ],
+        "max": [
+          16,
+          18,
+          58
+        ]
+      }
+    },
+    "cl_3755_6_25_4_17_55_22_1p2rzm7": {
+      "id": "cl_3755_6_25_4_17_55_22_1p2rzm7",
+      "name": "Cluster 3",
+      "enabled": false,
+      "chunkCount": 3755,
+      "bounds": {
+        "min": [
+          6,
+          25,
+          4
+        ],
+        "max": [
+          17,
+          55,
+          22
+        ]
+      }
+    },
+    "cl_4676_7_8_98_35_34_113_ps38va": {
+      "id": "cl_4676_7_8_98_35_34_113_ps38va",
+      "name": "Cluster 4",
+      "enabled": true,
+      "chunkCount": 4676,
+      "bounds": {
+        "min": [
+          7,
+          8,
+          98
+        ],
+        "max": [
+          35,
+          34,
+          113
+        ]
+      }
+    },
+    "cl_25280_8_82_4_59_114_42_10otz97": {
+      "id": "cl_25280_8_82_4_59_114_42_10otz97",
+      "name": "Cluster 5",
+      "enabled": false,
+      "chunkCount": 25280,
+      "bounds": {
+        "min": [
+          8,
+          82,
+          4
+        ],
+        "max": [
+          59,
+          114,
+          42
+        ]
+      }
+    },
+    "cl_7257_8_85_43_39_113_79_i3gn9s": {
+      "id": "cl_7257_8_85_43_39_113_79_i3gn9s",
+      "name": "Cluster 6",
+      "enabled": true,
+      "chunkCount": 7257,
+      "bounds": {
+        "min": [
+          8,
+          85,
+          43
+        ],
+        "max": [
+          39,
+          113,
+          79
+        ]
+      }
+    },
+    "cl_465_9_41_86_17_56_92_diwski": {
+      "id": "cl_465_9_41_86_17_56_92_diwski",
+      "name": "Cluster 7",
+      "enabled": false,
+      "chunkCount": 465,
+      "bounds": {
+        "min": [
+          9,
+          41,
+          86
+        ],
+        "max": [
+          17,
+          56,
+          92
+        ]
+      }
+    },
+    "cl_14120_21_60_86_56_114_115_1c7glgj": {
+      "id": "cl_14120_21_60_86_56_114_115_1c7glgj",
+      "name": "Cluster 8",
+      "enabled": false,
+      "chunkCount": 14120,
+      "bounds": {
+        "min": [
+          21,
+          60,
+          86
+        ],
+        "max": [
+          56,
+          114,
+          115
+        ]
+      }
+    },
+    "cl_5793_39_6_64_78_25_97_1995320": {
+      "id": "cl_5793_39_6_64_78_25_97_1995320",
+      "name": "Cluster 9",
+      "enabled": false,
+      "chunkCount": 5793,
+      "bounds": {
+        "min": [
+          39,
+          6,
+          64
+        ],
+        "max": [
+          78,
+          25,
+          97
+        ]
+      }
+    },
+    "cl_7037_40_57_45_58_80_76_w4vwse": {
+      "id": "cl_7037_40_57_45_58_80_76_w4vwse",
+      "name": "Cluster 10",
+      "enabled": false,
+      "chunkCount": 7037,
+      "bounds": {
+        "min": [
+          40,
+          57,
+          45
+        ],
+        "max": [
+          58,
+          80,
+          76
+        ]
+      }
+    },
+    "cl_1647_42_8_21_74_14_34_k37v33": {
+      "id": "cl_1647_42_8_21_74_14_34_k37v33",
+      "name": "Cluster 11",
+      "enabled": false,
+      "chunkCount": 1647,
+      "bounds": {
+        "min": [
+          42,
+          8,
+          21
+        ],
+        "max": [
+          74,
+          14,
+          34
+        ]
+      }
+    },
+    "cl_3599_42_21_6_75_36_18_e34qlk": {
+      "id": "cl_3599_42_21_6_75_36_18_e34qlk",
+      "name": "Cluster 12",
+      "enabled": false,
+      "chunkCount": 3599,
+      "bounds": {
+        "min": [
+          42,
+          21,
+          6
+        ],
+        "max": [
+          75,
+          36,
+          18
+        ]
+      }
+    },
+    "cl_4710_63_24_79_79_37_114_1qdtt51": {
+      "id": "cl_4710_63_24_79_79_37_114_1qdtt51",
+      "name": "Cluster 13",
+      "enabled": false,
+      "chunkCount": 4710,
+      "bounds": {
+        "min": [
+          63,
+          24,
+          79
+        ],
+        "max": [
+          79,
+          37,
+          114
+        ]
+      }
+    },
+    "cl_3453_64_63_82_77_86_104_1eznacq": {
+      "id": "cl_3453_64_63_82_77_86_104_1eznacq",
+      "name": "Cluster 14",
+      "enabled": false,
+      "chunkCount": 3453,
+      "bounds": {
+        "min": [
+          64,
+          63,
+          82
+        ],
+        "max": [
+          77,
+          86,
+          104
+        ]
+      }
+    },
+    "cl_23307_65_30_25_115_82_76_1ttqdr5": {
+      "id": "cl_23307_65_30_25_115_82_76_1ttqdr5",
+      "name": "Cluster 15",
+      "enabled": false,
+      "chunkCount": 23307,
+      "bounds": {
+        "min": [
+          65,
+          30,
+          25
+        ],
+        "max": [
+          115,
+          82,
+          76
+        ]
+      }
+    },
+    "cl_254_65_107_67_76_111_74_17dd37z": {
+      "id": "cl_254_65_107_67_76_111_74_17dd37z",
+      "name": "Cluster 16",
+      "enabled": false,
+      "chunkCount": 254,
+      "bounds": {
+        "min": [
+          65,
+          107,
+          67
+        ],
+        "max": [
+          76,
+          111,
+          74
+        ]
+      }
+    },
+    "cl_1659_82_18_65_93_39_76_1uxzizr": {
+      "id": "cl_1659_82_18_65_93_39_76_1uxzizr",
+      "name": "Cluster 17",
+      "enabled": false,
+      "chunkCount": 1659,
+      "bounds": {
+        "min": [
+          82,
+          18,
+          65
+        ],
+        "max": [
+          93,
+          39,
+          76
+        ]
+      }
+    },
+    "cl_1387_85_104_44_100_113_59_11de537": {
+      "id": "cl_1387_85_104_44_100_113_59_11de537",
+      "name": "Cluster 18",
+      "enabled": false,
+      "chunkCount": 1387,
+      "bounds": {
+        "min": [
+          85,
+          104,
+          44
+        ],
+        "max": [
+          100,
+          113,
+          59
+        ]
+      }
+    },
+    "cl_101_88_90_109_92_110_110_jhjd60": {
+      "id": "cl_101_88_90_109_92_110_110_jhjd60",
+      "name": "Cluster 19",
+      "enabled": false,
+      "chunkCount": 101,
+      "bounds": {
+        "min": [
+          88,
+          90,
+          109
+        ],
+        "max": [
+          92,
+          110,
+          110
+        ]
+      }
+    },
+    "cl_1927_93_61_25_112_77_35_m23jg3": {
+      "id": "cl_1927_93_61_25_112_77_35_m23jg3",
+      "name": "Cluster 20",
+      "enabled": false,
+      "chunkCount": 1927,
+      "bounds": {
+        "min": [
+          93,
+          61,
+          25
+        ],
+        "max": [
+          112,
+          77,
+          35
+        ]
+      }
+    },
+    "cl_1989_99_4_94_114_18_114_o6yvqk": {
+      "id": "cl_1989_99_4_94_114_18_114_o6yvqk",
+      "name": "Cluster 21",
+      "enabled": false,
+      "chunkCount": 1989,
+      "bounds": {
+        "min": [
+          99,
+          4,
+          94
+        ],
+        "max": [
+          114,
+          18,
+          114
+        ]
+      }
+    },
+    "cl_1533_104_6_24_116_22_38_1lnc54r": {
+      "id": "cl_1533_104_6_24_116_22_38_1lnc54r",
+      "name": "Cluster 22",
+      "enabled": false,
+      "chunkCount": 1533,
+      "bounds": {
+        "min": [
+          104,
+          6,
+          24
+        ],
+        "max": [
+          116,
+          22,
+          38
+        ]
+      }
+    }
+  },
+  "chunks": {
+    "31:105:68": {
+      "sectorId": "SEC-001",
+      "resourceAmounts": {
+        "rss_001": 5,
+        "rss_002": 15,
+        "rss_003": 10,
+        "rss_004": 20,
+        "rss_005": 2,
+        "rss_006": 8,
+        "rss_007": 3,
+        "rss_008": 2
+      },
+      "spawnFlags": {
+        "betaVoid": true
+      }
+    },
+    "31:101:68": {
+      "sectorId": "SEC-002",
+      "resourceAmounts": {
+        "rss_001": 8,
+        "rss_002": 10,
+        "rss_003": 12,
+        "rss_004": 10,
+        "rss_005": 5,
+        "rss_006": 10,
+        "rss_007": 5,
+        "rss_008": 5,
+        "rss_009": 3,
+        "rss_010": 2
+      },
+      "spawnFlags": {
+        "betaVoid": true
+      }
+    },
+    "34:99:70": {
+      "sectorId": "SEC-003",
+      "resourceAmounts": {
+        "rss_001": 3,
+        "rss_002": 8,
+        "rss_003": 6,
+        "rss_004": 12,
+        "rss_005": 1,
+        "rss_006": 15,
+        "rss_007": 1,
+        "rss_008": 1
+      },
+      "spawnFlags": {
+        "betaVoid": true
+      }
+    },
+    "32:97:72": {
+      "sectorId": "SEC-004",
+      "resourceAmounts": {
+        "rss_001": 2,
+        "rss_002": 3,
+        "rss_003": 2,
+        "rss_004": 4,
+        "rss_006": 3,
+        "rss_007": 20,
+        "rss_008": 25,
+        "rss_009": 15,
+        "rss_010": 10
+      },
+      "spawnFlags": {
+        "betaVoid": true
+      }
+    },
+    "27:94:71": {
+      "sectorId": "SEC-005",
+      "resourceAmounts": {},
+      "spawnFlags": {
+        "betaVoid": true
+      }
+    },
+    "29:90:72": {
+      "sectorId": "SEC-006",
+      "resourceAmounts": {},
+      "spawnFlags": {
+        "betaVoid": true
+      }
+    },
+    "30:109:52": {
+      "sectorId": "SEC-007",
+      "resourceAmounts": {},
+      "spawnFlags": {
+        "betaVoid": true
+      }
+    },
+    "22:108:52": {
+      "sectorId": "SEC-008",
+      "resourceAmounts": {},
+      "spawnFlags": {
+        "betaVoid": true
+      }
+    },
+    "15:109:52": {
+      "sectorId": "SEC-009",
+      "resourceAmounts": {},
+      "spawnFlags": {
+        "betaVoid": true
+      }
+    },
+    "10:109:49": {
+      "sectorId": null,
+      "resourceAmounts": {},
+      "spawnFlags": {
+        "betaVoid": false
+      }
+    },
+    "21:25:108": {
+      "sectorId": "SEC-010",
+      "resourceAmounts": {
+        "rss_001": 8,
+        "rss_002": 8,
+        "rss_003": 8,
+        "rss_004": 8,
+        "rss_005": 8,
+        "rss_006": 8,
+        "rss_007": 8,
+        "rss_008": 8,
+        "rss_009": 8,
+        "rss_010": 8
+      },
+      "spawnFlags": {
+        "betaVoid": true
+      }
+    },
+    "27:108:72": {
+      "sectorId": null,
+      "resourceAmounts": {},
+      "spawnFlags": {
+        "betaVoid": false
+      }
+    }
+  }
+}

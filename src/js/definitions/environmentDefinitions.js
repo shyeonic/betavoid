@@ -12,6 +12,12 @@ export const BLOOM_QUALITY_MODES = {
   high: "high"
 };
 
+export const STYLIZED_RENDER_MODES = {
+  off: "off",
+  outline: "outline",
+  full: "full"
+};
+
 export const BLOOM_RESOLUTION_SCALES = {
   [BLOOM_QUALITY_MODES.low]: 0.5,
   [BLOOM_QUALITY_MODES.medium]: 0.75,
@@ -22,6 +28,7 @@ export const RENDER_RESOLUTION_SCALES = [0.5, 0.75, 1];
 
 export const DEFAULT_PERFORMANCE_SETTINGS = {
   materialMaps: true,
+  stylizedRenderMode: STYLIZED_RENDER_MODES.off,
   renderResolutionScale: 1,
   bloomQuality: BLOOM_QUALITY_MODES.medium,
   lightingEffects: true,
@@ -120,11 +127,14 @@ export const SPACE_ENVIRONMENT_PRESETS = {
       background: 0x030811,
       fog: { type: "exp2", color: 0x05101b, density: 0.00004 }
     },
+    // Light intensities match the light preset so objects (especially the ship) are lit the
+    // same in both modes; the dark atmosphere comes from the dark background/fog/stars, not
+    // from dimming the lights. Cool light colors are kept for dark-mode mood.
     lights: {
-      ambient: { color: 0x9fb9d8, intensity: 0.28 },
-      key: { color: 0xd9f1ff, intensity: 0.36, position: [7, 8, 6] },
-      rim: { color: 0x5cc8ff, intensity: 0.32, position: [-8, 4, -8] },
-      hemisphere: { skyColor: 0x93b6d5, groundColor: 0x08131c, intensity: 0.18 }
+      ambient: { color: 0x9fb9d8, intensity: 0.9 },
+      key: { color: 0xd9f1ff, intensity: 6, position: [7, 8, 6] },
+      rim: { color: 0x5cc8ff, intensity: 0.55, position: [-8, 4, -8] },
+      hemisphere: { skyColor: 0x93b6d5, groundColor: 0x08131c, intensity: 0.45 }
     },
     worldMap: {
       bounds: {
@@ -185,6 +195,12 @@ export function normalizeBloomQualityMode(mode) {
     : DEFAULT_PERFORMANCE_SETTINGS.bloomQuality;
 }
 
+export function normalizeStylizedRenderMode(mode) {
+  return Object.values(STYLIZED_RENDER_MODES).includes(mode)
+    ? mode
+    : DEFAULT_PERFORMANCE_SETTINGS.stylizedRenderMode;
+}
+
 export function getBloomResolutionScale(mode) {
   return BLOOM_RESOLUTION_SCALES[normalizeBloomQualityMode(mode)] ?? 0;
 }
@@ -200,6 +216,7 @@ export function normalizePerformanceSettings(settings = {}) {
   const source = settings && typeof settings === "object" ? settings : {};
   return {
     materialMaps: source.materialMaps !== false,
+    stylizedRenderMode: normalizeStylizedRenderMode(source.stylizedRenderMode),
     renderResolutionScale: normalizeRenderResolutionScale(source.renderResolutionScale),
     bloomQuality: normalizeBloomQualityMode(source.bloomQuality),
     lightingEffects: source.lightingEffects !== false,

@@ -18,7 +18,9 @@ export const ko = {
       common: {
         none: "없음",
         off: "끔",
-        on: "켬"
+        on: "켬",
+        outline: "외곽선",
+        full: "전체"
       },
       world: {
         seed: "시드",
@@ -51,6 +53,7 @@ export const ko = {
         all: "전체",
         sector: "섹터",
         materialTextures: "머티리얼 텍스처",
+        stylizedRendering: "카툰 렌더링",
         renderResolution: "렌더 해상도",
         antialias: "안티앨리어싱",
         bloomQuality: "블룸 품질",

@@ -55,6 +55,8 @@ export class WorldMapManager {
     resourceDefinitions = null,
     assetRegistry = null,
     assetBaseUrl = null,
+    registerStylizedRenderTarget = null,
+    unregisterStylizedRenderTarget = null,
     onRenderMutation = null
   }) {
     this.scene = scene;
@@ -67,6 +69,12 @@ export class WorldMapManager {
     this.resourceDefinitions = resourceDefinitions || {};
     this.assetRegistry = assetRegistry;
     this.assetBaseUrl = assetBaseUrl;
+    this.registerStylizedRenderTarget = typeof registerStylizedRenderTarget === "function"
+      ? registerStylizedRenderTarget
+      : null;
+    this.unregisterStylizedRenderTarget = typeof unregisterStylizedRenderTarget === "function"
+      ? unregisterStylizedRenderTarget
+      : null;
     this.onRenderMutation = onRenderMutation;
     this.root = new THREE.Group();
     this.root.name = "world-map";
@@ -371,6 +379,7 @@ export class WorldMapManager {
       chunk_center_position: cachedPosition.chunkCenterPosition,
       chunk_center_relative_position: cachedPosition.chunkCenterRelativePosition
     };
+    this.registerStylizedRenderTarget?.(object);
     this.animatedObjects.push({ object, spin: 0.08 + this.animatedObjects.length * 0.012, mixer });
     return object;
   }
@@ -393,6 +402,7 @@ export class WorldMapManager {
       chunk_center_position: cachedPosition.chunkCenterPosition,
       chunk_center_relative_position: cachedPosition.chunkCenterRelativePosition
     };
+    this.registerStylizedRenderTarget?.(object);
     if (mixer) this.animatedObjects.push({ object, spin: 0, mixer });
     return object;
   }
@@ -1019,6 +1029,7 @@ export class WorldMapManager {
   }
 
   disposeObject(object) {
+    this.unregisterStylizedRenderTarget?.(object);
     object.traverse((child) => {
       if (child.geometry) child.geometry.dispose();
       if (child.material) {

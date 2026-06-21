@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "sizeCompatibility": {
+    "s": [
+      "s"
+    ],
+    "m": [
+      "s",
+      "m"
+    ],
+    "l": [
+      "s",
+      "m",
+      "l"
+    ],
+    "ex": [
+      "ex"
+    ]
+  },
+  "compatibilityPresets": {
+    "weapon": {
+      "w-ct_001": {
+        "id": "w-ct_001",
+        "name_id": "w-ct_001",
+        "compatible_ids": [
+          "weapon_autocannon_precision_s",
+          "weapon_autocannon_service_m",
+          "weapon_autocannon_service_s",
+          "weapon_autocannon_vanguard_s",
+          "weapon_laser_overcharge_s",
+          "weapon_laser_precision_s",
+          "weapon_laser_service_m",
+          "weapon_laser_service_s",
+          "weapon_plasma_arc_s",
+          "weapon_plasma_inferno_s",
+          "weapon_plasma_service_m",
+          "weapon_plasma_service_s",
+          "weapon_pulse_capacitor_s",
+          "weapon_pulse_resonance_s",
+          "weapon_pulse_service_m",
+          "weapon_pulse_service_s",
+          "weapon_railgun_hunter_s",
+          "weapon_railgun_service_m",
+          "weapon_railgun_service_s",
+          "weapon_railgun_siege_s"
+        ]
+      },
+      "w-sp_001": {
+        "id": "w-sp_001",
+        "name_id": "w-sp_001",
+        "compatible_ids": [
+          "weapon_ex_beta_cascade"
+        ]
+      },
+      "w-sub_001": {
+        "id": "w-sub_001",
+        "name_id": "w-sub_001",
+        "compatible_ids": [
+          "weapon_autocannon_precision_s",
+          "weapon_autocannon_service_s",
+          "weapon_autocannon_vanguard_s"
+        ]
+      }
+    },
+    "shield": {
+      "s-ct_001": {
+        "id": "s-ct_001",
+        "name_id": "s-ct_001",
+        "compatible_ids": [
+          "shield_aegis_citadel_m",
+          "shield_aegis_military_m",
+          "shield_aegis_service_m",
+          "shield_bulwark_reinforced_m",
+          "shield_bulwark_service_m",
+          "shield_dynamo_overdrive_m",
+          "shield_dynamo_service_m"
+        ]
+      }
+    },
+    "equipment": {
+      "e-ct_001": {
+        "id": "e-ct_001",
+        "name_id": "e-ct_001",
+        "compatible_ids": [
+          "equipment_hull_composite_m",
+          "equipment_hull_fortress_m",
+          "equipment_hull_plating_m",
+          "equipment_processor_aux_m",
+          "equipment_processor_quantum_m",
+          "equipment_processor_tactical_m",
+          "equipment_repair_core_m",
+          "equipment_repair_matrix_m",
+          "equipment_repair_nanos_m"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,1351 @@
+{
+  "version": 2,
+  "items": {
+    "equipment_capacitor_dense_l": {
+      "id": "equipment_capacitor_dense_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 21,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_capacitor_dense_m": {
+      "id": "equipment_capacitor_dense_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 10,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_capacitor_dense_s": {
+      "id": "equipment_capacitor_dense_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 4,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_capacitor_exotic_l": {
+      "id": "equipment_capacitor_exotic_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 25,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_capacitor_exotic_m": {
+      "id": "equipment_capacitor_exotic_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 12,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_capacitor_exotic_s": {
+      "id": "equipment_capacitor_exotic_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 5,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_cargo_compression_l": {
+      "id": "equipment_cargo_compression_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 30,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_cargo_compression_m": {
+      "id": "equipment_cargo_compression_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 14,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_cargo_compression_s": {
+      "id": "equipment_cargo_compression_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 6,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_cargo_lattice_l": {
+      "id": "equipment_cargo_lattice_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 21,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_cargo_lattice_m": {
+      "id": "equipment_cargo_lattice_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 9,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_cargo_lattice_s": {
+      "id": "equipment_cargo_lattice_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 4,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_cargo_rack_l": {
+      "id": "equipment_cargo_rack_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 15,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_cargo_rack_m": {
+      "id": "equipment_cargo_rack_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 6,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_cargo_rack_s": {
+      "id": "equipment_cargo_rack_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 2,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_ex_dimensional_hold": {
+      "id": "equipment_ex_dimensional_hold",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 32,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_ex_living_hull": {
+      "id": "equipment_ex_living_hull",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 41,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_ex_singularity_core": {
+      "id": "equipment_ex_singularity_core",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 36,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_flux_charger_l": {
+      "id": "equipment_flux_charger_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 14,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_flux_charger_m": {
+      "id": "equipment_flux_charger_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 7,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_flux_charger_s": {
+      "id": "equipment_flux_charger_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 3,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_hull_composite_l": {
+      "id": "equipment_hull_composite_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 30,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_hull_composite_m": {
+      "id": "equipment_hull_composite_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 14,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_hull_composite_s": {
+      "id": "equipment_hull_composite_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 6,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_hull_fortress_l": {
+      "id": "equipment_hull_fortress_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 45,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_hull_fortress_m": {
+      "id": "equipment_hull_fortress_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 21,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_hull_fortress_s": {
+      "id": "equipment_hull_fortress_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 9,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_hull_plating_l": {
+      "id": "equipment_hull_plating_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 26,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_hull_plating_m": {
+      "id": "equipment_hull_plating_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 12,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_hull_plating_s": {
+      "id": "equipment_hull_plating_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 5,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_inertial_control_l": {
+      "id": "equipment_inertial_control_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 23,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_inertial_control_m": {
+      "id": "equipment_inertial_control_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 11,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_inertial_control_s": {
+      "id": "equipment_inertial_control_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 5,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_maneuver_predictor_l": {
+      "id": "equipment_maneuver_predictor_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 17,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_maneuver_predictor_m": {
+      "id": "equipment_maneuver_predictor_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 8,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_maneuver_predictor_s": {
+      "id": "equipment_maneuver_predictor_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 3,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_power_cell_l": {
+      "id": "equipment_power_cell_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 15,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_power_cell_m": {
+      "id": "equipment_power_cell_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 7,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_power_cell_s": {
+      "id": "equipment_power_cell_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 3,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_processor_aux_l": {
+      "id": "equipment_processor_aux_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 11,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_processor_aux_m": {
+      "id": "equipment_processor_aux_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 5,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_processor_aux_s": {
+      "id": "equipment_processor_aux_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 2,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_processor_quantum_l": {
+      "id": "equipment_processor_quantum_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 19,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_processor_quantum_m": {
+      "id": "equipment_processor_quantum_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 9,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_processor_quantum_s": {
+      "id": "equipment_processor_quantum_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 4,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_processor_tactical_l": {
+      "id": "equipment_processor_tactical_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 15,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_processor_tactical_m": {
+      "id": "equipment_processor_tactical_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 7,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_processor_tactical_s": {
+      "id": "equipment_processor_tactical_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 3,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_reactor_catalyst_l": {
+      "id": "equipment_reactor_catalyst_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 27,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_reactor_catalyst_m": {
+      "id": "equipment_reactor_catalyst_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 13,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_reactor_catalyst_s": {
+      "id": "equipment_reactor_catalyst_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 6,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_reactor_regulator_l": {
+      "id": "equipment_reactor_regulator_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 18,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_reactor_regulator_m": {
+      "id": "equipment_reactor_regulator_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 9,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_reactor_regulator_s": {
+      "id": "equipment_reactor_regulator_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 4,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_repair_core_l": {
+      "id": "equipment_repair_core_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 21,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_repair_core_m": {
+      "id": "equipment_repair_core_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 10,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_repair_core_s": {
+      "id": "equipment_repair_core_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 4,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_repair_matrix_l": {
+      "id": "equipment_repair_matrix_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 30,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_repair_matrix_m": {
+      "id": "equipment_repair_matrix_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 14,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_repair_matrix_s": {
+      "id": "equipment_repair_matrix_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 6,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_repair_nanos_l": {
+      "id": "equipment_repair_nanos_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 13,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_repair_nanos_m": {
+      "id": "equipment_repair_nanos_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 6,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_repair_nanos_s": {
+      "id": "equipment_repair_nanos_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 2,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_vector_thruster_l": {
+      "id": "equipment_vector_thruster_l",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 15,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_vector_thruster_m": {
+      "id": "equipment_vector_thruster_m",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 7,
+      "tradable": true,
+      "stackable": true
+    },
+    "equipment_vector_thruster_s": {
+      "id": "equipment_vector_thruster_s",
+      "kind": "equipment",
+      "identity": "conditional_unique",
+      "mass": 3,
+      "tradable": true,
+      "stackable": true
+    },
+    "item_001": {
+      "id": "item_001",
+      "kind": "resource",
+      "type": "hydrite_mineral",
+      "identity": "quantity",
+      "mass": 1,
+      "tradable": true,
+      "stackable": true
+    },
+    "item_002": {
+      "id": "item_002",
+      "kind": "resource",
+      "type": "mineral",
+      "identity": "quantity",
+      "mass": 1.5,
+      "tradable": true,
+      "stackable": true
+    },
+    "item_003": {
+      "id": "item_003",
+      "kind": "resource",
+      "type": "mineral",
+      "identity": "quantity",
+      "mass": 1.2,
+      "tradable": true,
+      "stackable": true
+    },
+    "item_004": {
+      "id": "item_004",
+      "kind": "resource",
+      "type": "mineral",
+      "identity": "quantity",
+      "mass": 1,
+      "tradable": true,
+      "stackable": true
+    },
+    "item_005": {
+      "id": "item_005",
+      "kind": "resource",
+      "type": "mineral",
+      "identity": "quantity",
+      "mass": 2,
+      "tradable": true,
+      "stackable": true
+    },
+    "item_006": {
+      "id": "item_006",
+      "kind": "resource",
+      "type": "mineral",
+      "identity": "quantity",
+      "mass": 0.8,
+      "tradable": true,
+      "stackable": true
+    },
+    "item_007": {
+      "id": "item_007",
+      "kind": "resource",
+      "type": "gas",
+      "identity": "quantity",
+      "mass": 0.2,
+      "tradable": true,
+      "stackable": true
+    },
+    "item_008": {
+      "id": "item_008",
+      "kind": "resource",
+      "type": "gas",
+      "identity": "quantity",
+      "mass": 0.3,
+      "tradable": true,
+      "stackable": true
+    },
+    "item_009": {
+      "id": "item_009",
+      "kind": "resource",
+      "type": "gas",
+      "identity": "quantity",
+      "mass": 0.5,
+      "tradable": true,
+      "stackable": true
+    },
+    "item_010": {
+      "id": "item_010",
+      "kind": "resource",
+      "type": "gas",
+      "identity": "quantity",
+      "mass": 0.4,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_aegis_citadel_l": {
+      "id": "shield_aegis_citadel_l",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 30,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_aegis_citadel_m": {
+      "id": "shield_aegis_citadel_m",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 15,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_aegis_citadel_s": {
+      "id": "shield_aegis_citadel_s",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 7,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_aegis_military_l": {
+      "id": "shield_aegis_military_l",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 22,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_aegis_military_m": {
+      "id": "shield_aegis_military_m",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 11,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_aegis_military_s": {
+      "id": "shield_aegis_military_s",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 5,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_aegis_service_l": {
+      "id": "shield_aegis_service_l",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 18,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_aegis_service_m": {
+      "id": "shield_aegis_service_m",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 9,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_aegis_service_s": {
+      "id": "shield_aegis_service_s",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 4,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_bulwark_reinforced_l": {
+      "id": "shield_bulwark_reinforced_l",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 31,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_bulwark_reinforced_m": {
+      "id": "shield_bulwark_reinforced_m",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 15,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_bulwark_reinforced_s": {
+      "id": "shield_bulwark_reinforced_s",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 7,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_bulwark_service_l": {
+      "id": "shield_bulwark_service_l",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 23,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_bulwark_service_m": {
+      "id": "shield_bulwark_service_m",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 11,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_bulwark_service_s": {
+      "id": "shield_bulwark_service_s",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 5,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_dynamo_overdrive_l": {
+      "id": "shield_dynamo_overdrive_l",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 18,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_dynamo_overdrive_m": {
+      "id": "shield_dynamo_overdrive_m",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 9,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_dynamo_overdrive_s": {
+      "id": "shield_dynamo_overdrive_s",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 4,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_dynamo_service_l": {
+      "id": "shield_dynamo_service_l",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 16,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_dynamo_service_m": {
+      "id": "shield_dynamo_service_m",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 8,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_dynamo_service_s": {
+      "id": "shield_dynamo_service_s",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 3,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_ex_event_horizon": {
+      "id": "shield_ex_event_horizon",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 42,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_ex_trinity_screen": {
+      "id": "shield_ex_trinity_screen",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 36,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_kinetic_scatter_l": {
+      "id": "shield_kinetic_scatter_l",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 24,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_kinetic_scatter_m": {
+      "id": "shield_kinetic_scatter_m",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 12,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_kinetic_scatter_s": {
+      "id": "shield_kinetic_scatter_s",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 5,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_phase_screen_l": {
+      "id": "shield_phase_screen_l",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 20,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_phase_screen_m": {
+      "id": "shield_phase_screen_m",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 10,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_phase_screen_s": {
+      "id": "shield_phase_screen_s",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 4,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_thermal_sink_l": {
+      "id": "shield_thermal_sink_l",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 20,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_thermal_sink_m": {
+      "id": "shield_thermal_sink_m",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 10,
+      "tradable": true,
+      "stackable": true
+    },
+    "shield_thermal_sink_s": {
+      "id": "shield_thermal_sink_s",
+      "kind": "shield",
+      "identity": "conditional_unique",
+      "mass": 4,
+      "tradable": true,
+      "stackable": true
+    },
+    "ship_01": {
+      "id": "ship_01",
+      "kind": "ship",
+      "identity": "unique",
+      "mass": 0,
+      "tradable": true,
+      "stackable": false
+    },
+    "ship_02": {
+      "id": "ship_02",
+      "kind": "ship",
+      "identity": "unique",
+      "mass": 0,
+      "tradable": true,
+      "stackable": false
+    },
+    "weapon_autocannon_precision_l": {
+      "id": "weapon_autocannon_precision_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 17,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_autocannon_precision_m": {
+      "id": "weapon_autocannon_precision_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 8,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_autocannon_precision_s": {
+      "id": "weapon_autocannon_precision_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 3,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_autocannon_service_l": {
+      "id": "weapon_autocannon_service_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 15,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_autocannon_service_m": {
+      "id": "weapon_autocannon_service_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 7,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_autocannon_service_s": {
+      "id": "weapon_autocannon_service_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 3,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_autocannon_vanguard_l": {
+      "id": "weapon_autocannon_vanguard_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 19,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_autocannon_vanguard_m": {
+      "id": "weapon_autocannon_vanguard_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 9,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_autocannon_vanguard_s": {
+      "id": "weapon_autocannon_vanguard_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 4,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_beta_fracture_l": {
+      "id": "weapon_beta_fracture_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 15,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_beta_fracture_m": {
+      "id": "weapon_beta_fracture_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 7,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_beta_fracture_s": {
+      "id": "weapon_beta_fracture_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 3,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_beta_rupture_l": {
+      "id": "weapon_beta_rupture_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 22,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_beta_rupture_m": {
+      "id": "weapon_beta_rupture_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 11,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_beta_rupture_s": {
+      "id": "weapon_beta_rupture_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 5,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_beta_stabilized_l": {
+      "id": "weapon_beta_stabilized_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 18,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_beta_stabilized_m": {
+      "id": "weapon_beta_stabilized_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 9,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_beta_stabilized_s": {
+      "id": "weapon_beta_stabilized_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 4,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_ex_beta_cascade": {
+      "id": "weapon_ex_beta_cascade",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 29,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_ex_siege_driver": {
+      "id": "weapon_ex_siege_driver",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 38,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_ex_starfire_array": {
+      "id": "weapon_ex_starfire_array",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 34,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_laser_overcharge_l": {
+      "id": "weapon_laser_overcharge_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 18,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_laser_overcharge_m": {
+      "id": "weapon_laser_overcharge_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 9,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_laser_overcharge_s": {
+      "id": "weapon_laser_overcharge_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 4,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_laser_precision_l": {
+      "id": "weapon_laser_precision_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 16,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_laser_precision_m": {
+      "id": "weapon_laser_precision_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 8,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_laser_precision_s": {
+      "id": "weapon_laser_precision_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 3,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_laser_service_l": {
+      "id": "weapon_laser_service_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 14,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_laser_service_m": {
+      "id": "weapon_laser_service_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 7,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_laser_service_s": {
+      "id": "weapon_laser_service_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 3,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_plasma_arc_l": {
+      "id": "weapon_plasma_arc_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 27,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_plasma_arc_m": {
+      "id": "weapon_plasma_arc_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 13,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_plasma_arc_s": {
+      "id": "weapon_plasma_arc_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 6,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_plasma_inferno_l": {
+      "id": "weapon_plasma_inferno_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 28,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_plasma_inferno_m": {
+      "id": "weapon_plasma_inferno_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 14,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_plasma_inferno_s": {
+      "id": "weapon_plasma_inferno_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 6,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_plasma_service_l": {
+      "id": "weapon_plasma_service_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 23,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_plasma_service_m": {
+      "id": "weapon_plasma_service_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 11,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_plasma_service_s": {
+      "id": "weapon_plasma_service_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 5,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_pulse_capacitor_l": {
+      "id": "weapon_pulse_capacitor_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 22,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_pulse_capacitor_m": {
+      "id": "weapon_pulse_capacitor_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 11,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_pulse_capacitor_s": {
+      "id": "weapon_pulse_capacitor_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 5,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_pulse_resonance_l": {
+      "id": "weapon_pulse_resonance_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 20,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_pulse_resonance_m": {
+      "id": "weapon_pulse_resonance_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 10,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_pulse_resonance_s": {
+      "id": "weapon_pulse_resonance_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 4,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_pulse_service_l": {
+      "id": "weapon_pulse_service_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 16,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_pulse_service_m": {
+      "id": "weapon_pulse_service_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 8,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_pulse_service_s": {
+      "id": "weapon_pulse_service_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 3,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_railgun_hunter_l": {
+      "id": "weapon_railgun_hunter_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 27,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_railgun_hunter_m": {
+      "id": "weapon_railgun_hunter_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 13,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_railgun_hunter_s": {
+      "id": "weapon_railgun_hunter_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 6,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_railgun_service_l": {
+      "id": "weapon_railgun_service_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 24,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_railgun_service_m": {
+      "id": "weapon_railgun_service_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 11,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_railgun_service_s": {
+      "id": "weapon_railgun_service_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 5,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_railgun_siege_l": {
+      "id": "weapon_railgun_siege_l",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 31,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_railgun_siege_m": {
+      "id": "weapon_railgun_siege_m",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 15,
+      "tradable": true,
+      "stackable": true
+    },
+    "weapon_railgun_siege_s": {
+      "id": "weapon_railgun_siege_s",
+      "kind": "weapon",
+      "identity": "conditional_unique",
+      "mass": 7,
+      "tradable": true,
+      "stackable": true
+    }
+  }
+}

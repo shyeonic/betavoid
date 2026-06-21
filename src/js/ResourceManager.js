@@ -240,6 +240,7 @@ export class ResourceManager {
     const loader = new GLTFLoader();
     loader.setDRACOLoader(dracoLoader);
     const gltf = await loader.loadAsync(source);
+    gltf.scene.animations = gltf.animations || [];
     return gltf.scene;
   }
 

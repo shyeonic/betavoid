@@ -65,7 +65,8 @@
       "Bash(\"/c/Program Files/Google/Chrome/Application/chrome.exe\" --headless=new --disable-gpu --enable-unsafe-swiftshader --no-first-run --user-data-dir=/tmp/vz-chrome-final3 --enable-logging=stderr --v=0 --virtual-time-budget=20000 --dump-dom http://127.0.0.1:8741/index.html)",
       "Bash(pkill -f \"http.server 8741\")",
       "Bash(rm -f /tmp/vz-cdp-check.mjs)",
-      "Bash(\"/c/Program Files/Google/Chrome/Application/chrome.exe\" --headless=new --disable-gpu --enable-unsafe-swiftshader --no-first-run --user-data-dir=/tmp/vz-chrome-final4 --enable-logging=stderr --v=0 --virtual-time-budget=20000 --dump-dom http://127.0.0.1:8741/index.html)"
+      "Bash(\"/c/Program Files/Google/Chrome/Application/chrome.exe\" --headless=new --disable-gpu --enable-unsafe-swiftshader --no-first-run --user-data-dir=/tmp/vz-chrome-final4 --enable-logging=stderr --v=0 --virtual-time-budget=20000 --dump-dom http://127.0.0.1:8741/index.html)",
+      "Bash(node --check js/GameDataLoader.js)"
     ]
   }
 }

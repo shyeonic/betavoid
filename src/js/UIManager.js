@@ -13,12 +13,34 @@ const WARP_HUD_COMPLETE_DURATION = 1000;
 const WARP_HUD_DAY_SECONDS = 86400;
 
 export class UIManager {
-  constructor({ config, shipStats, i18n, keyBindings, keyBindingGroups, defaultKeyBindings }) {
+  constructor({
+    config,
+    shipStats,
+    shipDefinitions = {},
+    shipCombatSummaries = {},
+    weaponDefinitions = {},
+    shieldDefinitions = {},
+    equipmentDefinitions = {},
+    combatCompatibilityDefinitions = {},
+    defaultShipId = "ship_01",
+    i18n,
+    keyBindings,
+    keyBindingGroups,
+    defaultKeyBindings
+  }) {
     this.config = config;
     this.shipStats = shipStats;
+    this.shipDefinitions = shipDefinitions || {};
+    this.shipCombatSummaries = shipCombatSummaries || {};
+    this.weaponDefinitions = weaponDefinitions || {};
+    this.shieldDefinitions = shieldDefinitions || {};
+    this.equipmentDefinitions = equipmentDefinitions || {};
+    this.combatCompatibilityDefinitions = combatCompatibilityDefinitions || {};
+    this.defaultShipId = defaultShipId;
     this.i18n = i18n || {
       t: (key, params = {}, fallback = key) => fallback,
-      resolveDefinitionText: (definition, field = "name", fallback = "") => definition?.[field] || fallback
+      resolveDefinitionText: (definition, field = "name", fallback = "") => definition?.[field] || fallback,
+      formatNumber: (value, options = {}) => new Intl.NumberFormat("en", options).format(value)
     };
     this.keyBindings = { ...keyBindings };
     this.keyBindingGroups = keyBindingGroups;
@@ -47,12 +69,15 @@ export class UIManager {
     this.selectedObjectListTargetId = null;
     this.renderedObjectList = [];
     this.objectListPayload = { buildings: [], resources: [], betaVoids: [] };
+    this.fittingState = null;
     this.objectListCategory = "resources";
     this.objectListSort = {
       buildings: "sector",
       resources: "sector",
       betaVoids: "sector"
     };
+    this.cargoDisplayKind = "all";
+    this.playerProfile = null;
     this.onKeyBindingsChange = null;
     this.onRequestObjectList = null;
     this.onSelectWorldObject = null;
@@ -61,6 +86,24 @@ export class UIManager {
     this.onEnterTargetCam = null;
     this.onEnterBetaSpace = null;
     this.onExitBetaSpace = null;
+    this.onDock = null;
+    this.onUndock = null;
+    this.onGetDockState = null;
+    this.dockingUi = null;
+    this._dockingActive = false;
+    this._dockingStationName = "";
+    this._started = false;
+    this._dockBubbleRefreshTimer = 0;
+    this._fadeOverlay = null;
+    this.onOpenFittingSimulator = null;
+    this.onCloseFittingSimulator = null;
+    this.onBuildFittingSummary = null;
+    this.onGetFittingCandidates = null;
+    this.onCheckEquipmentOwned = null;
+    this.onApplyShipLoadoutChange = null;
+    this.onRefreshPlayerAssets = null;
+    this.onGetActiveShipCargo = null;
+    this.onPlayerProfileNameChange = null;
     this.boundBindingKeyDown = (event) => this.onBindingKeyDown(event);
     this.boundSelectionSummaryGlobalPointerDown = (event) => this.onSelectionSummaryGlobalPointerDown(event);
     this.elements = {
@@ -98,6 +141,9 @@ export class UIManager {
       environmentDarkButton: this.getElement("#environmentDarkButton"),
       performanceMaterialMapsOffButton: this.getElement("#performanceMaterialMapsOffButton"),
       performanceMaterialMapsOnButton: this.getElement("#performanceMaterialMapsOnButton"),
+      performanceStylizedOffButton: this.getElement("#performanceStylizedOffButton"),
+      performanceStylizedOutlineButton: this.getElement("#performanceStylizedOutlineButton"),
+      performanceStylizedFullButton: this.getElement("#performanceStylizedFullButton"),
       performanceRenderScale50Button: this.getElement("#performanceRenderScale50Button"),
       performanceRenderScale75Button: this.getElement("#performanceRenderScale75Button"),
       performanceRenderScale100Button: this.getElement("#performanceRenderScale100Button"),
@@ -113,9 +159,13 @@ export class UIManager {
       chunkBoundsSectorButton: this.getElement("#chunkBoundsSectorButton"),
       chunkBoundsOffButton: this.getElement("#chunkBoundsOffButton"),
       bottomNavPlayerButton: this.getElement("#bottomNavPlayerButton"),
+      bottomNavShipButton: this.getElement("#bottomNavShipButton"),
       playerPopup: this.getElement("#playerPopup"),
       playerPopupCloseButton: this.getElement("#playerPopupCloseButton"),
-      playerShipGrid: this.getElement("#playerShipGrid"),
+      playerProfilePortrait: this.getElement("#playerProfilePortrait"),
+      playerNameInput: this.getElement("#playerNameInput"),
+      playerUidValue: this.getElement("#playerUidValue"),
+      playerSicValue: this.getElement("#playerSicValue"),
       loadingText: this.getElement("#loadingText"),
       loadingBar: this.getElement("#loadingBar"),
       loadingDetail: this.getElement("#loadingDetail"),
@@ -185,13 +235,14 @@ export class UIManager {
     this.environmentMode = "light";
     this.performanceSettings = {
       materialMaps: true,
+      stylizedRenderMode: "off",
       renderResolutionScale: 1,
       bloomQuality: "medium",
       lightingEffects: true,
       antialias: false
     };
     this.chunkBoundsMode = "all";
-    this.selectedShipId = "ship_01";
+    this.selectedShipId = this.defaultShipId;
     this.speedPointerId = null;
     this.onSetSpeed = null;
     document.documentElement.lang = this.i18n.locale || document.documentElement.lang;
@@ -200,6 +251,7 @@ export class UIManager {
     this.initWarpHud();
     this.renderStaticText();
     this.renderLanguageSettings();
+    this.renderPlayerProfile();
     this.setStartButtonText("Start");
     this.renderKeyBindings();
   }
@@ -278,8 +330,20 @@ export class UIManager {
     onEnterTargetCam,
     onEnterBetaSpace,
     onExitBetaSpace,
+    onDock,
+    onUndock,
+    onGetDockState,
     onToggleCameraMode,
-    onOpenMinimap
+    onOpenMinimap,
+    onOpenFittingSimulator,
+    onCloseFittingSimulator,
+    onBuildFittingSummary,
+    onGetFittingCandidates,
+    onCheckEquipmentOwned,
+    onApplyShipLoadoutChange,
+    onRefreshPlayerAssets,
+    onGetActiveShipCargo,
+    onPlayerProfileNameChange
   }) {
     this.onSetSpeed = onSetSpeed;
     this.onKeyBindingsChange = onKeyBindingsChange;
@@ -291,6 +355,18 @@ export class UIManager {
     this.onEnterTargetCam = typeof onEnterTargetCam === "function" ? onEnterTargetCam : null;
     this.onEnterBetaSpace = typeof onEnterBetaSpace === "function" ? onEnterBetaSpace : null;
     this.onExitBetaSpace = typeof onExitBetaSpace === "function" ? onExitBetaSpace : null;
+    this.onDock = typeof onDock === "function" ? onDock : null;
+    this.onUndock = typeof onUndock === "function" ? onUndock : null;
+    this.onGetDockState = typeof onGetDockState === "function" ? onGetDockState : null;
+    this.onOpenFittingSimulator = typeof onOpenFittingSimulator === "function" ? onOpenFittingSimulator : null;
+    this.onCloseFittingSimulator = typeof onCloseFittingSimulator === "function" ? onCloseFittingSimulator : null;
+    this.onBuildFittingSummary = typeof onBuildFittingSummary === "function" ? onBuildFittingSummary : null;
+    this.onGetFittingCandidates = typeof onGetFittingCandidates === "function" ? onGetFittingCandidates : null;
+    this.onCheckEquipmentOwned = typeof onCheckEquipmentOwned === "function" ? onCheckEquipmentOwned : null;
+    this.onApplyShipLoadoutChange = typeof onApplyShipLoadoutChange === "function" ? onApplyShipLoadoutChange : null;
+    this.onRefreshPlayerAssets = typeof onRefreshPlayerAssets === "function" ? onRefreshPlayerAssets : null;
+    this.onGetActiveShipCargo = typeof onGetActiveShipCargo === "function" ? onGetActiveShipCargo : null;
+    this.onPlayerProfileNameChange = typeof onPlayerProfileNameChange === "function" ? onPlayerProfileNameChange : null;
 
     this.elements.startGateScene.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
@@ -408,6 +484,22 @@ export class UIManager {
       });
     });
     [
+      this.elements.performanceStylizedOffButton,
+      this.elements.performanceStylizedOutlineButton,
+      this.elements.performanceStylizedFullButton
+    ].forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof onPerformanceSettingChange === "function") {
+          onPerformanceSettingChange(
+            button.dataset.performanceMode,
+            button.dataset.performanceModeValue
+          );
+        }
+      });
+    });
+    [
       this.elements.performanceBloomNoneButton,
       this.elements.performanceBloomLowButton,
       this.elements.performanceBloomMediumButton,
@@ -438,21 +530,35 @@ export class UIManager {
       this.closeBottomNavMenu();
       this.openPlayerPopup();
     });
+    this.elements.bottomNavShipButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeBottomNavMenu();
+      this.openShipInfoPopup();
+    });
     this.elements.playerPopupCloseButton.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       this.closePlayerPopup();
     });
+    this.elements.playerNameInput.addEventListener("change", (event) => {
+      event.preventDefault();
+      void this.commitPlayerNameInput();
+    });
+    this.elements.playerNameInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        this.elements.playerNameInput.blur();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        this.renderPlayerProfile();
+        this.elements.playerNameInput.blur();
+      }
+    });
     this.elements.playerPopup.addEventListener("click", (event) => {
       event.stopPropagation();
       if (event.target === this.elements.playerPopup) {
         this.closePlayerPopup();
-        return;
-      }
-      const card = event.target instanceof Element ? event.target.closest("[data-ship-id]") : null;
-      if (card instanceof HTMLElement && typeof onShipSelect === "function") {
-        event.preventDefault();
-        onShipSelect(card.dataset.shipId);
       }
     });
     this.elements.playerPopup.addEventListener("keydown", (event) => {
@@ -622,6 +728,18 @@ export class UIManager {
         if (!object || !this.onEnterBetaSpace) return;
 
         this.onEnterBetaSpace(object);
+        this.closeObjectList({ restoreFocus: false });
+        return;
+      }
+
+      const dockButton = target?.closest("[data-dock-id]");
+      if (dockButton instanceof HTMLButtonElement) {
+        event.preventDefault();
+        if (dockButton.disabled) return;
+        const object = this.findRenderedObject(dockButton.dataset.dockId);
+        if (!object || !this.onDock) return;
+
+        this.onDock(object);
         this.closeObjectList({ restoreFocus: false });
         return;
       }
@@ -807,6 +925,10 @@ export class UIManager {
     this.playerPopupReturnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
       ? document.activeElement
       : this.elements.bottomNavPlayerButton;
+    this.renderPlayerProfile();
+    if (this.elements.playerPopup.parentElement !== document.body) {
+      document.body.append(this.elements.playerPopup);
+    }
     this.elements.playerPopup.hidden = false;
     this.elements.playerPopup.removeAttribute("inert");
     this.elements.playerPopup.classList.add("open");
@@ -843,6 +965,72 @@ export class UIManager {
     }
 
     this.playerPopupReturnFocus = null;
+  }
+
+  getSelectedShipDefinition() {
+    return this.shipDefinitions[this.selectedShipId]
+      || this.shipDefinitions[this.defaultShipId]
+      || Object.values(this.shipDefinitions || {})[0]
+      || null;
+  }
+
+  getSelectedShipSummary() {
+    const ship = this.getSelectedShipDefinition();
+    return ship ? this.shipCombatSummaries?.[ship.id] || null : null;
+  }
+
+  getShipDisplayName(ship) {
+    if (!ship) return "Ship";
+    return this.i18n.resolveDefinitionText(ship, "name", ship.fallbackLabel || ship.id || "Ship");
+  }
+
+  renderPlayerProfile() {
+    const profile = this.playerProfile || {};
+    const displayName = this.normalizePlayerDisplayName(profile.display_name || "Pilot");
+    const portraitId = String(profile.portrait_id || "portrait_01").replace(/[^\w-]/g, "") || "portrait_01";
+    this.elements.playerProfilePortrait.src = `./rss/profile/${portraitId}.png`;
+    if (document.activeElement !== this.elements.playerNameInput) {
+      this.elements.playerNameInput.value = displayName;
+    }
+    this.elements.playerUidValue.textContent = profile.character_id || "--";
+    this.elements.playerSicValue.textContent = this.formatCurrencyAmount(profile.sic ?? 0);
+  }
+
+  async commitPlayerNameInput() {
+    const previousName = this.normalizePlayerDisplayName(this.playerProfile?.display_name || "Pilot");
+    const nextName = this.normalizePlayerDisplayName(this.elements.playerNameInput.value);
+    this.elements.playerNameInput.value = nextName;
+    if (nextName === previousName) return;
+
+    if (!this.onPlayerProfileNameChange) {
+      this.playerProfile = { ...(this.playerProfile || {}), display_name: nextName };
+      this.renderPlayerProfile();
+      return;
+    }
+
+    this.elements.playerNameInput.disabled = true;
+    try {
+      const updatedProfile = await this.onPlayerProfileNameChange(nextName);
+      if (updatedProfile) this.playerProfile = updatedProfile;
+      this.renderPlayerProfile();
+    } catch {
+      this.elements.playerNameInput.value = previousName;
+      this.showErrorToast("profile unavailable");
+    } finally {
+      this.elements.playerNameInput.disabled = false;
+    }
+  }
+
+  normalizePlayerDisplayName(value) {
+    const text = String(value || "").trim().replace(/\s+/g, " ");
+    return text.slice(0, 32) || "Pilot";
+  }
+
+  formatCurrencyAmount(value) {
+    const number = Number(value);
+    return this.i18n.formatNumber(Number.isFinite(number) ? number : 0, {
+      maximumFractionDigits: 0
+    });
   }
 
   renderObjectList({ buildings = [], resources = [], betaVoids = [] }) {
@@ -999,6 +1187,19 @@ export class UIManager {
       return;
     }
 
+    const dockButton = target?.closest("[data-dock-id]");
+    if (dockButton instanceof HTMLButtonElement) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (dockButton.disabled) return;
+      const object = this.findRenderedObject(dockButton.dataset.dockId);
+      if (!object || !this.onDock) return;
+
+      this.onDock(object);
+      this.closeObjectList({ restoreFocus: false });
+      return;
+    }
+
     const row = target?.closest("[data-object-id]");
     if (!row) return;
 
@@ -1073,7 +1274,67 @@ export class UIManager {
       enter.textContent = this.t("ui.scanner.enterBetaSpace", "Enter Beta Space");
       bubble.append(enter);
     }
+    this.appendDockButton(bubble, object);
     return bubble;
+  }
+
+  // Adds a dock button to a station's detail bubble; disabled (but visible) when out of range.
+  appendDockButton(bubble, object) {
+    if (object.kind !== "building") return;
+    const dockState = this.onGetDockState?.(object.id);
+    if (!dockState?.dockable) return;
+    const dock = document.createElement("button");
+    dock.className = "object-bubble-button object-dock-button";
+    dock.type = "button";
+    dock.dataset.dockId = object.id;
+    const icon = document.createElement("img");
+    icon.className = "object-dock-icon";
+    icon.src = "rss/svg/ui_dock.svg";
+    icon.alt = "";
+    icon.setAttribute("aria-hidden", "true");
+    dock.append(icon);
+    this.applyDockButtonState(dock, dockState);
+    bubble.append(dock);
+  }
+
+  applyDockButtonState(dock, dockState) {
+    dock.disabled = !dockState.inRange;
+    const label = dockState.inRange
+      ? this.t("ui.scanner.dock", "정박하기")
+      : this.t("ui.scanner.dockOutOfRange", "정박하기 (거리 초과)");
+    dock.setAttribute("aria-label", label);
+    dock.title = label;
+  }
+
+  refreshDockButton(bubble) {
+    const dock = bubble.querySelector("[data-dock-id]");
+    if (!dock) return;
+    const dockState = this.onGetDockState?.(dock.dataset.dockId);
+    if (!dockState?.dockable) {
+      dock.remove();
+      return;
+    }
+    this.applyDockButtonState(dock, dockState);
+  }
+
+  // Periodically re-evaluates the dock button's range while the selection bubble is open.
+  startDockBubbleRefresh(bubble) {
+    this.stopDockBubbleRefresh();
+    if (!bubble.querySelector("[data-dock-id]")) return;
+    this._dockBubbleRefreshTimer = setInterval(() => {
+      if (!bubble.isConnected) {
+        this.stopDockBubbleRefresh();
+        return;
+      }
+      this.refreshDockButton(bubble);
+    }, 600);
+  }
+
+  stopDockBubbleRefresh() {
+    if (this._dockBubbleRefreshTimer) {
+      clearInterval(this._dockBubbleRefreshTimer);
+      this._dockBubbleRefreshTimer = 0;
+    }
   }
 
   openObjectDetailPopup(object) {
@@ -1221,11 +1482,21 @@ export class UIManager {
         event.stopPropagation();
         if (this.onEnterBetaSpace) this.onEnterBetaSpace(object);
         this.closeSelectionSummaryBubble();
+        return;
+      }
+
+      const dockButton = target?.closest("[data-dock-id]");
+      if (dockButton instanceof HTMLButtonElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!dockButton.disabled && this.onDock) this.onDock(object);
+        this.closeSelectionSummaryBubble();
       }
     });
 
     document.body.append(bubble);
     this.positionSelectionSummaryBubble(bubble);
+    this.startDockBubbleRefresh(bubble);
     const focusTarget = bubble.querySelector("button");
     if (focusTarget instanceof HTMLElement) {
       try {
@@ -1305,6 +1576,7 @@ export class UIManager {
   }
 
   closeSelectionSummaryBubble() {
+    this.stopDockBubbleRefresh();
     document.querySelectorAll(".object-detail-bubble.selection-detail-bubble").forEach((bubble) => bubble.remove());
   }
 
@@ -2059,6 +2331,9 @@ export class UIManager {
   setPerformanceSettings(settings = {}) {
     this.performanceSettings = {
       materialMaps: settings.materialMaps !== false,
+      stylizedRenderMode: ["off", "outline", "full"].includes(settings.stylizedRenderMode)
+        ? settings.stylizedRenderMode
+        : "off",
       renderResolutionScale: [0.5, 0.75, 1].includes(Number(settings.renderResolutionScale))
         ? Number(settings.renderResolutionScale)
         : 1,
@@ -2072,6 +2347,11 @@ export class UIManager {
       this.elements.performanceMaterialMapsOffButton,
       this.elements.performanceMaterialMapsOnButton
     ], this.performanceSettings.materialMaps);
+    this.setModeRailChoice([
+      this.elements.performanceStylizedOffButton,
+      this.elements.performanceStylizedOutlineButton,
+      this.elements.performanceStylizedFullButton
+    ], this.performanceSettings.stylizedRenderMode);
     this.setBooleanRailChoice([
       this.elements.performanceAntialiasOffButton,
       this.elements.performanceAntialiasOnButton
@@ -2104,6 +2384,17 @@ export class UIManager {
       ?.classList.toggle("is-off", this.performanceSettings.bloomQuality === "none");
   }
 
+  setModeRailChoice(buttons, activeValue) {
+    buttons.forEach((button) => {
+      const active = button.dataset.performanceModeValue === activeValue;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    buttons[0]
+      ?.closest(".rail-choice-control")
+      ?.classList.toggle("is-off", activeValue === "off");
+  }
+
   setBooleanRailChoice(buttons, enabled) {
     buttons.forEach((button) => {
       const active = (button.dataset.performanceToggleValue === "true") === enabled;
@@ -2115,12 +2406,1033 @@ export class UIManager {
       ?.classList.toggle("is-off", !enabled);
   }
 
-  setSelectedShipId(shipId) {
-    this.selectedShipId = shipId;
-    this.elements.playerShipGrid.querySelectorAll("[data-ship-id]").forEach((card) => {
-      card.classList.toggle("active", card.dataset.shipId === shipId);
-      card.setAttribute("aria-pressed", card.dataset.shipId === shipId ? "true" : "false");
+  setPlayerShips({
+    shipDefinitions = {},
+    shipCombatSummaries = {},
+    weaponDefinitions = this.weaponDefinitions,
+    shieldDefinitions = this.shieldDefinitions,
+    equipmentDefinitions = this.equipmentDefinitions,
+    combatCompatibilityDefinitions = this.combatCompatibilityDefinitions,
+    defaultShipId = this.defaultShipId
+  } = {}) {
+    this.shipDefinitions = shipDefinitions || {};
+    this.shipCombatSummaries = shipCombatSummaries || {};
+    this.weaponDefinitions = weaponDefinitions || {};
+    this.shieldDefinitions = shieldDefinitions || {};
+    this.equipmentDefinitions = equipmentDefinitions || {};
+    this.combatCompatibilityDefinitions = combatCompatibilityDefinitions || {};
+    this.defaultShipId = defaultShipId;
+    if (!this.shipDefinitions[this.selectedShipId]) this.selectedShipId = this.defaultShipId;
+  }
+
+  setPlayerProfile(profile = null) {
+    this.playerProfile = profile;
+    this.renderPlayerProfile();
+  }
+
+  formatShipStat(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "--";
+    return this.i18n.formatNumber(number, {
+      maximumFractionDigits: Math.abs(number) >= 100 ? 0 : 1
     });
+  }
+
+  async openShipInfoPopup(shipId = this.selectedShipId) {
+    // Re-read the authoritative player assets before rendering so the popup
+    // reflects IndexedDB (e.g. loadout changes made in another tab), not a stale cache.
+    try {
+      await this.onRefreshPlayerAssets?.();
+    } catch {
+      /* fall back to cached state if the refresh fails */
+    }
+    this.openFittingSimulator(shipId, { mode: "info" });
+  }
+
+  closeShipInfoPopup() {
+    document.querySelectorAll(".ship-info-backdrop").forEach((popup) => popup.remove());
+    if (this.fittingState?.mode === "info") this.closeFittingSimulator();
+  }
+
+  renderShipInfoStat(label, value) {
+    return `<span class="ship-info-stat"><b>${this.escapeHtml(label)}</b><span>${this.escapeHtml(value ?? "--")}</span></span>`;
+  }
+
+  renderShipInfoSlotSection(title, type, summary) {
+    const slots = summary?.slots?.[type] || [];
+    return `
+      <section class="ship-info-section">
+        <h3>${this.escapeHtml(title)}</h3>
+        <div class="ship-slot-list">
+          ${slots.length ? slots.map((slot) => this.renderShipSlotRow(type, slot)).join("") : `<div class="ship-slot-row"><div class="ship-slot-main"><b>No slots</b><span>--</span></div></div>`}
+        </div>
+      </section>
+    `;
+  }
+
+  renderShipSlotRow(type, slot) {
+    const definition = slot.equipped_definition;
+    const name = definition ? this.getEquipmentDisplayName(definition) : "Empty";
+    const meta = [
+      type.toUpperCase(),
+      String(slot.size || "--").toUpperCase(),
+      slot.compatibility_preset_id || "no preset"
+    ].join(" / ");
+    return `
+      <div class="ship-slot-row">
+        <div class="ship-slot-main">
+          <b>${this.escapeHtml(name)}</b>
+          <span>${this.escapeHtml(slot.id || "slot")}</span>
+        </div>
+        <div class="ship-slot-meta">${this.escapeHtml(meta)}</div>
+      </div>
+    `;
+  }
+
+  renderShipInfoDetailStats(summary) {
+    return `
+      <section class="ship-info-section">
+        <h3>Detailed Specs</h3>
+        <div class="combat-detail-specs">
+          ${this.renderCombatDetailSpecs(summary)}
+        </div>
+      </section>
+    `;
+  }
+
+  renderCombatDetailSpecs(summary) {
+    const stats = summary?.stats || {};
+    return `
+      <div class="combat-focus-stack">
+        ${this.renderCombatDamagePanel(summary?.weapon_damage)}
+        ${this.renderCombatShieldResPanel(summary)}
+      </div>
+      <div class="combat-secondary-stat-grid">
+        ${[
+      this.renderShipInfoStat("CPU", `${this.formatShipStat(stats.processing_load)}/${this.formatShipStat(stats.processing_capacity)}`),
+      this.renderShipInfoStat("Power Regen", `${this.formatShipStat(stats.weapon_power_use)}/${this.formatShipStat(stats.power_recharge)}`),
+      this.renderShipInfoStat("Power Cap", this.formatShipStat(stats.power_capacity)),
+      this.renderShipInfoStat("Range", this.formatShipStat(summary?.weapon_range_max)),
+      this.renderShipInfoStat("Hull", this.formatShipStat(stats.hull_capacity)),
+      this.renderShipInfoStat("Hull Regen", this.formatShipStat(stats.hull_recharge_base)),
+      this.renderShipInfoStat("Accuracy", this.formatPercent(summary?.weapon_average_accuracy)),
+      this.renderShipInfoStat("Evasion", this.formatPercent(stats.evasion)),
+      this.renderShipInfoStat("Crit", this.formatPercent(summary?.weapon_average_crit_chance)),
+      this.renderShipInfoStat("Crit Dmg", this.formatPercent(summary?.weapon_average_crit_damage))
+        ].join("")}
+      </div>
+    `;
+  }
+
+  renderCombatDamagePanel(damage = {}) {
+    return `
+      <section class="combat-focus-card">
+        <h4>Weapons</h4>
+        <div class="combat-attribute-list">
+          ${this.renderCombatAttributeRow("Kinetic", this.formatShipStat(damage.kinetic))}
+          ${this.renderCombatAttributeRow("Thermal", this.formatShipStat(damage.thermal))}
+          ${this.renderCombatAttributeRow("Energy", this.formatShipStat(damage.energy))}
+          ${this.renderCombatAttributeRow("Beta", this.formatShipStat(damage.beta))}
+        </div>
+      </section>
+    `;
+  }
+
+  renderCombatShieldResPanel(summary) {
+    const stats = summary?.stats || {};
+    const defense = summary?.shield_defense || {};
+    const shieldCount = summary?.equipped_counts?.shield || 0;
+    const formula = shieldCount > 1
+      ? `${this.formatShipStat(stats.shield_recharge_base)} + SUM(rate x cap) = ${this.formatShipStat(stats.shield_recharge_power)}`
+      : `${this.formatShipStat(stats.shield_recharge_base)} + (${this.formatShipStat(stats.shield_recharge_rate)} x ${this.formatShipStat(stats.shield_power_use_cap)}) = ${this.formatShipStat(stats.shield_recharge_power)}`;
+    return `
+      <details class="combat-focus-card combat-shield-res-card">
+        <summary class="combat-shield-res-summary">
+          <div class="combat-focus-title-row">
+            <h4>Shields</h4>
+            <span class="combat-focus-title-value">
+              <span>${this.escapeHtml(this.formatShipStat(stats.shield_capacity))}</span>
+              <span class="combat-focus-title-separator">/</span>
+              <span>${this.escapeHtml(this.formatShipStat(stats.shield_recharge_power))}</span>
+            </span>
+          </div>
+          <div class="combat-attribute-list">
+            ${this.renderCombatResistRow("Kinetic", defense.kinetic)}
+            ${this.renderCombatResistRow("Thermal", defense.thermal)}
+            ${this.renderCombatResistRow("Energy", defense.energy)}
+          </div>
+        </summary>
+        <div class="combat-shield-regen-breakdown">
+          ${this.renderCombatFormulaRow("Base Regen", this.formatShipStat(stats.shield_recharge_base))}
+          ${this.renderCombatFormulaRow("Regen / Power", this.formatShipStat(stats.shield_recharge_rate))}
+          ${this.renderCombatFormulaRow("Shield Power Cap", this.formatShipStat(stats.shield_power_use_cap))}
+          <span class="combat-formula-tag">${this.escapeHtml(formula)}</span>
+        </div>
+      </details>
+    `;
+  }
+
+  renderCombatAttributeRow(label, value) {
+    return `
+      <div class="combat-attribute-row">
+        <span class="combat-attribute-badge">${this.escapeHtml(label)}</span>
+        <span class="combat-attribute-value">${this.escapeHtml(value ?? "--")}</span>
+      </div>
+    `;
+  }
+
+  renderCombatResistRow(label, value) {
+    return `
+      <div class="combat-attribute-row combat-resist-row">
+        <span class="combat-attribute-badge">${this.escapeHtml(label)}</span>
+        <span class="combat-attribute-value">${this.escapeHtml(this.formatPercent(value))}</span>
+      </div>
+    `;
+  }
+
+  renderCombatFormulaRow(label, value) {
+    return `
+      <span class="combat-formula-row">
+        <b>${this.escapeHtml(label)}</b>
+        <span>${this.escapeHtml(value ?? "--")}</span>
+      </span>
+    `;
+  }
+
+  getEquipmentDisplayName(definition) {
+    if (!definition) return "Empty";
+    return this.i18n.resolveDefinitionText(definition, "name", definition.name || definition.id || "Equipment");
+  }
+
+  formatPercent(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "--";
+    return `${this.i18n.formatNumber(number * 100, { maximumFractionDigits: 1 })}%`;
+  }
+
+  escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  openFittingSimulator(shipId = this.selectedShipId, { mode = "simulation" } = {}) {
+    this.closeFittingSimulator();
+    const ship = this.shipDefinitions[shipId] || this.getSelectedShipDefinition();
+    if (!ship) return;
+    const panelMode = mode === "info" ? "info" : "simulation";
+    const baseSummary = this.onBuildFittingSummary?.(ship.id, {}) || this.shipCombatSummaries?.[ship.id] || null;
+    const panelTitle = panelMode === "simulation" ? "Fitting" : "Ship Info";
+    const detailTitle = panelMode === "simulation" ? "Detailed Simulation" : "Detailed Specs";
+    const fitToggleLabel = panelMode === "simulation" ? "Info" : "Fit";
+    this.fittingState = {
+      mode: panelMode,
+      shipId: ship.id,
+      selectedSlotKey: this.firstFittingSlotKey(baseSummary),
+      overrides: {},
+      compatibilityPopup: null
+    };
+
+    const backdrop = document.createElement("div");
+    backdrop.className = `ship-fitting-backdrop ship-fitting-${panelMode}-backdrop`;
+    backdrop.setAttribute("role", "presentation");
+    backdrop.innerHTML = `
+      <section class="ship-fitting-panel" role="dialog" aria-modal="true" aria-labelledby="shipFittingTitle">
+        <header class="ship-fitting-header">
+          <h2 class="ship-fitting-title" id="shipFittingTitle">${this.escapeHtml(panelTitle)}</h2>
+          <button class="object-list-close" type="button" data-fitting-close aria-label="Close" title="Close">
+            <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
+          </button>
+        </header>
+        <div class="ship-fitting-body">
+          <div class="ship-fitting-layout">
+            <div class="ship-fitting-stage">
+              <div class="ship-fitting-model-wrap">
+                <canvas data-fitting-canvas></canvas>
+                <div class="ship-fitting-model-label">${this.escapeHtml(this.getShipDisplayName(ship))}</div>
+                <details class="ship-fitting-menu">
+                  <summary class="ship-fitting-menu-toggle" aria-label="Fitting menu" title="Fitting menu">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </summary>
+                  <div class="ship-fitting-menu-panel">
+                    <button class="ship-fitting-menu-item ship-fitting-base-spec-button" type="button" data-fitting-base-spec>Base Spec</button>
+                    <button class="ship-fitting-menu-item" type="button" data-fitting-cargo>Cargo</button>
+                    <button class="ship-fitting-menu-item" type="button" data-fitting-menu-action="fit">${this.escapeHtml(fitToggleLabel)}</button>
+                    <button class="ship-fitting-menu-item" type="button" data-fitting-menu-action="preset">Preset</button>
+                  </div>
+                </details>
+                <div class="ship-fitting-model-cargo" data-fitting-model-cargo>${this.escapeHtml(this.formatFittingCargo(baseSummary))}</div>
+                ${panelMode === "simulation" ? `<div class="ship-fitting-mode-label">FIT SIMULATION</div>` : ""}
+              </div>
+              <div class="ship-fitting-slot-band">
+                <div class="ship-fitting-section-title">Shield Slots</div>
+                <div class="ship-fitting-slot-row" data-fitting-slots="shield"></div>
+                <div class="ship-fitting-section-title">Equipment Slots</div>
+                <div class="ship-fitting-slot-row" data-fitting-slots="equipment"></div>
+              </div>
+              <div class="ship-fitting-slot-band">
+                <div class="ship-fitting-section-title">Weapon Slots</div>
+                <div class="ship-fitting-slot-row" data-fitting-slots="weapon"></div>
+              </div>
+              <div class="fitting-stat-strip">
+                <div class="ship-fitting-section-title">${this.escapeHtml(detailTitle)}</div>
+                <div class="combat-detail-specs" data-fitting-stats></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    `;
+
+    backdrop.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.target === backdrop || target?.closest("[data-fitting-close]")) {
+        event.preventDefault();
+        this.closeFittingSimulator();
+        return;
+      }
+
+      const slotButton = target?.closest("[data-fitting-slot-key]");
+      if (slotButton instanceof HTMLElement) {
+        event.preventDefault();
+        const summary = this.getFittingSummary();
+        const slotRef = this.getFittingSlotByKey(summary, slotButton.dataset.fittingSlotKey);
+        if (!slotRef) return;
+        this.fittingState.selectedSlotKey = slotButton.dataset.fittingSlotKey;
+        if (slotRef.slot.equipped) {
+          this.openFittingSlotBubble(slotButton, slotRef.type, slotRef.slot);
+        } else {
+          this.closeFittingSlotBubble();
+          this.openFittingCompatiblePopup(slotRef.type, slotRef.slot.id);
+        }
+      }
+
+      const baseSpecButton = target?.closest("[data-fitting-base-spec]");
+      if (baseSpecButton instanceof HTMLElement) {
+        event.preventDefault();
+        baseSpecButton.closest(".ship-fitting-menu")?.removeAttribute("open");
+        this.openFittingBaseSpecPopup();
+        return;
+      }
+
+      const cargoButton = target?.closest("[data-fitting-cargo]");
+      if (cargoButton instanceof HTMLElement) {
+        event.preventDefault();
+        cargoButton.closest(".ship-fitting-menu")?.removeAttribute("open");
+        this.openFittingCargoPopup();
+        return;
+      }
+
+      const menuActionButton = target?.closest("[data-fitting-menu-action]");
+      if (menuActionButton instanceof HTMLElement) {
+        event.preventDefault();
+        menuActionButton.closest(".ship-fitting-menu")?.removeAttribute("open");
+        if (menuActionButton.dataset.fittingMenuAction === "fit" && this.fittingState) {
+          const nextMode = this.fittingState.mode === "simulation" ? "info" : "simulation";
+          this.openFittingSimulator(this.fittingState.shipId, { mode: nextMode });
+        }
+        return;
+      }
+    });
+    backdrop.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      this.closeFittingSimulator();
+    });
+
+    document.body.append(backdrop);
+    this.updateFittingSimulator();
+    const canvas = backdrop.querySelector("[data-fitting-canvas]");
+    if (canvas instanceof HTMLCanvasElement) this.onOpenFittingSimulator?.({ canvas, shipId: ship.id, mode: panelMode });
+    const closeButton = backdrop.querySelector("[data-fitting-close]");
+    if (closeButton instanceof HTMLElement) closeButton.focus({ preventScroll: true });
+  }
+
+  closeFittingSimulator() {
+    this.onCloseFittingSimulator?.();
+    this.closeFittingSlotBubble();
+    this.closeFittingCompatiblePopup();
+    this.closeFittingItemInfoPopup();
+    this.closeFittingBaseSpecPopup();
+    this.closeFittingCargoPopup();
+    document.querySelectorAll(".ship-fitting-backdrop").forEach((popup) => popup.remove());
+    this.fittingState = null;
+  }
+
+  firstFittingSlotKey(summary) {
+    for (const type of ["shield", "equipment", "weapon"]) {
+      const slot = summary?.slots?.[type]?.[0];
+      if (slot) return this.fittingSlotKey(type, slot.id);
+    }
+    return null;
+  }
+
+  fittingSlotKey(type, slotId) {
+    return `${type}:${slotId}`;
+  }
+
+  getFittingSummary() {
+    const state = this.fittingState;
+    if (!state) return null;
+    const overrides = state.mode === "simulation" ? state.overrides : {};
+    return this.onBuildFittingSummary?.(state.shipId, overrides)
+      || this.shipCombatSummaries?.[state.shipId]
+      || null;
+  }
+
+  updateFittingSimulator() {
+    const popup = document.querySelector(".ship-fitting-backdrop");
+    const state = this.fittingState;
+    if (!popup || !state) return;
+    const summary = this.getFittingSummary();
+    if (!state.selectedSlotKey) state.selectedSlotKey = this.firstFittingSlotKey(summary);
+
+    for (const type of ["shield", "equipment", "weapon"]) {
+      const root = popup.querySelector(`[data-fitting-slots="${type}"]`);
+      if (root) root.innerHTML = this.renderFittingSlotButtons(type, summary);
+    }
+
+    const stats = popup.querySelector("[data-fitting-stats]");
+    if (stats) stats.innerHTML = this.renderFittingStats(summary);
+
+    const cargo = popup.querySelector("[data-fitting-model-cargo]");
+    if (cargo) cargo.textContent = this.formatFittingCargo(summary);
+  }
+
+  formatFittingCargo(summary) {
+    const used = Number.isFinite(Number(summary?.cargo?.used)) ? Number(summary.cargo.used) : 0;
+    const capacity = Number.isFinite(Number(summary?.stats?.cargo_capacity)) ? Number(summary.stats.cargo_capacity) : Number(summary?.cargo?.capacity);
+    return `Cargo ${this.formatShipStat(used)}/${this.formatShipStat(capacity)}`;
+  }
+
+  renderFittingStats(summary) {
+    return this.renderCombatDetailSpecs(summary);
+  }
+
+  renderFittingSlotButtons(type, summary) {
+    const slots = summary?.slots?.[type] || [];
+    if (!slots.length) return `<div class="ship-slot-row"><div class="ship-slot-main"><b>No slots</b><span>--</span></div></div>`;
+    return slots.map((slot) => {
+      const key = this.fittingSlotKey(type, slot.id);
+      const definition = slot.equipped_definition;
+      const name = definition ? this.getEquipmentDisplayName(definition) : "Empty";
+      const iconMarkup = definition
+        ? `<img class="fitting-slot-icon" src="${this.escapeHtml(this.getFittingIconPath(type, definition))}" alt="" aria-hidden="true">`
+        : "";
+      const stateClass = definition ? "equiped" : "empty";
+      const label = `${type.toUpperCase()} ${String(slot.size || "--").toUpperCase()} ${slot.id || "slot"}: ${name}`;
+      return `
+        <button class="fitting-slot-button ${stateClass}" type="button"
+          data-fitting-slot-key="${this.escapeHtml(key)}" data-fitting-slot-type="${this.escapeHtml(type)}" data-fitting-slot-id="${this.escapeHtml(slot.id)}"
+          aria-label="${this.escapeHtml(label)}" title="${this.escapeHtml(label)}">
+          ${iconMarkup}
+        </button>
+      `;
+    }).join("");
+  }
+
+  getFittingSlotByKey(summary, key) {
+    if (!key) return null;
+    const [type, slotId] = key.split(":");
+    const slot = (summary?.slots?.[type] || []).find((entry) => entry.id === slotId) || null;
+    return slot ? { type, slot } : null;
+  }
+
+  openFittingSlotBubble(slotButton, type, slot) {
+    this.closeFittingSlotBubble();
+    if (!(slotButton instanceof HTMLElement)) return;
+    const key = this.fittingSlotKey(type, slot.id);
+    const rect = slotButton.getBoundingClientRect();
+    const bubble = document.createElement("div");
+    bubble.className = "fitting-slot-bubble";
+    bubble.dataset.fittingSlotKey = key;
+    bubble.style.left = `${Math.min(window.innerWidth - 220, Math.max(12, rect.left))}px`;
+    bubble.style.top = `${Math.min(window.innerHeight - 72, rect.bottom + 8)}px`;
+    bubble.innerHTML = `
+      <button class="fitting-bubble-button" type="button" data-fitting-bubble-action="unequip">Unequip</button>
+      <button class="fitting-bubble-button" type="button" data-fitting-bubble-action="info">Info</button>
+      <button class="fitting-bubble-button" type="button" data-fitting-bubble-action="change">Change</button>
+    `;
+    bubble.addEventListener("click", (event) => {
+      const actionButton = event.target instanceof Element ? event.target.closest("[data-fitting-bubble-action]") : null;
+      if (!(actionButton instanceof HTMLElement)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const action = actionButton.dataset.fittingBubbleAction;
+      if (action === "unequip") {
+        this.applyFittingSlotOverride(type, slot.id, "");
+        this.closeFittingSlotBubble();
+      } else if (action === "info") {
+        if (slot.equipped_definition) this.openFittingItemInfoPopup(type, slot.equipped_definition);
+        this.closeFittingSlotBubble();
+      } else if (action === "change") {
+        this.openFittingCompatiblePopup(type, slot.id);
+        this.closeFittingSlotBubble();
+      }
+    });
+    document.body.append(bubble);
+  }
+
+  closeFittingSlotBubble() {
+    document.querySelectorAll(".fitting-slot-bubble").forEach((bubble) => bubble.remove());
+  }
+
+  async applyFittingSlotOverride(type, slotId, equippedId) {
+    if (!this.fittingState) return;
+    const key = this.fittingSlotKey(type, slotId);
+    this.fittingState.selectedSlotKey = key;
+    if (this.fittingState.mode === "info") {
+      const summary = await this.onApplyShipLoadoutChange?.({
+        shipId: this.fittingState.shipId,
+        type,
+        slotId,
+        equippedId: equippedId || ""
+      });
+      if (summary) {
+        this.shipCombatSummaries = {
+          ...this.shipCombatSummaries,
+          [this.fittingState.shipId]: summary
+        };
+      }
+      this.updateFittingSimulator();
+      return;
+    }
+    this.fittingState.overrides[key] = equippedId || "";
+    this.updateFittingSimulator();
+  }
+
+  openFittingCompatiblePopup(type, slotId) {
+    this.closeFittingCompatiblePopup();
+    this.closeFittingItemInfoPopup();
+    const summary = this.getFittingSummary();
+    const slot = (summary?.slots?.[type] || []).find((entry) => entry.id === slotId);
+    if (!slot || !this.fittingState) return;
+    const candidates = this.getFittingCandidates(type, slot);
+    const selectedCandidate = candidates.find((candidate) => this.getFittingCandidateId(candidate) === slot.equipped_item_uid)
+      || candidates.find((candidate) => candidate.id === slot.equipped_id)
+      || candidates[0]
+      || null;
+    this.fittingState.compatibilityPopup = {
+      type,
+      slotId,
+      selectedCandidateId: this.getFittingCandidateId(selectedCandidate)
+    };
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "fitting-compatible-backdrop";
+    backdrop.innerHTML = `
+      <section class="fitting-compatible-panel" role="dialog" aria-modal="true" aria-labelledby="fittingCompatibleTitle">
+        <header class="fitting-compatible-header">
+          <h2 class="fitting-compatible-title" id="fittingCompatibleTitle">${this.escapeHtml(type.toUpperCase())} Candidates</h2>
+          <button class="object-list-close" type="button" data-compatible-close aria-label="Close" title="Close">
+            <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
+          </button>
+        </header>
+        <div class="fitting-compatible-body">
+          <div class="fitting-compatible-layout">
+            <div class="fitting-compatible-detail" data-compatible-detail></div>
+            <div class="fitting-candidate-list" data-compatible-list></div>
+          </div>
+        </div>
+      </section>
+    `;
+    backdrop.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.target === backdrop || target?.closest("[data-compatible-close]")) {
+        event.preventDefault();
+        this.closeFittingCompatiblePopup();
+        return;
+      }
+      const candidateButton = target?.closest("[data-compatible-candidate-id]");
+      if (candidateButton instanceof HTMLElement) {
+        event.preventDefault();
+        this.fittingState.compatibilityPopup.selectedCandidateId = candidateButton.dataset.compatibleCandidateId || "";
+        this.updateFittingCompatiblePopup();
+        return;
+      }
+      const equipButton = target?.closest("[data-compatible-equip]");
+      if (equipButton instanceof HTMLElement) {
+        event.preventDefault();
+        const context = this.fittingState?.compatibilityPopup;
+        if (!context?.selectedCandidateId) return;
+        this.applyFittingSlotOverride(context.type, context.slotId, context.selectedCandidateId);
+        this.closeFittingCompatiblePopup();
+      }
+    });
+    backdrop.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      this.closeFittingCompatiblePopup();
+    });
+    document.body.append(backdrop);
+    this.updateFittingCompatiblePopup();
+  }
+
+  closeFittingCompatiblePopup() {
+    document.querySelectorAll(".fitting-compatible-backdrop").forEach((popup) => popup.remove());
+    if (this.fittingState) this.fittingState.compatibilityPopup = null;
+  }
+
+  updateFittingCompatiblePopup() {
+    const popup = document.querySelector(".fitting-compatible-backdrop");
+    const context = this.fittingState?.compatibilityPopup;
+    if (!popup || !context) return;
+    const summary = this.getFittingSummary();
+    const slot = (summary?.slots?.[context.type] || []).find((entry) => entry.id === context.slotId);
+    const candidates = slot ? this.getFittingCandidates(context.type, slot) : [];
+    const list = popup.querySelector("[data-compatible-list]");
+    const detail = popup.querySelector("[data-compatible-detail]");
+    if (list) {
+      list.innerHTML = candidates.length
+        ? candidates.map((definition) => this.renderCompatibleCandidateButton(context.type, definition, this.getFittingCandidateId(definition) === context.selectedCandidateId)).join("")
+        : `<div class="player-ship-empty">No compatible candidates.</div>`;
+    }
+    const selected = candidates.find((definition) => this.getFittingCandidateId(definition) === context.selectedCandidateId) || null;
+    if (detail) detail.innerHTML = this.renderFittingDefinitionDetail(context.type, selected, { actionLabel: "Equip", actionAttr: "data-compatible-equip" });
+  }
+
+  renderCompatibleCandidateButton(type, definition, active) {
+    const candidateId = this.getFittingCandidateId(definition);
+    return `
+      <button class="fitting-candidate-button ${active ? "active" : ""}" type="button" data-compatible-candidate-id="${this.escapeHtml(candidateId)}">
+        <b>${this.escapeHtml(this.getEquipmentDisplayName(definition))}</b>
+        <span class="fitting-candidate-cost">${this.escapeHtml(`CPU ${this.formatShipStat(definition.processing_load)}`)}</span>
+      </button>
+    `;
+  }
+
+  getFittingCandidateId(candidate) {
+    return candidate?.candidate_id || candidate?.item_uid || candidate?.id || "";
+  }
+
+  openFittingItemInfoPopup(type, definition) {
+    this.closeFittingItemInfoPopup();
+    if (!definition) return;
+    const backdrop = document.createElement("div");
+    backdrop.className = "fitting-item-info-backdrop";
+    backdrop.innerHTML = `
+      <section class="fitting-item-info-panel" role="dialog" aria-modal="true" aria-labelledby="fittingItemInfoTitle">
+        <header class="fitting-item-info-header">
+          <h2 class="fitting-item-info-title" id="fittingItemInfoTitle">${this.escapeHtml(this.getEquipmentDisplayName(definition))}</h2>
+          <button class="object-list-close" type="button" data-item-info-close aria-label="Close" title="Close">
+            <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
+          </button>
+        </header>
+        <div class="fitting-item-info-body">
+          ${this.renderFittingDefinitionDetail(type, definition)}
+        </div>
+      </section>
+    `;
+    backdrop.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.target === backdrop || target?.closest("[data-item-info-close]")) {
+        event.preventDefault();
+        this.closeFittingItemInfoPopup();
+      }
+    });
+    document.body.append(backdrop);
+  }
+
+  closeFittingItemInfoPopup() {
+    document.querySelectorAll(".fitting-item-info-backdrop").forEach((popup) => popup.remove());
+  }
+
+  openFittingCargoPopup() {
+    this.closeFittingCargoPopup();
+    this.closeFittingItemInfoPopup();
+    this.closeFittingBaseSpecPopup();
+    const cargo = this.onGetActiveShipCargo?.() || null;
+    const backdrop = document.createElement("div");
+    backdrop.className = "fitting-item-info-backdrop fitting-cargo-backdrop";
+    backdrop.innerHTML = `
+      <section class="fitting-item-info-panel fitting-cargo-panel" role="dialog" aria-modal="true" aria-labelledby="fittingCargoTitle">
+        <header class="fitting-item-info-header">
+          <h2 class="fitting-item-info-title" id="fittingCargoTitle">Cargo</h2>
+          <button class="object-list-close" type="button" data-cargo-close aria-label="Close" title="Close">
+            <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
+          </button>
+        </header>
+        <div class="fitting-item-info-body">
+          ${this.renderFittingCargoContent(cargo)}
+        </div>
+      </section>
+    `;
+    backdrop.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.target === backdrop || target?.closest("[data-cargo-close]")) {
+        event.preventDefault();
+        this.closeFittingCargoPopup();
+        return;
+      }
+      const toggle = target?.closest("[data-cargo-display-toggle]");
+      if (toggle instanceof HTMLElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        const dropdown = toggle.closest(".object-list-sort-dropdown");
+        const shouldOpen = !dropdown?.classList.contains("open");
+        this.closeCargoDisplayDropdowns(backdrop);
+        if (shouldOpen) dropdown?.classList.add("open");
+        return;
+      }
+      const option = target?.closest("[data-cargo-display]");
+      if (option instanceof HTMLElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.cargoDisplayKind = this.getNormalizedCargoDisplayKind(option.dataset.cargoDisplay);
+        this.updateFittingCargoPopup();
+        return;
+      }
+      if (!target?.closest(".object-list-sort-dropdown")) {
+        this.closeCargoDisplayDropdowns(backdrop);
+      }
+    });
+    backdrop.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      this.closeFittingCargoPopup();
+    });
+    document.body.append(backdrop);
+  }
+
+  closeFittingCargoPopup() {
+    document.querySelectorAll(".fitting-cargo-backdrop").forEach((popup) => popup.remove());
+  }
+
+  updateFittingCargoPopup() {
+    const popup = document.querySelector(".fitting-cargo-backdrop");
+    const body = popup?.querySelector(".fitting-item-info-body");
+    if (!body) return;
+    body.innerHTML = this.renderFittingCargoContent(this.onGetActiveShipCargo?.() || null);
+  }
+
+  closeCargoDisplayDropdowns(root = document) {
+    root.querySelectorAll(".object-list-sort-dropdown.open")
+      .forEach((dropdown) => dropdown.classList.remove("open"));
+  }
+
+  renderFittingCargoContent(cargo) {
+    const used = Number.isFinite(Number(cargo?.used_capacity)) ? Number(cargo.used_capacity) : 0;
+    const capacity = Number.isFinite(Number(cargo?.capacity)) ? Number(cargo.capacity) : 0;
+    const allRows = Array.isArray(cargo?.rows) ? cargo.rows : [];
+    const displayKind = this.getNormalizedCargoDisplayKind(this.cargoDisplayKind);
+    const rows = this.getFilteredCargoRows(allRows, displayKind);
+    return `
+      <section class="ship-info-section">
+        ${this.renderFittingCargoDisplayControls(displayKind, rows, { used, capacity })}
+        <div class="fitting-cargo-list">
+          <div class="fitting-cargo-header">
+            <span>Name</span>
+            <span>Qty</span>
+            <span>Volume</span>
+          </div>
+          ${rows.map((row) => this.renderFittingCargoRow(row)).join("")}
+        </div>
+      </section>
+    `;
+  }
+
+  renderFittingCargoDisplayControls(displayKind, rows, { used = 0, capacity = 0 } = {}) {
+    const options = this.getCargoDisplayOptions();
+    const activeOption = options.find((option) => option.id === displayKind) || options[0];
+    return `
+      <div class="fitting-cargo-controls object-list-sort-controls" aria-label="Cargo display">
+        <span class="fitting-cargo-capacity-summary">${this.escapeHtml(`${this.formatShipStat(used)}/${this.formatShipStat(capacity)}`)}</span>
+        <div class="object-list-sort-dropdown">
+          <button class="object-list-sort-button active" type="button" data-cargo-display-toggle="true">
+            <span>${this.escapeHtml(activeOption.label)}</span>
+            <span class="svg-icon svg-icon-drop-arrow" aria-hidden="true"></span>
+          </button>
+          <div class="object-list-sort-menu">
+            ${options.map((option) => `
+              <button class="object-list-sort-option ${option.id === displayKind ? "active" : ""}" type="button"
+                data-cargo-display="${this.escapeHtml(option.id)}" aria-pressed="${option.id === displayKind ? "true" : "false"}">
+                ${this.escapeHtml(option.label)}
+              </button>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  getCargoDisplayOptions() {
+    return [
+      { id: "all", label: "All" },
+      { id: "resource", label: "Resources" },
+      { id: "weapon", label: "Weapons" },
+      { id: "shield", label: "Shields" },
+      { id: "equipment", label: "Equipment" },
+      { id: "ship", label: "Ships" }
+    ];
+  }
+
+  getNormalizedCargoDisplayKind(kind) {
+    const value = String(kind || "all");
+    return this.getCargoDisplayOptions().some((option) => option.id === value) ? value : "all";
+  }
+
+  getFilteredCargoRows(rows, displayKind = this.cargoDisplayKind) {
+    const normalized = this.getNormalizedCargoDisplayKind(displayKind);
+    if (normalized === "all") return rows;
+    return rows.filter((row) => (row?.kind || row?.category || "item") === normalized);
+  }
+
+  renderFittingCargoRow(row) {
+    const quantity = Number.isFinite(Number(row?.quantity)) ? Number(row.quantity) : 0;
+    const totalMass = Number.isFinite(Number(row?.total_mass)) ? Number(row.total_mass) : 0;
+    return `
+      <div class="fitting-cargo-row">
+        <span class="fitting-cargo-name">${this.escapeHtml(row?.display_name || row?.item_id || "Item")}</span>
+        <span class="fitting-cargo-quantity">${this.escapeHtml(this.formatShipStat(quantity))}</span>
+        <span class="fitting-cargo-volume">${this.escapeHtml(this.formatShipStat(totalMass))}</span>
+      </div>
+    `;
+  }
+
+  openFittingBaseSpecPopup() {
+    this.closeFittingBaseSpecPopup();
+    this.closeFittingCargoPopup();
+    const summary = this.getFittingSummary();
+    if (!summary) return;
+    const backdrop = document.createElement("div");
+    backdrop.className = "fitting-item-info-backdrop fitting-base-spec-backdrop";
+    backdrop.innerHTML = `
+      <section class="fitting-item-info-panel" role="dialog" aria-modal="true" aria-labelledby="fittingBaseSpecTitle">
+        <header class="fitting-item-info-header">
+          <h2 class="fitting-item-info-title" id="fittingBaseSpecTitle">Base Specs</h2>
+          <button class="object-list-close" type="button" data-base-spec-close aria-label="Close" title="Close">
+            <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
+          </button>
+        </header>
+        <div class="fitting-item-info-body">
+          ${this.renderFittingBaseSpecContent(summary)}
+        </div>
+      </section>
+    `;
+    backdrop.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.target === backdrop || target?.closest("[data-base-spec-close]")) {
+        event.preventDefault();
+        this.closeFittingBaseSpecPopup();
+      }
+    });
+    document.body.append(backdrop);
+  }
+
+  closeFittingBaseSpecPopup() {
+    document.querySelectorAll(".fitting-base-spec-backdrop").forEach((popup) => popup.remove());
+  }
+
+  renderFittingBaseSpecContent(summary) {
+    const ship = this.shipDefinitions?.[summary?.ship_id] || {};
+    const { hyperdriveSpecs: nestedHyperdriveSpecs, ...flightSpecs } = ship.specs || {};
+    const hyperdriveSpecs = ship.hyperdriveSpecs || nestedHyperdriveSpecs || {};
+    return `
+      <section class="ship-info-section">
+        <h3>Ship Class</h3>
+        <div class="ship-info-stat-grid">
+          ${this.renderShipInfoStat("Class", summary?.ship_class ? String(summary.ship_class).toUpperCase() : "--")}
+        </div>
+      </section>
+      <section class="ship-info-section">
+        <h3>Flight Specs</h3>
+        <div class="ship-info-stat-grid">
+          ${this.renderDefinitionSpecStats(flightSpecs, [
+            "maxSpeed",
+            "minSpeed",
+            "accelerationRate",
+            "decelerationRate",
+            "throttleAdjustRate",
+            "arrivalRadius",
+            "deactivationCoastDuration",
+            "pitchRate",
+            "yawRate",
+            "rollRate",
+            "strafeRate",
+            "verticalRate"
+          ])}
+        </div>
+      </section>
+      <section class="ship-info-section">
+        <h3>Hyperdrive Specs</h3>
+        <div class="ship-info-stat-grid">
+          ${this.renderDefinitionSpecStats(hyperdriveSpecs, [
+            "cooldownDuration",
+            "warpEntryDuration",
+            "warpExitDuration",
+            "warpMinFlightDuration",
+            "warpFlightSpeed"
+          ])}
+        </div>
+      </section>
+    `;
+  }
+
+  renderDefinitionSpecStats(source, orderedKeys = []) {
+    const isDisplayValue = (value) => value == null || typeof value !== "object";
+    const keys = [
+      ...orderedKeys.filter((key) => Object.prototype.hasOwnProperty.call(source || {}, key) && isDisplayValue(source[key])),
+      ...Object.keys(source || {}).filter((key) => !orderedKeys.includes(key) && isDisplayValue(source[key])).sort()
+    ];
+    if (!keys.length) return this.renderShipInfoStat("None", "--");
+    return keys
+      .map((key) => this.renderShipInfoStat(this.formatSpecLabel(key), this.formatShipStat(source[key])))
+      .join("");
+  }
+
+  formatSpecLabel(key) {
+    return String(key || "")
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  renderFittingDefinitionDetail(type, definition, { actionLabel = "", actionAttr = "" } = {}) {
+    if (!definition) return `<div class="player-ship-empty">Select an item to inspect.</div>`;
+    return `
+      <div class="ship-slot-row">
+        <img class="fitting-slot-icon" src="${this.escapeHtml(this.getFittingIconPath(type, definition))}" alt="" aria-hidden="true">
+        <div class="ship-slot-main">
+          <b>${this.escapeHtml(this.getEquipmentDisplayName(definition))}</b>
+          <div class="ship-slot-cost-row">
+            <span class="ship-slot-cost-badge">Cost</span>
+            <span class="ship-slot-cost-value">${this.escapeHtml(this.formatShipStat(definition.processing_load))}</span>
+          </div>
+        </div>
+      </div>
+      <div class="ship-info-stat-grid">
+        ${this.renderFittingDefinitionStats(type, definition)}
+      </div>
+      ${actionLabel ? `<div class="fitting-compatible-actions"><button class="fitting-compatible-action" type="button" ${actionAttr}>${this.escapeHtml(actionLabel)}</button></div>` : ""}
+    `;
+  }
+
+  renderFittingDefinitionStats(type, definition) {
+    if (type === "weapon") {
+      return [
+        this.renderShipInfoStat("Kinetic", this.formatShipStat(definition.damage_kinetic)),
+        this.renderShipInfoStat("Thermal", this.formatShipStat(definition.damage_thermal)),
+        this.renderShipInfoStat("Energy", this.formatShipStat(definition.damage_energy)),
+        this.renderShipInfoStat("Beta", this.formatShipStat(definition.damage_beta)),
+        this.renderShipInfoStat("Power", this.formatShipStat(definition.power_use)),
+        this.renderShipInfoStat("Range", this.formatShipStat(definition.range)),
+        this.renderShipInfoStat("Acc", this.formatPercent(definition.acc)),
+        this.renderShipInfoStat("Crit", this.formatPercent(definition.crit_chance))
+      ].join("");
+    }
+    if (type === "shield") {
+      return [
+        this.renderShipInfoStat("Capacity", this.formatShipStat(definition.capacity)),
+        this.renderShipInfoStat("Base Regen", this.formatShipStat(definition.recharge_base)),
+        this.renderShipInfoStat("Boost Regen", this.formatShipStat(definition.recharge_rate)),
+        this.renderShipInfoStat("Power Cap", this.formatShipStat(definition.power_use_cap)),
+        this.renderShipInfoStat("Def K", this.formatPercent(definition.def_bonus_kinetic)),
+        this.renderShipInfoStat("Def T", this.formatPercent(definition.def_bonus_thermal)),
+        this.renderShipInfoStat("Def E", this.formatPercent(definition.def_bonus_energy))
+      ].join("");
+    }
+    return [
+      this.renderShipInfoStat("CPU Bonus", this.formatShipStat(definition.processing_capacity_bonus)),
+      this.renderShipInfoStat("Power Cap", this.formatShipStat(definition.power_capacity_bonus)),
+      this.renderShipInfoStat("Power Regen", this.formatShipStat(definition.power_recharge_bonus)),
+      this.renderShipInfoStat("Cargo", this.formatShipStat(definition.cargo_capacity_bonus)),
+      this.renderShipInfoStat("Evasion", this.formatPercent(definition.evasion_bonus)),
+      this.renderShipInfoStat("Hull", this.formatShipStat(definition.hull_capacity_bonus)),
+      this.renderShipInfoStat("Hull Regen", this.formatShipStat(definition.hull_recharge_base_bonus))
+    ].join("");
+  }
+
+  getFittingCandidates(type, slot, { candidateScope = this.getFittingCandidateScope() } = {}) {
+    const runtimeCandidates = this.onGetFittingCandidates?.({
+      shipId: this.fittingState?.shipId,
+      type,
+      slot,
+      candidateScope
+    });
+    if (Array.isArray(runtimeCandidates)) return runtimeCandidates;
+
+    const definitions = this.getEquipmentDefinitionsForType(type);
+    const allDefinitions = Object.values(definitions);
+    const preset = this.combatCompatibilityDefinitions?.compatibilityPresets?.[type]?.[slot.compatibility_preset_id];
+    const presetIds = Array.isArray(preset?.compatible_ids) ? new Set(preset.compatible_ids) : null;
+    const allowedSizes = this.combatCompatibilityDefinitions?.sizeCompatibility?.[slot.size] || [slot.size];
+    return allDefinitions
+      .filter((definition) => {
+        if (presetIds && !presetIds.has(definition.id)) return false;
+        if (!allowedSizes.includes(definition.size)) return false;
+        if (candidateScope === "owned" && !this.isEquipmentDefinitionOwned(type, definition.id)) return false;
+        return true;
+      })
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  }
+
+  getFittingCandidateScope() {
+    return this.fittingState?.mode === "simulation" ? "all" : "owned";
+  }
+
+  isEquipmentDefinitionOwned(type, definitionId) {
+    if (!definitionId) return false;
+    return this.onCheckEquipmentOwned?.(type, definitionId) ?? true;
+  }
+
+  getFittingIconPath(type, definition = null) {
+    if (type === "equipment") return "rss/svg/icn_equip_n.svg";
+    if (type === "shield") return `rss/svg/icn_shield_${this.getShieldIconSuffix(definition)}.svg`;
+    if (type === "weapon") return `rss/svg/icn_weapon_${this.getWeaponIconSuffix(definition)}.svg`;
+    return "rss/svg/icn_equip_n.svg";
+  }
+
+  getWeaponIconSuffix(definition = null) {
+    if (!definition) return "n";
+    const values = {
+      ki: Number(definition.damage_kinetic) || 0,
+      th: Number(definition.damage_thermal) || 0,
+      en: Number(definition.damage_energy) || 0,
+      be: Number(definition.damage_beta) || 0
+    };
+    return this.maxPositiveKey(values) || "n";
+  }
+
+  getShieldIconSuffix(definition = null) {
+    if (!definition) return "n";
+    const values = {
+      ki: Number(definition.def_bonus_kinetic) || 0,
+      th: Number(definition.def_bonus_thermal) || 0,
+      en: Number(definition.def_bonus_energy) || 0
+    };
+    return this.maxPositiveKey(values) || "n";
+  }
+
+  maxPositiveKey(values) {
+    let bestKey = null;
+    let bestValue = 0;
+    let tied = false;
+    for (const [key, value] of Object.entries(values || {})) {
+      if (value === bestValue && value > 0) {
+        tied = true;
+        continue;
+      }
+      if (value < bestValue) continue;
+      bestKey = key;
+      bestValue = value;
+      tied = false;
+    }
+    return bestValue > 0 && !tied ? bestKey : null;
+  }
+
+  getEquipmentDefinitionsForType(type) {
+    if (type === "weapon") return this.weaponDefinitions || {};
+    if (type === "shield") return this.shieldDefinitions || {};
+    if (type === "equipment") return this.equipmentDefinitions || {};
+    return {};
+  }
+
+  setSelectedShipId(shipId) {
+    this.selectedShipId = this.shipDefinitions[shipId] ? shipId : this.defaultShipId;
   }
 
   setCameraOrbitActive(active) {
@@ -2217,6 +3529,8 @@ export class UIManager {
 
   hideStartScene() {
     this.elements.startScene.classList.add("hidden");
+    this._started = true;
+    this.applyDockingOverlay();
   }
 
   showToast(message) {
@@ -2250,6 +3564,95 @@ export class UIManager {
   dismissErrorToast() {
     this.elements.errorToast.classList.remove("visible");
     window.setTimeout(() => this.showNextErrorToast(), 180);
+  }
+
+  // Lazily build the docking overlay (local presentational screen): station name + undock button.
+  // Appended inside the HUD layer so the start/ready scene (which sits above the HUD) covers it.
+  ensureDockingUi() {
+    if (this.dockingUi) return this.dockingUi;
+    const hud = document.querySelector(".hud");
+
+    const overlay = document.createElement("div");
+    overlay.id = "dockingOverlay";
+    overlay.className = "docking-overlay";
+    overlay.hidden = true;
+    overlay.style.cssText = "position:fixed;inset:0;display:none;pointer-events:none;";
+
+    const title = document.createElement("div");
+    title.className = "docking-station-name";
+    title.style.cssText = "position:absolute;top:24px;left:0;right:0;text-align:center;font-size:18px;letter-spacing:0.08em;color:#cfe6ff;text-shadow:0 1px 4px rgba(0,0,0,0.6);pointer-events:none;";
+
+    const undockButton = document.createElement("button");
+    undockButton.type = "button";
+    undockButton.id = "undockButton";
+    undockButton.className = "docking-undock-button";
+    undockButton.setAttribute("aria-label", "출항하기");
+    undockButton.title = "출항하기";
+    const undockIcon = document.createElement("img");
+    undockIcon.className = "docking-undock-icon";
+    undockIcon.src = "rss/svg/ui_undock.svg";
+    undockIcon.alt = "";
+    undockIcon.setAttribute("aria-hidden", "true");
+    undockButton.append(undockIcon);
+    undockButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      if (this.onUndock) this.onUndock();
+    });
+
+    overlay.append(title, undockButton);
+    (hud || document.body).append(overlay);
+
+    this.dockingUi = { overlay, title, undockButton, hud, speedControl: document.querySelector("#speedControl") };
+    return this.dockingUi;
+  }
+
+  // The undock overlay only shows once the game has started (start scene dismissed),
+  // so it never draws over the start/ready scene.
+  applyDockingOverlay() {
+    const ui = this.ensureDockingUi();
+    const show = this._dockingActive && this._started;
+    ui.overlay.hidden = !show;
+    ui.overlay.style.display = show ? "block" : "none";
+    ui.title.textContent = this._dockingActive ? (this._dockingStationName || "") : "";
+  }
+
+  setDockingState({ active = false, stationName = "" } = {}) {
+    const ui = this.ensureDockingUi();
+    this._dockingActive = !!active;
+    this._dockingStationName = stationName || "";
+    // Hide the movement throttle UI while docked, but keep the burger/bottom-nav visible.
+    if (ui.speedControl) ui.speedControl.style.display = active ? "none" : "";
+    this.applyDockingOverlay();
+  }
+
+  ensureFadeOverlay() {
+    if (this._fadeOverlay) return this._fadeOverlay;
+    const overlay = document.createElement("div");
+    overlay.id = "sceneFadeOverlay";
+    overlay.style.cssText = "position:fixed;inset:0;z-index:200;pointer-events:none;opacity:0;background:#000;";
+    document.body.append(overlay);
+    this._fadeOverlay = overlay;
+    return overlay;
+  }
+
+  // Fade the screen TO a solid color over durationMs (covers a scene transition).
+  fadeOut(color = "#000000", durationMs = 2000) {
+    const overlay = this.ensureFadeOverlay();
+    overlay.style.background = color;
+    overlay.style.transition = "none";
+    overlay.style.opacity = "0";
+    void overlay.offsetHeight; // force reflow so the opacity transition runs from 0
+    overlay.style.transition = `opacity ${durationMs}ms linear`;
+    overlay.style.opacity = "1";
+    return new Promise((resolve) => setTimeout(resolve, durationMs));
+  }
+
+  // Fade the solid color back out, revealing the scene, over durationMs.
+  fadeIn(durationMs = 2000) {
+    const overlay = this.ensureFadeOverlay();
+    overlay.style.transition = `opacity ${durationMs}ms linear`;
+    overlay.style.opacity = "0";
+    return new Promise((resolve) => setTimeout(resolve, durationMs));
   }
 
   setBetaSpaceState({
@@ -2875,5 +4278,7 @@ export class UIManager {
     document.removeEventListener("pointerdown", this.boundSelectionSummaryGlobalPointerDown, true);
     this.closeSelectionSummaryBubble();
     this.closeStandaloneObjectDetailPopup();
+    this.closeShipInfoPopup();
+    this.closeFittingSimulator();
   }
 }

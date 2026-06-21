@@ -4,6 +4,7 @@
   "ships": {
     "ship_01": {
       "id": "ship_01",
+      "item_id": "ship_01",
       "labelKey": "ui.settings.gameplay.ship_01",
       "fallbackLabel": "ship_01",
       "specs": {
@@ -145,10 +146,80 @@
             }
           }
         ]
+      },
+      "combat": {
+        "ship_class": "ct",
+        "base_stats": {
+          "processing_capacity": 60,
+          "power_capacity": 400,
+          "power_recharge": 80,
+          "cargo_capacity": 1000,
+          "evasion": 0.12,
+          "hull_capacity": 800,
+          "hull_recharge_base": 8
+        },
+        "slots": {
+          "weapon": [
+            {
+              "id": "weapon_slot_special",
+              "slot_type": "weapon",
+              "size": "ex",
+              "compatibility_preset_id": "w-sp_001",
+              "equipped_id": "weapon_ex_beta_cascade"
+            },
+            {
+              "id": "weapon_slot_wing",
+              "slot_type": "weapon",
+              "size": "m",
+              "compatibility_preset_id": "w-ct_001",
+              "equipped_id": "weapon_pulse_service_m"
+            },
+            {
+              "id": "weapon_slot_sub",
+              "slot_type": "weapon",
+              "size": "s",
+              "compatibility_preset_id": "w-sub_001",
+              "equipped_id": "weapon_autocannon_precision_s"
+            }
+          ],
+          "shield": [
+            {
+              "id": "shield_slot_01",
+              "slot_type": "shield",
+              "size": "m",
+              "compatibility_preset_id": "s-ct_001",
+              "equipped_id": "shield_aegis_military_m"
+            }
+          ],
+          "equipment": [
+            {
+              "id": "equipment_slot_01",
+              "slot_type": "equipment",
+              "size": "m",
+              "compatibility_preset_id": "e-ct_001",
+              "equipped_id": null
+            },
+            {
+              "id": "equipment_slot_02",
+              "slot_type": "equipment",
+              "size": "m",
+              "compatibility_preset_id": null,
+              "equipped_id": null
+            },
+            {
+              "id": "equipment_slot_03",
+              "slot_type": "equipment",
+              "size": "m",
+              "compatibility_preset_id": null,
+              "equipped_id": null
+            }
+          ]
+        }
       }
     },
     "ship_02": {
       "id": "ship_02",
+      "item_id": "ship_02",
       "labelKey": "ui.settings.gameplay.ship_02",
       "fallbackLabel": "ship_02",
       "specs": {
@@ -309,6 +380,23 @@
             }
           }
         ]
+      },
+      "combat": {
+        "ship_class": "lf",
+        "base_stats": {
+          "processing_capacity": 30,
+          "power_capacity": 100,
+          "power_recharge": 8,
+          "cargo_capacity": 0,
+          "evasion": 0,
+          "hull_capacity": 300,
+          "hull_recharge_base": 3
+        },
+        "slots": {
+          "weapon": [],
+          "shield": [],
+          "equipment": []
+        }
       }
     }
   }

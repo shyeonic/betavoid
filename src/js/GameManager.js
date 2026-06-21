@@ -22,10 +22,28 @@ import {
   normalizeEnvironmentMode,
   normalizeBloomQualityMode,
   normalizeRenderResolutionScale,
+  normalizeStylizedRenderMode,
   normalizePerformanceSettings
 } from "./definitions/environmentDefinitions.js";
 import { WORLD_CONFIG } from "./worldDefinitions.js";
 import { createI18n } from "./i18n/i18n.js";
+
+// Touch devices have far less GPU/thermal headroom, so cap the render resolution and
+// frame rate there. Desktop keeps full pixel ratio and uncapped (vsync-bound) frames.
+const IS_MOBILE_DEVICE = typeof window !== "undefined"
+  && ((typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches)
+    || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ""));
+const DESKTOP_MAX_PIXEL_RATIO = 2;
+const MOBILE_MAX_PIXEL_RATIO = 1.25;
+const MAX_PIXEL_RATIO = IS_MOBILE_DEVICE ? MOBILE_MAX_PIXEL_RATIO : DESKTOP_MAX_PIXEL_RATIO;
+const MOBILE_FRAME_CAP_FPS = 40;
+const FRAME_INTERVAL_MS = IS_MOBILE_DEVICE ? 1000 / MOBILE_FRAME_CAP_FPS : 0;
+
+// The ship's local fill/rim/engine lights illuminate ONLY the ship — confined to this
+// dedicated light layer so they don't spill onto nearby world objects (which would show as
+// hotspots, especially with the flat MeshToon cell tones). Global scene lights stay on
+// layer 0 and still light both the ship and the world. (Bloom uses layer 1.)
+const SHIP_LOCAL_LIGHT_LAYER = 3;
 
 const LIGHTING_SETTINGS = {
   ship: {
@@ -34,6 +52,23 @@ const LIGHTING_SETTINGS = {
     fillLight: { color: 0xe8f7ff, intensity: 2, distance: 44, position: [0, 2.2, -2] },
     rimLight: { color: 0x8fdcff, intensity: 2, distance: 48, position: [-3.5, 1.2, 3.5] }
   }
+};
+
+const COMBAT_SLOT_TYPES = ["weapon", "shield", "equipment"];
+const DAMAGE_TYPES = ["kinetic", "thermal", "energy", "beta"];
+const DEFAULT_CHARACTER_ID = "default";
+// Designated display sizes (longest-axis, in world units). normalizeModel fits every ship's
+// longest axis to SHIP_DISPLAY_SIZE; the docking hangar is sized 32× ship_01 for absolute scale.
+const SHIP_DISPLAY_SIZE = 6;
+const DOCK_INTERIOR_SIZE = SHIP_DISPLAY_SIZE * 32;
+const EMPTY_COMBAT_BASE_STATS = {
+  processing_capacity: 0,
+  power_capacity: 0,
+  power_recharge: 0,
+  cargo_capacity: 0,
+  evasion: 0,
+  hull_capacity: 0,
+  hull_recharge_base: 0
 };
 
 const RENDERER_TONE_MAPPINGS = {
@@ -49,6 +84,15 @@ function requireDefinitionMap(gameData, key) {
     throw new Error(`Game data is missing ${key}.`);
   }
   return definitions;
+}
+
+function numberOrZero(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function clampRatio(value) {
+  return Math.max(0, Math.min(1, numberOrZero(value)));
 }
 
 function resolveDefaultShipId(gameData, shipDefinitions) {
@@ -70,6 +114,18 @@ export class GameManager {
     this.resourceDefinitions = requireDefinitionMap(gameData, "resourceDefinitions");
     this.shipDefinitions = requireDefinitionMap(gameData, "shipDefinitions");
     this.defaultShipId = resolveDefaultShipId(gameData, this.shipDefinitions);
+    this.weaponDefinitions = gameData.weaponDefinitions || {};
+    this.shieldDefinitions = gameData.shieldDefinitions || {};
+    this.equipmentDefinitions = gameData.equipmentDefinitions || {};
+    this.combatCompatibilityDefinitions = gameData.combatCompatibilityDefinitions || {};
+    this.playerShipLoadouts = this.createInitialPlayerShipLoadouts(gameData.playerShipLoadouts);
+    this.ownedEquipmentDefinitions = this.createInitialOwnedEquipmentDefinitions(
+      gameData.ownedEquipmentDefinitions || gameData.playerOwnedEquipmentDefinitions
+    );
+    this.characterId = DEFAULT_CHARACTER_ID;
+    this.playerAssets = null;
+    this.activeShipUid = null;
+    this.shipCombatSummaries = this.buildShipCombatSummaries();
     this.keyBindingStorageKey = "void-zero-key-bindings";
     this.keyBindings = this.loadKeyBindings();
     this.environmentMode = ENVIRONMENT_MODES.light;
@@ -99,9 +155,18 @@ export class GameManager {
     this.activeActions = new Set();
     this.clock = new THREE.Clock();
     this.shipStats = { ...this.getShipSpecs(this.defaultShipId) };
+    this.shipCombatStats = this.getShipCombatSummary(this.defaultShipId);
+    this.fittingPreview = null;
     this.ui = new UIManager({
       config: this.config,
       shipStats: this.shipStats,
+      shipDefinitions: this.shipDefinitions,
+      shipCombatSummaries: this.shipCombatSummaries,
+      weaponDefinitions: this.weaponDefinitions,
+      shieldDefinitions: this.shieldDefinitions,
+      equipmentDefinitions: this.equipmentDefinitions,
+      combatCompatibilityDefinitions: this.combatCompatibilityDefinitions,
+      defaultShipId: this.defaultShipId,
       i18n: this.i18n,
       keyBindings: this.keyBindings,
       keyBindingGroups: KEY_BINDING_GROUPS,
@@ -233,7 +298,34 @@ export class GameManager {
       lastY: 0
     };
 
+    // Docking is a deterministic ship state (persisted in playerShip meta), rendered
+    // as a local-only presentational scene (NOT a world/MO field). dockingState !== null
+    // means the ship is docked; on reconnect the persisted state reproduces the docking scene.
+    this.dockingState = null;
+    this.dockingScene = null;
+    this.dockingPivot = new THREE.Vector3(0, 0, 0);
+    this.dockingOrbitTarget = new THREE.Quaternion();
+    this.dockingControl = { dragging: false, pointerId: null, lastX: 0, lastY: 0, orbitDistance: 40 };
+    this._shipReturnParent = null;
+    this.dockProximityRange = 150; // render-units; dock affordance proximity threshold
+    this.dockInteriorObject = null;
+    this._dockInteriorPending = false;
+    this._stationBloomTargets = []; // station meshes registered with the bloom pipeline while docked
+    this.dockingCameraFocus = new THREE.Vector3(); // camera orbit center (the docked ship's center)
+    this.dockCutscene = null;            // active dock cutscene state, or null
+    this._dockCutscenePending = false;   // set by dock() (space→station); consumed on scene enter
+    this._enterWithCutscene = false;
+    this.dockHangarMixer = null;
+    this.dockShipMixer = null;
+    this.dockLandingAction = null;
+    this.shipAnimationClips = [];         // ship model's animation clips (e.g. anim_landing)
+    // Fixed docking placement offsets, measured from the LANDED pose (gear deployed), so the
+    // cutscene approach and the resting placement share one basis (no gear-state drift).
+    this.dockBottomOffset = null;
+    this.dockCenterOffset = null;
+
     this.starLayers = [];
+    this.dockStarLayers = []; // static star backdrop for the docking scene (centered on the station pivot)
     this.worldLights = null;
     this.loadingStarted = false;
     this.starting = false;
@@ -249,6 +341,8 @@ export class GameManager {
     this.playerShipSavePending = false;
     this.playerShipSaveInterval = 1000;
     this._lastFrameTimestamp = 0;
+    this._frameIntervalMs = FRAME_INTERVAL_MS;
+    this._lastRenderAt = 0;
     this.currentLocationBgmId = null;
     this.worldDataResetting = false;
     this.shipReflectionTexture = null;
@@ -313,8 +407,20 @@ export class GameManager {
       onEnterTargetCam: () => this.enterTargetCameraMode(),
       onEnterBetaSpace: (object) => this.enterBetaSpaceFromUi(object),
       onExitBetaSpace: () => this.exitBetaSpace({ reason: "manual" }),
+      onDock: (station) => void this.dock(station),
+      onUndock: () => void this.undock(),
+      onGetDockState: (stationId) => this.getDockState(stationId),
       onToggleCameraMode: () => this.requestCameraToggle(),
-      onOpenMinimap: () => this.minimapManager?.open()
+      onOpenMinimap: () => this.minimapManager?.open(),
+      onOpenFittingSimulator: ({ canvas, shipId, mode }) => void this.openFittingPreview({ canvas, shipId, mode }),
+      onCloseFittingSimulator: () => this.closeFittingPreview(),
+      onBuildFittingSummary: (shipId, overrides) => this.calculateShipCombatSummary(shipId, overrides),
+      onGetFittingCandidates: (context) => this.getFittingCandidatesForSlot(context),
+      onCheckEquipmentOwned: (type, definitionId) => this.isEquipmentDefinitionOwned(type, definitionId),
+      onApplyShipLoadoutChange: (change) => this.applyShipLoadoutChange(change),
+      onRefreshPlayerAssets: () => this.runExclusiveAssetMutation(() => this.loadPlayerAssets()),
+      onGetActiveShipCargo: () => this.getActiveShipCargoListView(),
+      onPlayerProfileNameChange: (displayName) => this.updatePlayerDisplayName(displayName)
     });
     this.ui.setChunkBoundsMode(this.worldViewSettings.chunkBoundsMode);
     this.ui.setEnvironmentMode(this.environmentMode);
@@ -349,6 +455,12 @@ export class GameManager {
       resourceDefinitions: this.resourceDefinitions,
       assetRegistry: this.gameData.assetRegistry,
       assetBaseUrl: new URL("../", this.gameData.baseUrl).href,
+      registerStylizedRenderTarget: (object) => {
+        this.renderPipeline?.registerStylizedRenderTarget(object);
+      },
+      unregisterStylizedRenderTarget: (object) => {
+        this.renderPipeline?.unregisterStylizedRenderTarget(object);
+      },
       onRenderMutation: () => this.renderPipeline?.markTargetsDirty()
     });
     this.worldMapManager.setChunkBoundsMode(this.worldViewSettings.chunkBoundsMode);
@@ -398,6 +510,7 @@ export class GameManager {
     this.environmentMode = nextMode;
     this.performanceSettings = nextPerformanceSettings;
     this.applyEnvironmentPreset(this.getEnvironmentPreset(nextMode));
+    this.applyPerformanceSettingsToRuntime();
     this.ui.setEnvironmentMode(nextMode);
     this.ui.setPerformanceSettings(nextPerformanceSettings);
 
@@ -425,6 +538,14 @@ export class GameManager {
     }
   }
 
+  applyPerformanceSettingsToRuntime() {
+    this.renderPipeline?.setObjectBloomSettings(this.getObjectBloomSettings());
+    this.renderPipeline?.setStylizedRenderMode(this.performanceSettings.stylizedRenderMode);
+    this.renderPipeline?.setRenderResolutionScale(this.getRenderResolutionScale());
+    this.applyMaterialMapPerformanceSettings();
+    this.applyLightingPerformanceSettings();
+  }
+
   async loadSavedWorldViewSettings() {
     const saved = await this.worldDataManager.getStoreValue("settings", "worldViewSettings");
     const mode = ["all", "sector", "off"].includes(saved?.chunkBoundsMode) ? saved.chunkBoundsMode : "all";
@@ -446,6 +567,13 @@ export class GameManager {
   }
 
   async loadSavedShipSettings() {
+    const worldMeta = await this.worldDataManager.getStoreValue("meta", "world");
+    if (!worldMeta || worldMeta.data_source_key !== this.worldDataManager.dataSourceKey) {
+      this.selectedShipId = this.defaultShipId;
+      this._applyShipSpecs(this.selectedShipId);
+      this.ui.setSelectedShipId(this.selectedShipId);
+      return;
+    }
     const saved = await this.worldDataManager.getStoreValue("settings", "shipSettings");
     const shipId = saved?.selectedShipId;
     this.selectedShipId = (shipId && this.shipDefinitions[shipId]) ? shipId : this.defaultShipId;
@@ -467,6 +595,7 @@ export class GameManager {
 
   _applyShipSpecs(shipId) {
     Object.assign(this.shipStats, this.getShipSpecs(shipId));
+    this.shipCombatStats = this.getShipCombatSummary(shipId);
     this.ui.refreshSpeedGaugeRange();
   }
 
@@ -482,6 +611,994 @@ export class GameManager {
     };
   }
 
+  async loadPlayerAssets() {
+    this.playerAssets = await this.worldDataManager.loadOrCreatePlayerAssets(this.characterId);
+    this.activeShipUid = this.playerAssets?.profile?.active_ship_uid || null;
+    this.rebuildPlayerShipLoadoutsFromAssets();
+    this.ownedEquipmentDefinitions = this.createOwnedEquipmentDefinitionsFromAssets();
+    this.shipCombatSummaries = this.buildShipCombatSummaries();
+    this.shipCombatStats = this.getShipCombatSummary(this.selectedShipId);
+    this.ui?.setPlayerProfile(this.playerAssets?.profile || null);
+    this.ui?.setPlayerShips({
+      shipDefinitions: this.getOwnedShipDefinitions(),
+      shipCombatSummaries: this.shipCombatSummaries,
+      weaponDefinitions: this.weaponDefinitions,
+      shieldDefinitions: this.shieldDefinitions,
+      equipmentDefinitions: this.equipmentDefinitions,
+      combatCompatibilityDefinitions: this.combatCompatibilityDefinitions,
+      defaultShipId: this.defaultShipId
+    });
+    this.syncDockingPresentation();
+  }
+
+  async updatePlayerDisplayName(displayName) {
+    if (!this.playerAssets?.profile) return null;
+    const normalizedName = this.normalizePlayerDisplayName(displayName);
+    const nextProfile = await this.worldDataManager.putCharacterProfile({
+      ...this.playerAssets.profile,
+      display_name: normalizedName
+    });
+    this.playerAssets.profile = nextProfile;
+    this.ui?.setPlayerProfile(nextProfile);
+    return nextProfile;
+  }
+
+  normalizePlayerDisplayName(value) {
+    const text = String(value || "").trim().replace(/\s+/g, " ");
+    return text.slice(0, 32) || "Pilot";
+  }
+
+  getOwnedShipDefinitions() {
+    if (!this.playerAssets) return this.shipDefinitions;
+    const ownedShipIds = new Set(
+      (this.playerAssets.uniqueItems || [])
+        .filter((item) => this.getItemKind(item) === "ship" && this.shipDefinitions[item.item_id])
+        .map((item) => item.item_id)
+    );
+    if (ownedShipIds.size === 0) return this.shipDefinitions;
+    return Object.fromEntries(
+      Object.entries(this.shipDefinitions).filter(([shipId]) => ownedShipIds.has(shipId))
+    );
+  }
+
+  rebuildPlayerShipLoadoutsFromAssets() {
+    const loadouts = this.createInitialPlayerShipLoadouts({}, { includeFactoryDefaults: false });
+    const activeShip = this.getActiveShipItem();
+    const shipId = activeShip?.item_id || this.selectedShipId || this.defaultShipId;
+    const slotAssignments = this.getActiveShipSlotAssignments();
+    const activeCombat = this.getShipDefinition(shipId)?.combat || {};
+
+    for (const type of COMBAT_SLOT_TYPES) {
+      loadouts[shipId] ??= {};
+      loadouts[shipId][type] ??= {};
+      for (const slot of Array.isArray(activeCombat.slots?.[type]) ? activeCombat.slots[type] : []) {
+        loadouts[shipId][type][slot.id] = "";
+      }
+    }
+
+    for (const assignment of slotAssignments) {
+      const type = assignment.slot_type;
+      const slotId = assignment.slot_id;
+      if (!COMBAT_SLOT_TYPES.includes(type) || !slotId) continue;
+      loadouts[shipId] ??= {};
+      loadouts[shipId][type] ??= {};
+      loadouts[shipId][type][slotId] = assignment.item_uid || assignment.item_id || "";
+    }
+
+    this.playerShipLoadouts = loadouts;
+  }
+
+  createOwnedEquipmentDefinitionsFromAssets() {
+    const owned = Object.fromEntries(COMBAT_SLOT_TYPES.map((type) => [type, new Set()]));
+    for (const item of this.playerAssets?.quantityItems || []) {
+      const kind = this.getItemKind(item);
+      if (!COMBAT_SLOT_TYPES.includes(kind) || !item.item_id || numberOrZero(item.quantity) <= 0) continue;
+      owned[kind].add(item.item_id);
+    }
+    for (const item of this.playerAssets?.uniqueItems || []) {
+      const kind = this.getItemKind(item);
+      if (!COMBAT_SLOT_TYPES.includes(kind) || !item.item_id) continue;
+      owned[kind].add(item.item_id);
+    }
+    for (const assignment of this.playerAssets?.slotAssignments || []) {
+      if (!COMBAT_SLOT_TYPES.includes(assignment.slot_type) || !assignment.item_id) continue;
+      owned[assignment.slot_type].add(assignment.item_id);
+    }
+    return owned;
+  }
+
+  getItemKind(item = null) {
+    if (!item) return "item";
+    return item.kind || item.category || this.itemDefinitions?.[item.item_id]?.kind || "item";
+  }
+
+  getActiveShipItem() {
+    const activeShipUid = this.activeShipUid || this.playerAssets?.profile?.active_ship_uid;
+    return (this.playerAssets?.uniqueItems || []).find((item) => item.item_uid === activeShipUid) || null;
+  }
+
+  getActiveShipStorage(type) {
+    const activeShipUid = this.getActiveShipItem()?.item_uid || this.activeShipUid;
+    return (this.playerAssets?.storageLocations || []).find((storage) => {
+      return storage.storage_type === type && storage.parent_item_uid === activeShipUid;
+    }) || null;
+  }
+
+  getActiveShipCargoStorage() {
+    return this.getActiveShipStorage("ship_cargo");
+  }
+
+  getActiveShipSlotAssignments() {
+    const activeShipUid = this.getActiveShipItem()?.item_uid || this.activeShipUid;
+    return (this.playerAssets?.slotAssignments || []).filter((assignment) => {
+      return assignment.owner_item_uid === activeShipUid && COMBAT_SLOT_TYPES.includes(assignment.slot_type);
+    });
+  }
+
+  getSlotAssignmentForSlot(type, slotId) {
+    return this.getActiveShipSlotAssignments().find((assignment) => {
+      return assignment.slot_type === type && assignment.slot_id === slotId;
+    }) || null;
+  }
+
+  getUniqueItemByUid(itemUid) {
+    return (this.playerAssets?.uniqueItems || []).find((item) => item.item_uid === itemUid) || null;
+  }
+
+  parseFittingCandidateId(candidateId) {
+    const value = String(candidateId || "");
+    if (!value) return { mode: "empty", itemId: "", itemUid: "" };
+    if (value.startsWith("qty:")) return { mode: "quantity", itemId: value.slice(4), itemUid: "" };
+    const item = this.getUniqueItemByUid(value);
+    if (item) return { mode: "unique", itemId: item.item_id, itemUid: item.item_uid, item };
+    return { mode: "definition", itemId: value, itemUid: "" };
+  }
+
+  resolveEquippedDefinition(type, equippedValue) {
+    if (!equippedValue) return { definitionId: "", item: null, definition: null };
+    const parsed = this.parseFittingCandidateId(equippedValue);
+    const item = parsed.mode === "unique" ? parsed.item : null;
+    const definitionId = item?.item_id || parsed.itemId || "";
+    const definition = this.getCombatDefinitionsForType(type)?.[definitionId] || null;
+    return { definitionId, item, definition };
+  }
+
+  getItemMass(type, itemId) {
+    const parsed = this.parseFittingCandidateId(itemId);
+    const definitionId = parsed.itemId || itemId;
+    return numberOrZero(this.itemDefinitions?.[definitionId]?.mass);
+  }
+
+  getRuntimeItemDefinition(category, itemId) {
+    if (this.itemDefinitions?.[itemId]) return this.itemDefinitions[itemId];
+    if (category === "ship") return this.shipDefinitions[itemId] || null;
+    if (COMBAT_SLOT_TYPES.includes(category)) return this.getCombatDefinitionsForType(category)?.[itemId] || null;
+    return this.itemDefinitions?.[itemId] || null;
+  }
+
+  buildItemListView(storageId, { capacity = null } = {}) {
+    const storage = (this.playerAssets?.storageLocations || []).find((item) => item.storage_id === storageId) || null;
+    const rows = [];
+
+    for (const item of this.playerAssets?.quantityItems || []) {
+      if (item.storage_id !== storageId) continue;
+      const definition = this.getRuntimeItemDefinition(this.getItemKind(item), item.item_id);
+      const unitMass = numberOrZero(definition?.mass);
+      const quantity = numberOrZero(item.quantity);
+      if (quantity <= 0) continue;
+      rows.push({
+        row_id: item.entry_id || `qty:${storageId}:${item.item_id}`,
+        row_type: "quantity",
+        item_id: item.item_id,
+        item_uid: null,
+        quantity,
+        storage_id: storageId,
+        category: this.getItemKind(item),
+        unit_mass: unitMass,
+        total_mass: unitMass * quantity
+      });
+    }
+
+    for (const item of this.playerAssets?.uniqueItems || []) {
+      if (item.storage_id !== storageId) continue;
+      const kind = this.getItemKind(item);
+      const definition = this.getRuntimeItemDefinition(kind, item.item_id);
+      const unitMass = numberOrZero(definition?.mass);
+      rows.push({
+        row_id: `unique:${item.item_uid}`,
+        row_type: "unique",
+        item_id: item.item_id,
+        item_uid: item.item_uid,
+        quantity: 1,
+        storage_id: storageId,
+        category: kind,
+        unit_mass: unitMass,
+        total_mass: unitMass,
+        fixed_options: item.fixed_options || {}
+      });
+    }
+
+    const usedCapacity = rows.reduce((total, row) => total + numberOrZero(row.total_mass), 0);
+    const resolvedCapacity = capacity ?? storage?.capacity ?? null;
+    return {
+      scope: {
+        type: "storage",
+        storage_id: storageId
+      },
+      storage_type: storage?.storage_type || null,
+      capacity: resolvedCapacity,
+      used_capacity: usedCapacity,
+      rows
+    };
+  }
+
+  getStorageUsedCapacity(storageId) {
+    if (!storageId) return 0;
+    let used = 0;
+    for (const item of this.playerAssets?.quantityItems || []) {
+      if (item.storage_id !== storageId) continue;
+      const quantity = numberOrZero(item.quantity);
+      if (quantity <= 0) continue;
+      const definition = this.getRuntimeItemDefinition(this.getItemKind(item), item.item_id);
+      used += numberOrZero(definition?.mass) * quantity;
+    }
+    for (const item of this.playerAssets?.uniqueItems || []) {
+      if (item.storage_id !== storageId) continue;
+      const definition = this.getRuntimeItemDefinition(this.getItemKind(item), item.item_id);
+      used += numberOrZero(definition?.mass);
+    }
+    return used;
+  }
+
+  getCargoStatus(summary = this.getShipCombatSummary(this.selectedShipId)) {
+    const cargoStorageId = this.getActiveShipCargoStorage()?.storage_id || null;
+    const used = this.getStorageUsedCapacity(cargoStorageId);
+    return {
+      storage_id: cargoStorageId,
+      used,
+      capacity: numberOrZero(summary?.stats?.cargo_capacity)
+    };
+  }
+
+  getActiveShipCargoListView() {
+    const cargoStorage = this.getActiveShipCargoStorage();
+    const summary = this.getShipCombatSummary(this.selectedShipId);
+    if (!cargoStorage) {
+      return {
+        scope: { type: "storage", storage_id: null },
+        storage_type: "ship_cargo",
+        capacity: 0,
+        used_capacity: 0,
+        rows: []
+      };
+    }
+    const view = this.buildItemListView(cargoStorage.storage_id, {
+      capacity: numberOrZero(summary?.stats?.cargo_capacity)
+    });
+    return {
+      ...view,
+      rows: view.rows
+        .map((row) => ({
+          ...row,
+          kind: row.category,
+          display_name: this.getInventoryItemDisplayName(row.category, row.item_id)
+        }))
+        .sort((a, b) => String(a.display_name).localeCompare(String(b.display_name)) || String(a.item_id).localeCompare(String(b.item_id)))
+    };
+  }
+
+  getInventoryItemDisplayName(kind, itemId) {
+    const domainDefinition = COMBAT_SLOT_TYPES.includes(kind)
+      ? this.getCombatDefinitionsForType(kind)?.[itemId]
+      : kind === "ship"
+        ? this.shipDefinitions?.[itemId]
+        : null;
+    const definition = domainDefinition || this.itemDefinitions?.[itemId] || { id: itemId };
+    return this.i18n.resolveDefinitionText(definition, "name", definition.name || itemId || "Item");
+  }
+
+  createInitialPlayerShipLoadouts(source = {}, { includeFactoryDefaults = true } = {}) {
+    const loadouts = {};
+    for (const [shipId, ship] of Object.entries(this.shipDefinitions || {})) {
+      loadouts[shipId] = {};
+      const combat = ship?.combat || {};
+      for (const type of COMBAT_SLOT_TYPES) {
+        const sourceSlots = source?.[shipId]?.[type] || {};
+        loadouts[shipId][type] = {};
+        for (const slot of Array.isArray(combat.slots?.[type]) ? combat.slots[type] : []) {
+          const hasSourceValue = Object.prototype.hasOwnProperty.call(sourceSlots, slot.id);
+          const factoryDefault = includeFactoryDefaults ? slot.equipped_id || "" : "";
+          loadouts[shipId][type][slot.id] = hasSourceValue ? sourceSlots[slot.id] || "" : factoryDefault;
+        }
+      }
+    }
+    return loadouts;
+  }
+
+  createInitialOwnedEquipmentDefinitions(source = null) {
+    const owned = Object.fromEntries(COMBAT_SLOT_TYPES.map((type) => [type, new Set()]));
+    for (const type of COMBAT_SLOT_TYPES) {
+      this.addOwnedEquipmentSource(owned[type], source?.[type]);
+    }
+    for (const shipLoadout of Object.values(this.playerShipLoadouts || {})) {
+      for (const type of COMBAT_SLOT_TYPES) {
+        Object.values(shipLoadout?.[type] || {}).forEach((definitionId) => {
+          if (definitionId) owned[type].add(definitionId);
+        });
+      }
+    }
+    return owned;
+  }
+
+  addOwnedEquipmentSource(target, source) {
+    if (!target || !source) return;
+    if (source instanceof Set || Array.isArray(source)) {
+      source.forEach((definitionId) => {
+        if (definitionId) target.add(definitionId);
+      });
+      return;
+    }
+    if (typeof source !== "object") return;
+    for (const [definitionId, value] of Object.entries(source)) {
+      if (value !== false && value != null) target.add(definitionId);
+    }
+  }
+
+  ensurePlayerShipLoadout(shipId) {
+    if (!this.playerShipLoadouts[shipId]) {
+      this.playerShipLoadouts[shipId] = this.createInitialPlayerShipLoadouts({}, {
+        includeFactoryDefaults: !this.playerAssets
+      })[shipId] || {};
+    }
+    for (const type of COMBAT_SLOT_TYPES) {
+      if (!this.playerShipLoadouts[shipId][type]) this.playerShipLoadouts[shipId][type] = {};
+    }
+    return this.playerShipLoadouts[shipId];
+  }
+
+  getPlayerShipLoadoutSlot(shipId, type, slotId, fallback = "") {
+    const loadoutSlots = this.playerShipLoadouts?.[shipId]?.[type] || {};
+    return Object.prototype.hasOwnProperty.call(loadoutSlots, slotId) ? loadoutSlots[slotId] || "" : fallback || "";
+  }
+
+  isEquipmentDefinitionOwned(type, definitionId) {
+    if (!definitionId) return false;
+    if (this.playerAssets) {
+      if ((this.playerAssets.quantityItems || []).some((item) => {
+        return this.getItemKind(item) === type && item.item_id === definitionId && numberOrZero(item.quantity) > 0;
+      })) return true;
+      if ((this.playerAssets.uniqueItems || []).some((item) => {
+        return this.getItemKind(item) === type && item.item_id === definitionId;
+      })) return true;
+      return (this.playerAssets.slotAssignments || []).some((assignment) => {
+        return assignment.slot_type === type && assignment.item_id === definitionId;
+      });
+    }
+    return this.ownedEquipmentDefinitions?.[type]?.has(definitionId) || false;
+  }
+
+  getCombatSlotDefinition(shipId, type, slotId) {
+    const combat = this.getShipDefinition(shipId)?.combat || {};
+    return (Array.isArray(combat.slots?.[type]) ? combat.slots[type] : []).find((slot) => slot.id === slotId) || null;
+  }
+
+  isDefinitionCompatibleWithSlot(type, slot, definition) {
+    if (!slot || !definition) return false;
+    const preset = this.combatCompatibilityDefinitions?.compatibilityPresets?.[type]?.[slot.compatibility_preset_id];
+    const presetIds = Array.isArray(preset?.compatible_ids) ? new Set(preset.compatible_ids) : null;
+    const allowedSizes = this.combatCompatibilityDefinitions?.sizeCompatibility?.[slot.size] || [slot.size];
+    return (!presetIds || presetIds.has(definition.id)) && allowedSizes.includes(definition.size);
+  }
+
+  canEquipDefinitionToShipSlot(shipId, type, slotId, definitionId, { requireOwned = true } = {}) {
+    const slot = this.getCombatSlotDefinition(shipId, type, slotId);
+    if (!slot) return false;
+    if (!definitionId) return true;
+    const definition = this.getCombatDefinitionsForType(type)?.[definitionId];
+    if (!definition) return false;
+    if (requireOwned && !this.isEquipmentDefinitionOwned(type, definitionId)) return false;
+    return this.isDefinitionCompatibleWithSlot(type, slot, definition);
+  }
+
+  runExclusiveAssetMutation(task) {
+    const previous = this._assetMutationChain || Promise.resolve();
+    const resultPromise = previous.then(() => task());
+    this._assetMutationChain = resultPromise.then(() => {}, () => {});
+    return resultPromise;
+  }
+
+  applyShipLoadoutChange(change) {
+    return this.runExclusiveAssetMutation(() => this._applyShipLoadoutChange(change));
+  }
+
+  async _applyShipLoadoutChange(change) {
+    const { shipId, type } = change;
+    if (!COMBAT_SLOT_TYPES.includes(type)) return null;
+
+    // The decision is made from the data the transaction reads (not this.playerAssets),
+    // so it stays correct even if another tab mutated the assets in the meantime.
+    let outcome = { status: "invalid" };
+    await this.worldDataManager.runPlayerAssetMutation(this.characterId, (assets) => {
+      const previousAssets = this.playerAssets;
+      this.playerAssets = assets;
+      try {
+        outcome = this._buildLoadoutMutation(change);
+      } finally {
+        this.playerAssets = previousAssets;
+      }
+      return outcome.status === "ok" ? outcome.mutation : null;
+    });
+
+    if (outcome.status === "ok") {
+      await this.loadPlayerAssets();
+      const summary = this.getShipCombatSummary(shipId);
+      this.ui?.showToast(outcome.installed ? "installed" : "unequipped");
+      return summary;
+    }
+    if (!this.playerAssets) await this.loadPlayerAssets();
+    if (outcome.status === "error") {
+      this.ui.showErrorToast(outcome.toast);
+      return null;
+    }
+    if (outcome.status === "noop") return this.getShipCombatSummary(shipId);
+    return null;
+  }
+
+  // Pure, synchronous: validates and builds the loadout mutation against the
+  // currently-installed this.playerAssets (which the caller sets to the freshly
+  // read transaction data). Returns a structured outcome; performs no IO/UI so it
+  // is safe to run inside an IndexedDB transaction callback.
+  _buildLoadoutMutation({ shipId, type, slotId, equippedId }) {
+    const cargoStorage = this.getActiveShipCargoStorage();
+    const activeShip = this.getActiveShipItem();
+    if (!cargoStorage || !activeShip) return { status: "invalid" };
+
+    const slot = this.getCombatSlotDefinition(shipId, type, slotId);
+    if (!slot) return { status: "invalid" };
+
+    const currentAssignment = this.getSlotAssignmentForSlot(type, slotId);
+    const currentUniqueItem = currentAssignment?.item_uid ? this.getUniqueItemByUid(currentAssignment.item_uid) : null;
+    const currentDefinitionId = currentUniqueItem?.item_id || currentAssignment?.item_id || "";
+    const target = this.resolveFittingSelection(equippedId, cargoStorage.storage_id);
+    if (equippedId && !target) return { status: "error", toast: "item not found" };
+    if (target?.mode === "unique" && target.item?.storage_id !== cargoStorage.storage_id) {
+      return { status: "error", toast: "item is not in cargo" };
+    }
+    if (target?.mode === "quantity" && numberOrZero(target.quantityEntry?.quantity) <= 0) {
+      return { status: "error", toast: "item is not in cargo" };
+    }
+    if (target?.mode === "definition") return { status: "error", toast: "item is not in cargo" };
+    if (target?.mode === "unique" && currentAssignment?.item_uid === target.itemUid) return { status: "noop" };
+    if (target?.mode === "quantity" && !currentAssignment?.item_uid && currentDefinitionId === target.itemId) {
+      return { status: "noop" };
+    }
+    if (!target && !currentAssignment) return { status: "noop" };
+
+    const targetDefinitionId = target?.itemId || "";
+    if (!this.canEquipDefinitionToShipSlot(shipId, type, slotId, targetDefinitionId, { requireOwned: false })) {
+      return { status: "error", toast: "incompatible item" };
+    }
+
+    const currentCargoUsed = this.getStorageUsedCapacity(cargoStorage.storage_id);
+    const targetMass = targetDefinitionId ? this.getItemMass(type, targetDefinitionId) : 0;
+    const currentMass = currentDefinitionId ? this.getItemMass(type, currentDefinitionId) : 0;
+    const nextCargoUsed = currentCargoUsed - targetMass + currentMass;
+    const previewSummary = this.calculateShipCombatSummary(shipId, {
+      [`${type}:${slotId}`]: targetDefinitionId
+    });
+    const nextCargoCapacity = numberOrZero(previewSummary?.stats?.cargo_capacity);
+    if (nextCargoUsed > nextCargoCapacity) {
+      return { status: "error", toast: "cargo capacity exceeded" };
+    }
+
+    const now = Date.now();
+    const quantityItemsToPut = new Map();
+    const quantityItemIdsToDelete = new Set();
+    const uniqueItemsToPut = [];
+    const slotAssignmentsToPut = [];
+    const slotAssignmentIdsToDelete = new Set();
+    const adjustQuantity = (storageId, itemId, delta) => {
+      const entryId = `qty-${storageId}-${itemId}`;
+      const source = quantityItemsToPut.get(entryId)
+        || (this.playerAssets.quantityItems || []).find((item) => item.entry_id === entryId)
+        || this.worldDataManager.createQuantityItemEntry({ storageId, itemId, quantity: 0, createdAt: now });
+      const next = {
+        ...source,
+        storage_id: storageId,
+        item_id: itemId,
+        kind: this.itemDefinitions?.[itemId]?.kind || source.kind || type,
+        quantity: numberOrZero(source.quantity) + delta,
+        updated_at: now
+      };
+      if (next.quantity <= 0) {
+        quantityItemsToPut.delete(entryId);
+        quantityItemIdsToDelete.add(entryId);
+        return;
+      }
+      quantityItemIdsToDelete.delete(entryId);
+      quantityItemsToPut.set(entryId, next);
+    };
+
+    if (currentAssignment) {
+      slotAssignmentIdsToDelete.add(currentAssignment.assignment_id);
+      if (currentUniqueItem) {
+        uniqueItemsToPut.push({
+          ...currentUniqueItem,
+          storage_id: cargoStorage.storage_id,
+          parent_item_uid: activeShip.item_uid,
+          updated_at: now
+        });
+      } else if (currentDefinitionId) {
+        adjustQuantity(cargoStorage.storage_id, currentDefinitionId, 1);
+      }
+    }
+
+    if (target) {
+      if (target.mode === "unique") {
+        uniqueItemsToPut.push({
+          ...target.item,
+          storage_id: null,
+          parent_item_uid: activeShip.item_uid,
+          updated_at: now
+        });
+        slotAssignmentsToPut.push(this.createSlotAssignmentForMutation({
+          ownerItemUid: activeShip.item_uid,
+          slotType: type,
+          slotId,
+          itemId: target.itemId,
+          itemUid: target.itemUid,
+          now
+        }));
+      } else if (target.mode === "quantity") {
+        adjustQuantity(cargoStorage.storage_id, target.itemId, -1);
+        slotAssignmentsToPut.push(this.createSlotAssignmentForMutation({
+          ownerItemUid: activeShip.item_uid,
+          slotType: type,
+          slotId,
+          itemId: target.itemId,
+          itemUid: null,
+          now
+        }));
+      }
+    }
+
+    return {
+      status: "ok",
+      installed: Boolean(target),
+      mutation: {
+        quantityItemsToPut: [...quantityItemsToPut.values()],
+        quantityItemIdsToDelete: [...quantityItemIdsToDelete],
+        uniqueItemsToPut,
+        slotAssignmentsToPut,
+        slotAssignmentIdsToDelete: [...slotAssignmentIdsToDelete]
+      }
+    };
+  }
+
+  resolveFittingSelection(equippedId, cargoStorageId) {
+    const parsed = this.parseFittingCandidateId(equippedId);
+    if (parsed.mode === "empty") return null;
+    if (parsed.mode === "unique") return parsed;
+    if (parsed.mode === "quantity") {
+      return {
+        ...parsed,
+        quantityEntry: this.getQuantityItemEntry(cargoStorageId, parsed.itemId)
+      };
+    }
+    const quantityEntry = this.getQuantityItemEntry(cargoStorageId, parsed.itemId);
+    if (quantityEntry) {
+      return {
+        mode: "quantity",
+        itemId: parsed.itemId,
+        itemUid: "",
+        quantityEntry
+      };
+    }
+    return parsed;
+  }
+
+  getQuantityItemEntry(storageId, itemId) {
+    return (this.playerAssets?.quantityItems || []).find((item) => {
+      return item.storage_id === storageId && item.item_id === itemId;
+    }) || null;
+  }
+
+  createSlotAssignmentForMutation({ ownerItemUid, slotType, slotId, itemId, itemUid = null, now = Date.now() }) {
+    const assignmentId = `${ownerItemUid}:${slotType}:${slotId}`;
+    const previous = (this.playerAssets?.slotAssignments || []).find((assignment) => assignment.assignment_id === assignmentId);
+    return {
+      ...(previous || {}),
+      assignment_id: assignmentId,
+      owner_item_uid: ownerItemUid,
+      slot_type: slotType,
+      slot_id: slotId,
+      item_id: itemId,
+      item_uid: itemUid,
+      kind: this.itemDefinitions?.[itemId]?.kind || slotType,
+      item_identity: itemUid ? "unique" : "quantity",
+      quantity: 1,
+      location_type: "ship_slot",
+      created_at: previous?.created_at || now,
+      updated_at: now
+    };
+  }
+
+  getFittingCandidatesForSlot({ shipId, type, slot, candidateScope = "owned" } = {}) {
+    if (candidateScope !== "owned" || !COMBAT_SLOT_TYPES.includes(type) || !slot) return null;
+    if (!this.playerAssets) return null;
+    const cargoStorageId = this.getActiveShipCargoStorage()?.storage_id || null;
+    const candidates = [];
+
+    for (const item of this.playerAssets?.quantityItems || []) {
+      if (item.storage_id !== cargoStorageId || this.getItemKind(item) !== type || numberOrZero(item.quantity) <= 0) continue;
+      const definition = this.getCombatDefinitionsForType(type)?.[item.item_id];
+      if (!this.isDefinitionCompatibleWithSlot(type, slot, definition)) continue;
+      candidates.push({
+        ...definition,
+        candidate_id: `qty:${item.item_id}`,
+        item_uid: null,
+        storage_id: item.storage_id,
+        quantity: numberOrZero(item.quantity),
+        source_label: "Cargo"
+      });
+    }
+
+    for (const item of this.playerAssets?.uniqueItems || []) {
+      if (item.storage_id !== cargoStorageId || this.getItemKind(item) !== type) continue;
+      const definition = this.getCombatDefinitionsForType(type)?.[item.item_id];
+      if (!this.isDefinitionCompatibleWithSlot(type, slot, definition)) continue;
+      candidates.push({
+        ...definition,
+        candidate_id: item.item_uid,
+        item_uid: item.item_uid,
+        storage_id: item.storage_id,
+        fixed_options: item.fixed_options || {},
+        source_label: "Cargo"
+      });
+    }
+
+    return candidates.sort((a, b) => {
+      const sourceOrder = String(a.source_label).localeCompare(String(b.source_label));
+      return sourceOrder || String(a.id).localeCompare(String(b.id)) || String(a.candidate_id).localeCompare(String(b.candidate_id));
+    });
+  }
+
+  buildShipCombatSummaries() {
+    const cargoUsed = this.getStorageUsedCapacity(this.getActiveShipCargoStorage()?.storage_id || null);
+    const summaries = {};
+    for (const shipId of Object.keys(this.shipDefinitions || {})) {
+      summaries[shipId] = this.calculateShipCombatSummary(shipId, {}, { cargoUsed });
+    }
+    return summaries;
+  }
+
+  getShipCombatSummary(shipId) {
+    return this.shipCombatSummaries?.[shipId]
+      || this.shipCombatSummaries?.[this.defaultShipId]
+      || this.calculateShipCombatSummary(shipId || this.defaultShipId);
+  }
+
+  calculateShipCombatSummary(shipId, slotOverrides = {}, { cargoUsed = null } = {}) {
+    const ship = this.getShipDefinition(shipId);
+    const combat = ship?.combat || {};
+    const baseStats = {
+      ...EMPTY_COMBAT_BASE_STATS,
+      ...(combat.base_stats || {})
+    };
+    const stats = {
+      processing_capacity: numberOrZero(baseStats.processing_capacity),
+      processing_load: 0,
+      processing_free: 0,
+      power_capacity: numberOrZero(baseStats.power_capacity),
+      power_recharge: numberOrZero(baseStats.power_recharge),
+      weapon_power_use: 0,
+      shield_power_use_cap: 0,
+      power_balance: 0,
+      cargo_capacity: numberOrZero(baseStats.cargo_capacity),
+      installed_mass: 0,
+      evasion: clampRatio(baseStats.evasion),
+      hull_capacity: numberOrZero(baseStats.hull_capacity),
+      hull_recharge_base: numberOrZero(baseStats.hull_recharge_base),
+      shield_capacity: 0,
+      shield_recharge_base: 0,
+      shield_recharge_rate: 0,
+      shield_recharge_boost: 0,
+      shield_recharge_power: 0
+    };
+    const weaponDamage = Object.fromEntries(DAMAGE_TYPES.map((type) => [type, 0]));
+    const shieldDefense = {
+      kinetic: 0,
+      thermal: 0,
+      energy: 0
+    };
+    const slots = {};
+    const slotCounts = {};
+    const equippedCounts = {};
+    let weaponAccuracyTotal = 0;
+    let weaponCritChanceTotal = 0;
+    let weaponCritDamageTotal = 0;
+    let weaponCount = 0;
+    let weaponRangeMax = 0;
+
+    for (const type of COMBAT_SLOT_TYPES) {
+      const definitions = this.getCombatDefinitionsForType(type);
+      const sourceSlots = Array.isArray(combat.slots?.[type]) ? combat.slots[type] : [];
+      slots[type] = sourceSlots.map((slot) => {
+        const overrideKey = `${type}:${slot.id}`;
+        const factoryFallback = this.playerAssets ? "" : slot.equipped_id;
+        const loadoutEquippedId = this.getPlayerShipLoadoutSlot(shipId, type, slot.id, factoryFallback);
+        const equippedValue = Object.prototype.hasOwnProperty.call(slotOverrides, overrideKey)
+          ? slotOverrides[overrideKey]
+          : loadoutEquippedId;
+        const resolved = this.resolveEquippedDefinition(type, equippedValue);
+        const effectiveSlot = {
+          ...slot,
+          equipped_id: resolved.definitionId || null,
+          equipped_item_uid: resolved.item?.item_uid || null
+        };
+        const definition = effectiveSlot.equipped_id ? definitions[effectiveSlot.equipped_id] : null;
+        const summary = {
+          ...effectiveSlot,
+          equipped_definition: definition || null,
+          equipped: Boolean(definition)
+        };
+        if (!definition) return summary;
+
+        stats.processing_load += numberOrZero(definition.processing_load);
+        stats.installed_mass += numberOrZero(definition.mass);
+
+        if (type === "weapon") {
+          for (const damageType of DAMAGE_TYPES) {
+            weaponDamage[damageType] += numberOrZero(definition[`damage_${damageType}`]);
+          }
+          stats.weapon_power_use += numberOrZero(definition.power_use);
+          weaponAccuracyTotal += numberOrZero(definition.acc);
+          weaponCritChanceTotal += numberOrZero(definition.crit_chance);
+          weaponCritDamageTotal += numberOrZero(definition.crit_damage);
+          weaponRangeMax = Math.max(weaponRangeMax, numberOrZero(definition.range));
+          weaponCount += 1;
+        } else if (type === "shield") {
+          const rechargeBase = numberOrZero(definition.recharge_base);
+          const rechargeRate = numberOrZero(definition.recharge_rate);
+          const powerUseCap = numberOrZero(definition.power_use_cap);
+          stats.shield_capacity += numberOrZero(definition.capacity);
+          stats.shield_recharge_base += rechargeBase;
+          stats.shield_recharge_rate += rechargeRate;
+          stats.shield_power_use_cap += powerUseCap;
+          stats.shield_recharge_boost += powerUseCap * rechargeRate;
+          stats.shield_recharge_power += rechargeBase + powerUseCap * rechargeRate;
+          shieldDefense.kinetic = Math.max(shieldDefense.kinetic, numberOrZero(definition.def_bonus_kinetic));
+          shieldDefense.thermal = Math.max(shieldDefense.thermal, numberOrZero(definition.def_bonus_thermal));
+          shieldDefense.energy = Math.max(shieldDefense.energy, numberOrZero(definition.def_bonus_energy));
+        } else if (type === "equipment") {
+          stats.processing_capacity += numberOrZero(definition.processing_capacity_bonus);
+          stats.power_capacity += numberOrZero(definition.power_capacity_bonus);
+          stats.power_recharge += numberOrZero(definition.power_recharge_bonus);
+          stats.cargo_capacity += numberOrZero(definition.cargo_capacity_bonus);
+          stats.evasion = clampRatio(stats.evasion + numberOrZero(definition.evasion_bonus));
+          stats.hull_capacity += numberOrZero(definition.hull_capacity_bonus);
+          stats.hull_recharge_base += numberOrZero(definition.hull_recharge_base_bonus);
+        }
+
+        return summary;
+      });
+      slotCounts[type] = slots[type].length;
+      equippedCounts[type] = slots[type].filter((slot) => slot.equipped).length;
+    }
+
+    stats.processing_free = stats.processing_capacity - stats.processing_load;
+    stats.power_balance = stats.power_recharge - stats.weapon_power_use;
+    const cargoStorageId = this.getActiveShipCargoStorage()?.storage_id || null;
+    const cargoUsedValue = cargoUsed == null ? this.getStorageUsedCapacity(cargoStorageId) : cargoUsed;
+
+    return {
+      ship_id: ship?.id || shipId,
+      ship_class: combat.ship_class || "lf",
+      base_stats: baseStats,
+      stats,
+      weapon_damage: weaponDamage,
+      weapon_damage_total: Object.values(weaponDamage).reduce((total, value) => total + value, 0),
+      weapon_average_accuracy: weaponCount > 0 ? weaponAccuracyTotal / weaponCount : 0,
+      weapon_average_crit_chance: weaponCount > 0 ? weaponCritChanceTotal / weaponCount : 0,
+      weapon_average_crit_damage: weaponCount > 0 ? weaponCritDamageTotal / weaponCount : 0,
+      weapon_range_max: weaponRangeMax,
+      shield_defense: shieldDefense,
+      cargo: {
+        storage_id: cargoStorageId,
+        used: cargoUsedValue,
+        capacity: stats.cargo_capacity,
+        free: stats.cargo_capacity - cargoUsedValue
+      },
+      slots,
+      slot_counts: slotCounts,
+      equipped_counts: equippedCounts
+    };
+  }
+
+  getCombatDefinitionsForType(type) {
+    if (type === "weapon") return this.weaponDefinitions;
+    if (type === "shield") return this.shieldDefinitions;
+    if (type === "equipment") return this.equipmentDefinitions;
+    return {};
+  }
+
+  async openFittingPreview({ canvas, shipId = this.selectedShipId, mode = "info" } = {}) {
+    if (!(canvas instanceof HTMLCanvasElement)) return;
+    this.closeFittingPreview();
+    const previewMode = mode === "simulation" ? "simulation" : "info";
+
+    const scene = new THREE.Scene();
+    scene.background = null;
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: true,
+      powerPreference: "high-performance"
+    });
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = this.renderer?.toneMapping ?? THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = this.renderer?.toneMappingExposure ?? 1;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+    const root = new THREE.Group();
+    scene.add(root);
+    scene.add(new THREE.HemisphereLight(0xddeeff, 0x172033, 2.1));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.5);
+    keyLight.position.set(4, 6, 8);
+    scene.add(keyLight);
+    const rimLight = new THREE.DirectionalLight(0x7bdcff, 1.2);
+    rimLight.position.set(-5, 2, -4);
+    scene.add(rimLight);
+
+    const preview = {
+      canvas,
+      scene,
+      camera,
+      renderer,
+      root,
+      mode: previewMode,
+      disposables: [],
+      frameId: 0,
+      disposed: false,
+      resize: () => this.resizeFittingPreview()
+    };
+    this.fittingPreview = preview;
+    window.addEventListener("resize", preview.resize);
+    this.resizeFittingPreview();
+
+    try {
+      const model = await this.createFittingPreviewModel(shipId, {
+        mode: previewMode,
+        disposables: preview.disposables
+      });
+      if (this.fittingPreview !== preview || preview.disposed) return;
+      root.add(model);
+      this.fitFittingPreviewCamera(model);
+    } catch (error) {
+      console.warn("[fitting-preview] model unavailable:", error?.message ?? error);
+    }
+
+    const clock = new THREE.Clock();
+    const render = () => {
+      if (this.fittingPreview !== preview || preview.disposed) return;
+      preview.frameId = requestAnimationFrame(render);
+      preview.root.rotation.y += clock.getDelta() * 0.36;
+      preview.renderer.render(preview.scene, preview.camera);
+    };
+    render();
+  }
+
+  closeFittingPreview() {
+    const preview = this.fittingPreview;
+    if (!preview) return;
+    preview.disposed = true;
+    if (preview.frameId) cancelAnimationFrame(preview.frameId);
+    window.removeEventListener("resize", preview.resize);
+    preview.scene.clear();
+    preview.disposables?.forEach((resource) => resource?.dispose?.());
+    preview.disposables = [];
+    preview.renderer.dispose();
+    this.fittingPreview = null;
+  }
+
+  async createFittingPreviewModel(shipId, { disposables = [] } = {}) {
+    const activeModel = this.ship?.getObjectByName(shipId);
+    const model = activeModel
+      ? activeModel.clone(true)
+      : (await this.resourceManager.loadShipModel(this.getShipModelId(shipId), { silent: true })).object.clone(true);
+    this.applyFittingSimulationPreviewStyle(model, disposables);
+    return model;
+  }
+
+  prepareFittingPreviewModelMaterials(model, disposables = []) {
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      child.frustumCulled = false;
+      const cloneMaterial = (material) => {
+        if (!material) return material;
+        const clone = material.clone();
+        clone.depthWrite = true;
+        clone.transparent = clone.transparent === true;
+        clone.needsUpdate = true;
+        disposables.push(clone);
+        return clone;
+      };
+      child.material = Array.isArray(child.material)
+        ? child.material.map((material) => cloneMaterial(material))
+        : cloneMaterial(child.material);
+    });
+  }
+
+  applyFittingSimulationPreviewStyle(model, disposables = []) {
+    const bodyMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: false,
+      opacity: 1,
+      depthTest: true,
+      depthWrite: true,
+      toneMapped: false
+    });
+    const edgeMaterial = new THREE.LineBasicMaterial({
+      color: 0x263442,
+      transparent: false,
+      opacity: 1,
+      depthTest: true,
+      depthWrite: false,
+      toneMapped: false
+    });
+    disposables.push(bodyMaterial, edgeMaterial);
+
+    const meshes = [];
+    model.traverse((child) => {
+      if (!child.isMesh || !child.geometry) return;
+      child.frustumCulled = false;
+      child.material = bodyMaterial;
+      child.castShadow = false;
+      child.receiveShadow = false;
+      meshes.push(child);
+    });
+
+    meshes.forEach((mesh) => {
+      const edgesGeometry = new THREE.EdgesGeometry(mesh.geometry, 28);
+      const edges = new THREE.LineSegments(edgesGeometry, edgeMaterial);
+      edges.name = `${mesh.name || "mesh"}_simulation_edges`;
+      edges.frustumCulled = false;
+      edges.renderOrder = (mesh.renderOrder || 0) + 1;
+      mesh.add(edges);
+      disposables.push(edgesGeometry);
+    });
+  }
+
+  resizeFittingPreview() {
+    const preview = this.fittingPreview;
+    if (!preview) return;
+    const rect = preview.canvas.getBoundingClientRect();
+    const width = Math.max(1, Math.floor(rect.width || preview.canvas.clientWidth || 1));
+    const height = Math.max(1, Math.floor(rect.height || preview.canvas.clientHeight || 1));
+    preview.renderer.setSize(width, height, false);
+    preview.camera.aspect = width / height;
+    preview.camera.updateProjectionMatrix();
+  }
+
+  fitFittingPreviewCamera(model) {
+    const preview = this.fittingPreview;
+    if (!preview) return;
+    const box = new THREE.Box3().setFromObject(model);
+    if (box.isEmpty()) {
+      preview.camera.position.set(0, 2, 12);
+      preview.camera.lookAt(0, 0, 0);
+      return;
+    }
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    model.position.sub(center);
+    const radius = Math.max(size.x, size.y, size.z, 1) * 0.65;
+    preview.camera.position.set(radius * 0.25, radius * 0.42, radius * 2.35);
+    preview.camera.lookAt(0, 0, 0);
+    preview.camera.updateProjectionMatrix();
+  }
+
   getShipModelId(shipId) {
     const visual = this.getShipDefinition(shipId)?.visual || {};
     return visual.model_id || visual.modelId || shipId;
@@ -489,6 +1606,10 @@ export class GameManager {
 
   async setSelectedShipId(shipId) {
     if (!this.shipDefinitions[shipId] || shipId === this.selectedShipId) return;
+    if (this.playerAssets && !this.getOwnedShipDefinitions()[shipId]) {
+      this.ui.showErrorToast("ship not owned");
+      return;
+    }
 
     const previousShipId = this.selectedShipId;
 
@@ -518,6 +1639,7 @@ export class GameManager {
     } catch (err) {
       console.error("[ship-swap] failed:", err);
       this.selectedShipId = previousShipId;
+      this._applyShipSpecs(previousShipId);
       this.ui.setSelectedShipId(previousShipId);
       this.ui.showErrorToast("failed to load ship model");
     }
@@ -617,8 +1739,11 @@ export class GameManager {
       scene: this.scene,
       camera: this.camera,
       objectBloom: this.getObjectBloomSettings(preset),
-      renderResolutionScale: this.getRenderResolutionScale()
+      renderResolutionScale: this.getRenderResolutionScale(),
+      maxPixelRatio: MAX_PIXEL_RATIO
     });
+    this.renderPipeline.registerStylizedRenderTarget(this.ship);
+    this.renderPipeline.setStylizedRenderMode(this.performanceSettings.stylizedRenderMode);
 
     this.hyperdriveWarpLayer = new HyperdriveWarpLayer({
       renderer: this.renderer,
@@ -650,7 +1775,20 @@ export class GameManager {
     this.shipRimLight = new THREE.PointLight(rimLight.color, rimLight.intensity, rimLight.distance);
     this.shipRimLight.position.set(...rimLight.position);
 
+    this.shipFillLight.layers.set(SHIP_LOCAL_LIGHT_LAYER);
+    this.shipRimLight.layers.set(SHIP_LOCAL_LIGHT_LAYER);
     this.ship.add(this.shipFillLight, this.shipRimLight);
+  }
+
+  // Confine every light under the ship to the ship-only light layer, and make the ship's
+  // own meshes receive that layer so they stay lit. Called after the ship model and its
+  // engine lights are (re)created so spill onto world objects is eliminated.
+  isolateShipLocalLights() {
+    if (!this.ship) return;
+    this.ship.traverse((child) => {
+      if (child.isLight) child.layers.set(SHIP_LOCAL_LIGHT_LAYER);
+      else if (child.isMesh) child.layers.enable(SHIP_LOCAL_LIGHT_LAYER);
+    });
   }
 
   getRenderResolutionScale(settings = this.performanceSettings) {
@@ -658,7 +1796,7 @@ export class GameManager {
   }
 
   getRendererPixelRatio() {
-    return Math.min(window.devicePixelRatio, 2) * this.getRenderResolutionScale();
+    return Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO) * this.getRenderResolutionScale();
   }
 
   applyRenderResolutionSettings() {
@@ -818,6 +1956,7 @@ export class GameManager {
     await this.loadSavedEnvironmentSettings();
     await this.worldMapManager.loadAssets(this.resourceManager);
     const snapshot = await this.worldDataManager.loadOrCreateWorld();
+    await this.loadPlayerAssets();
     this.worldMapManager.renderWorld(snapshot);
     await this.loadSavedWorldViewSettings();
     await this.restorePlayerShipState();
@@ -831,6 +1970,10 @@ export class GameManager {
       this.worldDataManager.loadOrCreatePlayerShipState(),
       this.worldDataManager.getNavLogs(10)
     ]);
+
+    // Deterministic reconnect: if the ship asset is docked (loaded into a station hangar),
+    // loadPlayerAssets() already entered the docking scene — skip space-position restore.
+    if (this.isDocked()) return;
 
     const activeLog = navLogs.find(log => log.status === "active");
     let usedNavLog = false;
@@ -1065,6 +2208,7 @@ export class GameManager {
   addShipModel(model) {
     const shipId = this.selectedShipId;
     const shipVisualDefinition = this.getShipDefinition(shipId)?.visual;
+    this.shipAnimationClips = Array.isArray(model.animations) ? model.animations : [];
     model.name = shipId;
     model.rotation.y = Math.PI;
     this.ship.add(model);
@@ -1089,6 +2233,13 @@ export class GameManager {
     this.applyMaterialMapPerformanceSettings();
     this.applyLightingPerformanceSettings();
     this.renderPipeline?.markTargetsDirty();
+    // Re-queue the ship root so the freshly-added model gets outline shells (idempotent for the set).
+    this.renderPipeline?.registerStylizedRenderTarget(this.ship);
+    // Keep the ship's local lights from spilling onto nearby world objects.
+    this.isolateShipLocalLights();
+    // On restore-while-docked the ship model can finish loading after the dock scene was set up
+    // (parallel load). Re-apply the dock presentation so the ship pose/offsets use the real model.
+    if (this.isDocked() && this.dockInteriorObject) this.setupDockPresentation();
   }
 
   applyShipReflection(model, shipVisualDefinition = this.getShipDefinition(this.defaultShipId)?.visual) {
@@ -1162,17 +2313,25 @@ export class GameManager {
     disposedTextures.forEach((texture) => texture?.dispose?.());
   }
 
-  createStars(count, radius, size, opacity) {
+  createStars(count, radius, size, opacity, { scene = this.scene, excludeRadius = 0 } = {}) {
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const color = new THREE.Color();
+    const excludeSq = excludeRadius * excludeRadius;
 
     for (let i = 0; i < count; i += 1) {
       const index = i * 3;
-      positions[index] = (Math.random() * 2 - 1) * radius;
-      positions[index + 1] = (Math.random() * 2 - 1) * radius;
-      positions[index + 2] = (Math.random() * 2 - 1) * radius;
+      let x, y, z;
+      // Reject any star inside the exclusion sphere (e.g. the station's radius in the dock scene).
+      do {
+        x = (Math.random() * 2 - 1) * radius;
+        y = (Math.random() * 2 - 1) * radius;
+        z = (Math.random() * 2 - 1) * radius;
+      } while (excludeSq > 0 && x * x + y * y + z * z < excludeSq);
+      positions[index] = x;
+      positions[index + 1] = y;
+      positions[index + 2] = z;
 
       const hue = 0.58 + Math.random() * 0.08;
       const saturation = 0.78 + Math.random() * 0.2;
@@ -1201,7 +2360,7 @@ export class GameManager {
     points.frustumCulled = false;
     points.userData.radius = radius;
     points.userData.count = count;
-    this.scene.add(points);
+    scene.add(points);
     return points;
   }
 
@@ -1478,6 +2637,7 @@ export class GameManager {
 
   setManualSpeed(value) {
     if (this.state.phase !== "running") return false;
+    if (this.isDocked()) return false;
     if (this.isHyperdrive && this.state.autopilotPhase === "warping") return false;
     if (this.isHyperdrive) {
       this.clearTarget();
@@ -1493,6 +2653,7 @@ export class GameManager {
   }
 
   setTarget({ x, y, z }) {
+    if (this.isDocked()) return;
     if (this.isHyperdrive) return;
     const { decelerationRate, accelerationRate, pitchRate, yawRate, arrivalRadius } = this.shipStats;
 
@@ -1604,6 +2765,8 @@ export class GameManager {
     this.activeNavLog = null;
     this.targetMarker.visible = false;
     if (message && !(wasHyperdrive && message === "arrived")) this.ui.showToast(message);
+    // Warp ended (arrival or cancel): revert from warp ambience to the destination's location BGM.
+    if (wasHyperdrive) this.refreshBgm();
     if (!inBetaSpace) this.savePlayerShipState({ force: true });
   }
 
@@ -1628,6 +2791,10 @@ export class GameManager {
 
   initiateHyperdrive({ x, y, z }) {
     if (this.isHyperdrive) return;
+    if (this.isDocked()) {
+      this.ui.showToast("undock to use hyperdrive");
+      return;
+    }
     if (this.isBetaSpaceActive()) {
       this.ui.showToast("hyperdrive unavailable in Beta Space");
       return;
@@ -1766,6 +2933,7 @@ export class GameManager {
     this.state.autopilotPhase = "warping";
     this.state.speed = 0;
     this.state.desiredSpeed = 0;
+    this.refreshBgm(); // warp ambience overrides sector BGM for the duration of the jump
     if (this.hyperdriveLogId) {
       void this.worldDataManager.updateNavLog(this.hyperdriveLogId, {
         committed: true,
@@ -2700,8 +3868,21 @@ export class GameManager {
   }
 
   getPlayerDataPosition() {
+    // While docked the ship sits at the docking-scene pivot, so report the station's
+    // world position instead (minimap, scanner distances, location readout).
+    if (this.isDocked()) {
+      const stationPosition = this.getDockedStationDataPosition();
+      if (stationPosition) return stationPosition;
+    }
     const position = this.worldMapManager.toDataVector(this.ship.position);
     return { x: position.x, y: position.y, z: position.z };
+  }
+
+  getDockedStationDataPosition() {
+    const stationId = this.getDockedStationId();
+    if (!stationId) return null;
+    const resolved = this.resolveDockableStation({ id: stationId });
+    return resolved ? { ...resolved.dataPosition } : null;
   }
 
   syncWorldRuntimeWithPlayer({ force = false } = {}) {
@@ -2713,7 +3894,7 @@ export class GameManager {
   }
 
   getBgmIdForCurrentPlayerPosition() {
-    return this.getBgmIdForPosition(this.getPlayerDataPosition());
+    return this.getActiveBgmId(this.getPlayerDataPosition());
   }
 
   getBgmIdForPosition(dataPosition) {
@@ -2730,8 +3911,30 @@ export class GameManager {
     return chunk ? "bgm_main_01" : "bgm_danger_01";
   }
 
+  // Per-station docking BGM, sourced from `building_defs` (`docking.theme_music_id`).
+  getDockedStationBgmId() {
+    const stationId = this.getDockedStationId();
+    if (!stationId) return null;
+    const resolved = this.resolveDockableStation({ id: stationId });
+    if (!resolved) return null;
+    return this.buildingDefinitions[resolved.building_id]?.docking?.theme_music_id || null;
+  }
+
+  // Single source of truth for the active BGM. State overrides position: while warping the warp
+  // ambience plays regardless of sector; while docked the station's dock theme plays.
+  getActiveBgmId(dataPosition = this.getPlayerDataPosition()) {
+    if (this.isHyperdrive && this.state.autopilotPhase === "warping") return "bgm_warp_01";
+    if (this.isDocked()) return this.getDockedStationBgmId() || "bgm_hanger_01";
+    return this.getBgmIdForPosition(dataPosition);
+  }
+
+  // Re-evaluate the active BGM from full game state (call on warp/dock transitions).
+  refreshBgm() {
+    this.updateLocationBgm(this.getPlayerDataPosition());
+  }
+
   updateLocationBgm(dataPosition) {
-    const nextBgmId = this.getBgmIdForPosition(dataPosition);
+    const nextBgmId = this.getActiveBgmId(dataPosition);
     if (this.currentLocationBgmId === nextBgmId) return;
     this.currentLocationBgmId = nextBgmId;
 
@@ -2798,6 +4001,7 @@ export class GameManager {
   }
 
   update(dt) {
+    if (this.isDocked()) return;
     if (this.isBetaSpaceActive() && this.updateBetaSpaceState()) return;
     if (!this.isBetaSpaceActive()) void this.updateBetaVoidLifecycle();
     this.updateAutopilot(dt);
@@ -2821,8 +4025,25 @@ export class GameManager {
     this.savePlayerShipState();
   }
 
+  buildPlayerShipSavePayload() {
+    const position = this.worldMapManager.toDataVector(this.ship.position);
+    return {
+      ship_id: "PLAYER-SHIP-001",
+      player_id: "default",
+      position: { x: position.x, y: position.y, z: position.z },
+      rotation: {
+        x: this.ship.quaternion.x,
+        y: this.ship.quaternion.y,
+        z: this.ship.quaternion.z,
+        w: this.ship.quaternion.w
+      },
+      speed: this.state.speed,
+      desiredSpeed: this.state.desiredSpeed
+    };
+  }
+
   async savePlayerShipState({ force = false } = {}) {
-    if (this.isBetaSpaceActive()) return;
+    if (this.isBetaSpaceActive() || this.isDocked()) return;
     if (!this.worldDataManager.db || this.playerShipSavePending || this.worldDataResetting) return;
 
     const now = performance.now();
@@ -2831,20 +4052,7 @@ export class GameManager {
     this.playerShipSavePending = true;
 
     try {
-      const position = this.worldMapManager.toDataVector(this.ship.position);
-      await this.worldDataManager.savePlayerShipState({
-        ship_id: "PLAYER-SHIP-001",
-        player_id: "default",
-        position: { x: position.x, y: position.y, z: position.z },
-        rotation: {
-          x: this.ship.quaternion.x,
-          y: this.ship.quaternion.y,
-          z: this.ship.quaternion.z,
-          w: this.ship.quaternion.w
-        },
-        speed: this.state.speed,
-        desiredSpeed: this.state.desiredSpeed
-      });
+      await this.worldDataManager.savePlayerShipState(this.buildPlayerShipSavePayload());
     } catch {
       this.ui.showErrorToast("player ship state save failed");
     } finally {
@@ -3021,6 +4229,7 @@ export class GameManager {
 
     this.environmentMode = nextMode;
     this.applyEnvironmentPreset(this.getEnvironmentPreset(nextMode));
+    if (this.isDocked()) this.applyDockingEnvironment(this.getEnvironmentPreset(nextMode));
     this.ui.setEnvironmentMode(nextMode);
     this.minimapManager?.setEnvironmentMode(nextMode);
     void this.saveEnvironmentSettings();
@@ -3036,6 +4245,8 @@ export class GameManager {
       nextValue = normalizeBloomQualityMode(value);
     } else if (key === "renderResolutionScale") {
       nextValue = normalizeRenderResolutionScale(value);
+    } else if (key === "stylizedRenderMode") {
+      nextValue = normalizeStylizedRenderMode(value);
     }
     const nextSettings = normalizePerformanceSettings({
       ...this.performanceSettings,
@@ -3051,6 +4262,8 @@ export class GameManager {
       this.renderPipeline?.setObjectBloomSettings(this.getObjectBloomSettings());
     } else if (key === "renderResolutionScale") {
       this.applyRenderResolutionSettings();
+    } else if (key === "stylizedRenderMode") {
+      this.renderPipeline?.setStylizedRenderMode(nextSettings.stylizedRenderMode);
     } else if (key === "materialMaps") {
       this.applyMaterialMapPerformanceSettings();
     } else if (key === "lightingEffects") {
@@ -3138,6 +4351,10 @@ export class GameManager {
 
   navigateToWorldObject(object) {
     if (!object?.target) return;
+    if (this.isDocked()) {
+      this.ui.showToast("undock to navigate");
+      return;
+    }
     this.setTarget(object.target);
   }
 
@@ -3149,6 +4366,662 @@ export class GameManager {
   isBetaSpaceActive() {
     return !!this.betaSpaceSession;
   }
+
+  isDocked() {
+    return !!this.dockingState;
+  }
+
+  // The persisted dock truth is the active ship's location storage (station_hangar vs active_ship).
+  getActiveShipLocationStorage() {
+    const ship = this.getActiveShipItem();
+    if (!ship?.storage_id) return null;
+    return (this.playerAssets?.storageLocations || []).find((storage) => storage.storage_id === ship.storage_id) || null;
+  }
+
+  deriveDockingState() {
+    const storage = this.getActiveShipLocationStorage();
+    if (storage?.storage_type !== "station_hangar") return null;
+    const ship = this.getActiveShipItem();
+    const slot = Number.isInteger(ship?.dock_slot) ? ship.dock_slot : 0;
+    return { station_id: storage.world_object_id, storage_id: storage.storage_id, slot };
+  }
+
+  getStationCapacity(buildingId) {
+    const capacity = Number(this.buildingDefinitions[buildingId]?.docking?.capacity);
+    return Number.isFinite(capacity) && capacity > 0 ? capacity : 10;
+  }
+
+  // Hangar label: "{n}번 격납고" (ko) / "Hanger {n}" (en); slot is 0-based, label is 1-based.
+  getHangarLabel(slot) {
+    const n = (Number.isInteger(slot) ? slot : 0) + 1;
+    const fallback = this.i18n.locale === "ko" ? `${n}번 격납고` : `Hanger ${n}`;
+    return this.i18n.t("ui.docking.hangar", { slot: n }, fallback);
+  }
+
+  // Names are matched loosely because GLTFLoader may sanitize dots/underscores in node/clip names.
+  normalizeAssetName(name) {
+    return String(name || "").toLowerCase().replace(/[\s._-]/g, "");
+  }
+
+  findObjectByNameLoose(root, name) {
+    if (!root) return null;
+    const target = this.normalizeAssetName(name);
+    let found = null;
+    root.traverse((object) => {
+      if (!found && this.normalizeAssetName(object.name) === target) found = object;
+    });
+    return found;
+  }
+
+  // Static resting docking points only (excludes the animated "anim_dockingpoint" empties).
+  getDockingPoints() {
+    if (!this.dockInteriorObject) return [];
+    const points = [];
+    this.dockInteriorObject.traverse((object) => {
+      if (/^dockingpoint\d*$/.test(this.normalizeAssetName(object.name))) points.push(object);
+    });
+    points.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    return points;
+  }
+
+  getDockPointIndexForSlot(slot) {
+    const points = this.getDockingPoints();
+    if (points.length === 0) return 0;
+    const capacity = this.getStationCapacity(
+      (this.worldMapManager?.snapshot?.buildings || [])
+        .find((entry) => entry.building_instance_id === this.dockingState?.station_id)?.building_id
+    );
+    const slotsPerPoint = Math.max(1, Math.ceil(capacity / points.length));
+    return Math.min(points.length - 1, Math.floor((Number.isInteger(slot) ? slot : 0) / slotsPerPoint));
+  }
+
+  getDockingPointForSlot(slot) {
+    const points = this.getDockingPoints();
+    if (points.length === 0) return null;
+    return points[this.getDockPointIndexForSlot(slot)];
+  }
+
+  findAnimationClip(clips, name) {
+    const target = this.normalizeAssetName(name);
+    return (clips || []).find((clip) => this.normalizeAssetName(clip?.name) === target) || null;
+  }
+
+  // Drives a mixer to the end of its clips via incremental steps (the same mechanism the cutscene
+  // uses), which reliably reaches the clamped end pose — unlike a single setTime jump.
+  advanceDockMixerToEnd(mixer, duration) {
+    if (!mixer) return;
+    const step = 1 / 60;
+    let elapsed = 0;
+    while (elapsed < duration) {
+      mixer.update(step);
+      elapsed += step;
+    }
+    mixer.update(step); // push just past the end so LoopOnce clamps
+  }
+
+  // Measures fixed docking offsets from the ship's LANDED pose (gear deployed) so every dock
+  // placement (cutscene + rest) uses one identical basis. Cached on this.dockBottomOffset/Center.
+  computeDockShipOffsets(landingClip) {
+    this.ship.position.copy(this.dockingPivot);
+    this.ship.quaternion.identity();
+    if (this.dockShipMixer && this.dockLandingAction && landingClip) {
+      this.dockLandingAction.reset();
+      this.dockLandingAction.play();
+      this.advanceDockMixerToEnd(this.dockShipMixer, landingClip.duration); // deploy landing gear
+    }
+    this.ship.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(this.ship);
+    if (box.isEmpty()) {
+      this.dockBottomOffset = new THREE.Vector3();
+      this.dockCenterOffset = new THREE.Vector3();
+      return;
+    }
+    const center = box.getCenter(new THREE.Vector3());
+    this.dockBottomOffset = new THREE.Vector3(center.x, box.min.y, center.z);
+    this.dockCenterOffset = center.clone();
+  }
+
+  // Match the ship's BOTTOM-center (landed-pose basis) to a point's world position, floating the
+  // ship up so its base sits on the point, then focus the camera on the ship's center.
+  placeShipAtPoint(point) {
+    if (!this.ship || !point) return;
+    this.ship.quaternion.identity();
+    const target = point.getWorldPosition(new THREE.Vector3());
+    const bottom = this.dockBottomOffset || new THREE.Vector3();
+    const center = this.dockCenterOffset || new THREE.Vector3();
+    this.ship.position.copy(target).sub(bottom);
+    this.ship.updateMatrixWorld(true);
+    this.dockingCameraFocus.copy(this.ship.position).add(center);
+  }
+
+  placeShipAtDockSlot() {
+    if (!this.ship) return;
+    this.ship.position.copy(this.dockingPivot);
+    this.ship.quaternion.identity();
+    this.dockingCameraFocus.copy(this.dockingPivot);
+    const point = this.getDockingPointForSlot(this.dockingState?.slot ?? 0);
+    if (!point) {
+      this.ship.updateMatrixWorld(true);
+      return;
+    }
+    if (!this.dockBottomOffset) this.computeDockShipOffsets(null); // fallback (no landing clip)
+    this.placeShipAtPoint(point);
+  }
+
+  // Builds hangar/ship animation mixers and either starts the arrival cutscene (space→station)
+  // or applies the resting docked pose (restore/reconnect).
+  setupDockPresentation() {
+    if (!this.dockInteriorObject) return;
+    this.disposeDockMixers();
+
+    const index = this.getDockPointIndexForSlot(this.dockingState?.slot ?? 0);
+    const suffix = String(index + 1).padStart(3, "0");
+    const hangarClips = this.dockInteriorObject.animations || [];
+    const doorClip = this.findAnimationClip(hangarClips, "anim_docking");
+    const slotClip = this.findAnimationClip(hangarClips, `anim_docking.${suffix}`);
+    const landingClip = this.findAnimationClip(this.shipAnimationClips, "anim_landing");
+    const animPoint = this.findObjectByNameLoose(this.dockInteriorObject, `anim_dockingpoint.${suffix}`);
+
+    this.dockHangarMixer = new THREE.AnimationMixer(this.dockInteriorObject);
+    const hangarClipList = [doorClip, slotClip].filter(Boolean);
+    let hangarDuration = 0;
+    for (const clip of hangarClipList) {
+      const action = this.dockHangarMixer.clipAction(clip);
+      action.setLoop(THREE.LoopOnce, 1);
+      action.clampWhenFinished = true;
+      action.play();
+      hangarDuration = Math.max(hangarDuration, clip.duration);
+    }
+
+    if (landingClip) {
+      this.dockShipMixer = new THREE.AnimationMixer(this.ship);
+      this.dockLandingAction = this.dockShipMixer.clipAction(landingClip);
+      this.dockLandingAction.setLoop(THREE.LoopOnce, 1);
+      this.dockLandingAction.clampWhenFinished = true;
+    }
+
+    // Fixed placement basis = the landed pose (gear deployed); measured once for both paths.
+    this.computeDockShipOffsets(landingClip);
+
+    if (this._enterWithCutscene && animPoint && hangarClipList.length > 0) {
+      // Cutscene: rewind the hangar to the start and retract the gear; both animate to the end
+      // during playback. Placement still uses the fixed landed basis.
+      this.dockHangarMixer.update(0);
+      if (this.dockShipMixer && this.dockLandingAction) {
+        this.dockLandingAction.reset();
+        this.dockShipMixer.update(0);
+        this.dockLandingAction.stop();
+      }
+      this.dockCutscene = {
+        elapsed: 0,
+        duration: Math.max(hangarDuration, 3 + (landingClip?.duration || 0)),
+        animPoint,
+        landingStarted: false
+      };
+      this.followAnimDockingPoint();
+    } else {
+      // Restore (docked at game start): only the ship's landing gear must be deployed — station
+      // animations are irrelevant here. computeDockShipOffsets already deployed the gear; the dock
+      // point's bind pose is already the resting position, so just settle the ship onto it.
+      this.placeShipAtDockSlot();
+    }
+  }
+
+  // During the cutscene the ship's bottom-center (landed basis) tracks the animated empty.
+  followAnimDockingPoint() {
+    const cutscene = this.dockCutscene;
+    if (!cutscene) return;
+    this.placeShipAtPoint(cutscene.animPoint);
+  }
+
+  updateDockCutscene(dt) {
+    const cutscene = this.dockCutscene;
+    if (!cutscene) return;
+    cutscene.elapsed += dt;
+    this.dockHangarMixer?.update(dt);
+    // Ship landing animation starts 3s after the hangar animation begins.
+    if (!cutscene.landingStarted && cutscene.elapsed >= 3 && this.dockLandingAction) {
+      this.dockLandingAction.reset().play();
+      cutscene.landingStarted = true;
+    }
+    this.dockShipMixer?.update(dt);
+    this.followAnimDockingPoint();
+    if (cutscene.elapsed >= cutscene.duration) this.endDockCutscene();
+  }
+
+  endDockCutscene() {
+    this.dockCutscene = null;
+    // Settle onto the static resting dock point (clips stay clamped: door open, gear deployed).
+    this.placeShipAtDockSlot();
+  }
+
+  // Tears down dock mixers and restores the ship's parts (e.g. landing gear) to their bind pose.
+  disposeDockMixers() {
+    if (this.dockShipMixer && this.dockLandingAction) {
+      this.dockLandingAction.reset();
+      this.dockShipMixer.update(0);
+      this.dockLandingAction.stop();
+    }
+    this.dockShipMixer = null;
+    this.dockLandingAction = null;
+    this.dockHangarMixer = null;
+    this.dockCutscene = null;
+    this.dockBottomOffset = null;
+    this.dockCenterOffset = null;
+  }
+
+  getDockedStationId() {
+    return this.deriveDockingState()?.station_id || null;
+  }
+
+  getStationName(stationId) {
+    if (!stationId) return "";
+    const building = (this.worldMapManager?.snapshot?.buildings || [])
+      .find((entry) => entry.building_instance_id === stationId);
+    if (!building) return "";
+    return this.i18n.resolveDefinitionText(this.buildingDefinitions[building.building_id], "name", building.building_id);
+  }
+
+  computeUndockAnchor(stationId) {
+    const resolved = this.resolveDockableStation({ id: stationId });
+    if (!resolved) return null;
+    const facing = resolved.facing;
+    return {
+      position: {
+        x: resolved.dataPosition.x + facing[0] * 10,
+        y: resolved.dataPosition.y + facing[1] * 10,
+        z: resolved.dataPosition.z + facing[2] * 10
+      },
+      rotation: this.computeFacingQuaternion(facing)
+    };
+  }
+
+  // Reconcile the docking presentation (scene/UI) with the persisted asset truth after an asset load.
+  syncDockingPresentation() {
+    const derived = this.deriveDockingState();
+    const showing = !!this.dockingState;
+    if (derived && !showing) {
+      this.dockingState = derived;
+      this.enterDockingScene();
+    } else if (!derived && showing) {
+      this.dockingState = null;
+      this.exitDockingScene();
+    } else {
+      this.dockingState = derived;
+    }
+  }
+
+  isDockableDefinition(definition) {
+    const capacity = definition?.docking?.capacity;
+    return capacity === null || (Number(capacity) || 0) > 0;
+  }
+
+  // Resolve a dock target (from a proximity prompt) to its deterministic position + facing.
+  resolveDockableStation(station) {
+    const id = station?.building_instance_id || station?.id;
+    if (!id) return null;
+    const building = (this.worldMapManager?.snapshot?.buildings || [])
+      .find((entry) => entry.building_instance_id === id);
+    if (!building) return null;
+    const definition = this.buildingDefinitions[building.building_id];
+    if (!this.isDockableDefinition(definition)) return null;
+    let cache;
+    try {
+      cache = this.worldMapManager.getFixedObjectPosition(id);
+    } catch {
+      return null;
+    }
+    const facing = Array.isArray(definition.docking?.facing) && definition.docking.facing.length >= 3
+      ? definition.docking.facing
+      : [0, 0, 1];
+    return {
+      id,
+      building_id: building.building_id,
+      name: this.i18n.resolveDefinitionText(definition, "name", building.building_id),
+      renderPosition: cache.renderPosition,
+      dataPosition: cache.absolutePosition,
+      facing
+    };
+  }
+
+  isWithinDockRange(renderPosition) {
+    if (!renderPosition) return false;
+    const dx = this.ship.position.x - renderPosition.x;
+    const dy = this.ship.position.y - renderPosition.y;
+    const dz = this.ship.position.z - renderPosition.z;
+    return dx * dx + dy * dy + dz * dz <= this.dockProximityRange * this.dockProximityRange;
+  }
+
+  // Live dock affordance state for a station's detail bubble (sync; uses current ship position).
+  getDockState(stationId) {
+    const resolved = this.resolveDockableStation({ id: stationId });
+    if (!resolved) return { dockable: false, inRange: false };
+    return { dockable: true, inRange: this.isWithinDockRange(resolved.renderPosition) };
+  }
+
+  // Deterministic orientation facing the station's front direction (mirrors nav heading convention).
+  computeFacingQuaternion(facing) {
+    const direction = new THREE.Vector3(facing[0], facing[1], facing[2]);
+    if (direction.lengthSq() < 1e-6) direction.set(0, 0, 1);
+    direction.normalize();
+    this.lookMatrix.lookAt(direction, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+    const quaternion = new THREE.Quaternion().setFromRotationMatrix(this.lookMatrix).normalize();
+    return { x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w };
+  }
+
+  // Space scene background color (themed dark/light) — used as the dock/undock fade color.
+  getSpaceBackgroundColor() {
+    const background = this.scene?.background;
+    return background && typeof background.getHexString === "function"
+      ? `#${background.getHexString()}`
+      : "#000000";
+  }
+
+  async dock(station) {
+    if (this.isDocked() || this.isBetaSpaceActive() || this.state.phase !== "running") return;
+    const resolved = this.resolveDockableStation(station);
+    if (!resolved) {
+      this.ui.showErrorToast("cannot dock here");
+      return;
+    }
+    if (!this.isWithinDockRange(resolved.renderPosition)) {
+      this.ui.showToast("too far to dock");
+      return;
+    }
+
+    // Clear in-flight navigation/targeting (mirrors Beta Space enter bookkeeping).
+    if (this.state.autopilotPhase !== null || this.isHyperdrive) this.clearTarget(null);
+    this.exitTargetCameraMode();
+    this.clearWorldSelection();
+    this.activeActions.clear();
+    this.state.speed = 0;
+    this.state.desiredSpeed = 0;
+    this.state.autopilotPhase = null;
+    this.navTarget = null;
+    this.activeNavLog = null;
+    this.activeNavLogId = null;
+    this.hyperdriveLog = null;
+    this.hyperdriveLogId = null;
+    this.isHyperdrive = false;
+    this.targetMarker.visible = false;
+
+    await this.ui.fadeOut(this.getSpaceBackgroundColor(), 2000); // 2s fade to space bg, then transition
+
+    // Single source of truth: re-parent the ship asset into the station hangar (one transaction).
+    const stationId = resolved.id;
+    const hangarStorageId = `station-hangar-${this.characterId}-${stationId}`;
+    const capacity = this.getStationCapacity(resolved.building_id);
+    const now = Date.now();
+    const result = await this.worldDataManager.runPlayerAssetMutation(this.characterId, (assets) => {
+      const activeShipUid = assets.profile?.active_ship_uid;
+      const ship = (assets.uniqueItems || []).find((item) => item.item_uid === activeShipUid);
+      if (!ship) return null;
+      // Dock into the lowest-numbered empty hangar slot.
+      const occupied = new Set(
+        (assets.uniqueItems || [])
+          .filter((item) => item.kind === "ship" && item.storage_id === hangarStorageId && Number.isInteger(item.dock_slot))
+          .map((item) => item.dock_slot)
+      );
+      let slotIndex = -1;
+      for (let i = 0; i < capacity; i += 1) {
+        if (!occupied.has(i)) { slotIndex = i; break; }
+      }
+      if (slotIndex < 0) return null; // hangar full
+      return {
+        storageLocationsToPut: [{
+          storage_id: hangarStorageId,
+          storage_type: "station_hangar",
+          owner_character_id: this.characterId,
+          world_object_id: stationId,
+          parent_item_uid: null,
+          capacity,
+          created_at: now,
+          updated_at: now
+        }],
+        uniqueItemsToPut: [{ ...ship, storage_id: hangarStorageId, dock_slot: slotIndex, updated_at: now }]
+      };
+    });
+    if (!result?.committed) {
+      this.ui.showErrorToast("cannot dock — hangar unavailable");
+      await this.ui.fadeIn(2000);
+      return;
+    }
+    this._dockCutscenePending = true; // play the arrival cutscene (only on space→station dock)
+    await this.loadPlayerAssets(); // syncDockingPresentation enters the docking scene
+    await this.ui.fadeIn(2000); // 2s fade from space bg into the docking scene
+    this.ui.showToast("docked");
+  }
+
+  async undock() {
+    if (!this.isDocked()) return;
+    const stationId = this.getDockedStationId();
+    await this.ui.fadeOut(this.getSpaceBackgroundColor(), 2000); // 2s fade to space bg, then transition
+    const now = Date.now();
+    const result = await this.worldDataManager.runPlayerAssetMutation(this.characterId, (assets) => {
+      const activeShipUid = assets.profile?.active_ship_uid;
+      const ship = (assets.uniqueItems || []).find((item) => item.item_uid === activeShipUid);
+      if (!ship) return null;
+      const existing = (assets.storageLocations || [])
+        .find((storage) => storage.storage_type === "active_ship" && storage.owner_character_id === this.characterId);
+      const activeStorageId = existing?.storage_id || `storage-${activeShipUid}-active`;
+      const storageLocationsToPut = existing ? [] : [{
+        storage_id: activeStorageId,
+        storage_type: "active_ship",
+        owner_character_id: this.characterId,
+        world_object_id: null,
+        parent_item_uid: null,
+        capacity: null,
+        created_at: now,
+        updated_at: now
+      }];
+      return {
+        storageLocationsToPut,
+        uniqueItemsToPut: [{ ...ship, storage_id: activeStorageId, dock_slot: null, updated_at: now }]
+      };
+    });
+    if (!result?.committed) {
+      this.ui.showErrorToast("undock failed");
+      await this.ui.fadeIn(2000);
+      return;
+    }
+    await this.loadPlayerAssets(); // syncDockingPresentation exits the docking scene
+
+    // Deterministic reappearance at the station front + 10m.
+    const anchor = this.computeUndockAnchor(stationId);
+    if (anchor) {
+      this.ship.position.copy(this.worldMapManager.toRenderVector(anchor.position));
+      const r = anchor.rotation;
+      this.ship.quaternion.set(r.x || 0, r.y || 0, r.z || 0, Number.isFinite(Number(r.w)) ? Number(r.w) : 1).normalize();
+    }
+    this.state.speed = 0;
+    this.state.desiredSpeed = 0;
+    this.state.autopilotPhase = null;
+
+    this.syncWorldRuntimeWithPlayer({ force: true });
+    await this.refreshWorldSummary({ force: true });
+    await this.savePlayerShipState({ force: true });
+    await this.ui.fadeIn(2000); // 2s fade from space bg into the space scene
+    this.ui.showToast("undocked");
+  }
+
+  // Mirrors the active light/dark space background + fog into the isolated docking scene,
+  // so the station scene shares the same cosmic backdrop as open space.
+  applyDockingEnvironment(preset = this.getEnvironmentPreset()) {
+    if (!this.dockingScene) return;
+    this.dockingScene.background = new THREE.Color(preset.scene.background);
+    this.dockingScene.fog = new THREE.FogExp2(preset.scene.fog.color, preset.scene.fog.density);
+  }
+
+  enterDockingScene() {
+    if (!this.dockingScene) {
+      this.dockingScene = new THREE.Scene();
+      this.dockingScene.add(new THREE.HemisphereLight(0xddeeff, 0x172033, 1.6));
+      const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+      keyLight.position.set(5, 8, 6);
+      this.dockingScene.add(keyLight);
+      const rimLight = new THREE.DirectionalLight(0x7bdcff, 1.0);
+      rimLight.position.set(-6, 3, -5);
+      this.dockingScene.add(rimLight);
+      // Distant star backdrop matching the space environment, centered on the station pivot (origin)
+      // and cleared within the station's radius (DOCK_INTERIOR_SIZE) so no stars sit on/inside it.
+      this.dockStarLayers = this.getEnvironmentPreset().starField.layers.map((layer) =>
+        this.createStars(layer.count, layer.radius, layer.size, layer.opacity, {
+          scene: this.dockingScene,
+          excludeRadius: DOCK_INTERIOR_SIZE
+        })
+      );
+    }
+    // Match the docking backdrop (background + fog) to the active light/dark space environment.
+    this.applyDockingEnvironment();
+    // Re-parent the ship (with its model + local lights) into the isolated docking scene, fixed at the pivot.
+    this._shipReturnParent = this.ship.parent || this.scene;
+    this.dockingScene.add(this.ship);
+    this.dockingOrbitTarget.identity();
+    this.dockingControl.orbitDistance = Math.max(20, this.config.cameraDistance);
+    this.dockingControl.dragging = false;
+    this.dockingControl.pointerId = null;
+
+    // Cutscene plays only when docking from space (consumed here), not on restore/reconnect.
+    this._enterWithCutscene = this._dockCutscenePending;
+    this._dockCutscenePending = false;
+    this.disposeDockMixers();
+
+    const stationName = this.getStationName(this.dockingState?.station_id);
+    const hangar = this.getHangarLabel(this.dockingState?.slot ?? 0);
+    this.ui.setDockingState({ active: true, stationName: stationName ? `${stationName} · ${hangar}` : hangar });
+    // Docked scenes skip the running loop's location-BGM update, so switch to the dock theme here.
+    // Only while the game is actually running — at initial load (reconnect-while-docked) the dock
+    // scene is set up pre-start-gate, and startGame()'s enterGame() plays the dock BGM after the gate.
+    if (this.state.phase === "running") this.refreshBgm();
+
+    if (!this._enterWithCutscene) this.placeShipAtDockSlot(); // static placement (no-op until model loads)
+    // Re-arm station bloom occlusion (no-op on first dock until the interior finishes loading).
+    this.registerStationBloomTargets();
+    if (this.dockInteriorObject) this.setupDockPresentation();
+    else void this.ensureDockInterior();
+  }
+
+  // Loads the station interior model once and places it at the docking pivot (camera focus), 2x scale.
+  async ensureDockInterior() {
+    if (this.dockInteriorObject || this._dockInteriorPending) return;
+    this._dockInteriorPending = true;
+    try {
+      const url = new URL("../rss/scene/dockScene_01.glb", import.meta.url).href;
+      const object = await this.resourceManager.loadGlbObject(url);
+      if (this.disposed || !this.dockingScene) return;
+      // Designated absolute size: normalize the hangar's longest axis to DOCK_INTERIOR_SIZE
+      // (= 32× ship_01), regardless of the model's authored scale.
+      const interiorSize = new THREE.Box3().setFromObject(object).getSize(new THREE.Vector3());
+      const longest = Math.max(interiorSize.x, interiorSize.y, interiorSize.z) || 1;
+      object.scale.setScalar(DOCK_INTERIOR_SIZE / longest);
+      object.position.copy(this.dockingPivot);
+      this.dockInteriorObject = object;
+      this.dockingScene.add(object);
+      object.updateMatrixWorld(true);
+      this.applyStationGlow(object);
+      // The interior (docking points + animations) now exists — set up the dock presentation.
+      if (this.isDocked()) this.setupDockPresentation();
+    } catch (error) {
+      console.warn("[dock-interior] load failed:", error?.message ?? error);
+    } finally {
+      this._dockInteriorPending = false;
+    }
+  }
+
+  // Station light bloom: meshes using the "EmissiveMTL_light" material emit layer-based bloom.
+  // Bloom otherwise bleeds through any geometry in front of it, so — exactly like the ship, which
+  // masks its entire body — every solid (non-light) station mesh is registered as a bloom occluder.
+  // Rendered black with depth into the bloom pass, the whole station (landing pads included) blocks
+  // both its own light glow and the ship's bloom from drawing over geometry that occludes it.
+  applyStationGlow(root) {
+    if (!root) return;
+    this.unregisterStationBloomTargets();
+    this._stationBloomTargets = [];
+    const isLightMaterial = (material) => /^EmissiveMTL_light(\.\d+)?$/.test(material?.name || "");
+    const maskMaterial = this.renderPipeline?.bloomOcclusionMaterial;
+
+    root.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      const lightIndices = materials.reduce((indices, material, index) => {
+        if (isLightMaterial(material)) indices.push(index);
+        return indices;
+      }, []);
+      if (lightIndices.length === 0) {
+        // Every solid station mesh occludes the bloom (mirrors the ship's whole-body masking).
+        this._stationBloomTargets.push({ object: child, occlusion: true });
+        return;
+      }
+
+      // Brighten the light material so it crosses the bloom threshold (depth-correct emissive).
+      lightIndices.forEach((index) => {
+        const material = materials[index];
+        if ("emissive" in material) {
+          const lit = material.emissive && material.emissive.r + material.emissive.g + material.emissive.b > 0;
+          if (!lit) material.emissive.copy(material.color || new THREE.Color(0xffffff));
+        }
+        if ("emissiveIntensity" in material) material.emissiveIntensity = Math.max(material.emissiveIntensity || 0, 1.5);
+        if ("toneMapped" in material) material.toneMapped = false;
+        material.needsUpdate = true;
+      });
+
+      // Enable the bloom layer and register a bloom-only override: non-light sub-materials are
+      // masked black so only the light surface contributes to (and occludes within) the bloom pass.
+      child.layers.enable(this.renderPipeline.objectBloomLayerId);
+      const bloomMaterials = materials.map((material, index) =>
+        lightIndices.includes(index) ? material : maskMaterial);
+      const bloomMaterial = bloomMaterials.length === 1 ? bloomMaterials[0] : bloomMaterials;
+      this._stationBloomTargets.push({ object: child, material: bloomMaterial });
+    });
+
+    this.registerStationBloomTargets();
+  }
+
+  registerStationBloomTargets() {
+    this._stationBloomTargets?.forEach(({ object, material, occlusion }) => {
+      if (occlusion) this.renderPipeline?.registerOcclusionTarget(object);
+      else this.renderPipeline?.registerMaterialOverrideTarget(object, material);
+    });
+  }
+
+  unregisterStationBloomTargets() {
+    this._stationBloomTargets?.forEach(({ object }) => {
+      this.renderPipeline?.unregisterMaterialOverrideTarget(object);
+    });
+  }
+
+  exitDockingScene() {
+    this.disposeDockMixers(); // reset ship parts (landing gear) before returning to space
+    if (this.ship) {
+      (this._shipReturnParent || this.scene).add(this.ship);
+    }
+    this._shipReturnParent = null;
+    this.dockingControl.dragging = false;
+    this.dockingControl.pointerId = null;
+    // Release the station bloom targets so the space scene's bloom pass ignores station meshes.
+    this.unregisterStationBloomTargets();
+    // Restore the bloom pipeline to the main space scene.
+    this.renderPipeline?.setRenderTarget(this.scene, this.camera);
+    this.ui.setDockingState({ active: false });
+  }
+
+  updateDockingScene() {
+    const offset = new THREE.Vector3(0, this.config.cameraOrbitHeight, this.dockingControl.orbitDistance)
+      .applyQuaternion(this.dockingOrbitTarget);
+    this.camera.position.copy(this.dockingCameraFocus).add(offset);
+    this.camera.quaternion.copy(this.dockingOrbitTarget);
+    this.camera.up.set(0, 1, 0).applyQuaternion(this.dockingOrbitTarget).normalize();
+  }
+
+  applyDockingOrbitDrag(dx, dy) {
+    const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -dx * this.config.cameraOrbitSensitivity);
+    this.dockingOrbitTarget.premultiply(yaw).normalize();
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.dockingOrbitTarget).normalize();
+    const pitch = new THREE.Quaternion().setFromAxisAngle(right, -dy * this.config.cameraOrbitSensitivity);
+    this.dockingOrbitTarget.premultiply(pitch).normalize();
+  }
+
 
   findBetaVoidRecord(id) {
     if (!id) return null;
@@ -3200,6 +5073,10 @@ export class GameManager {
 
   async enterBetaSpaceFromUi(object) {
     if (!object?.id || object.kind !== "betaVoid" || this.isBetaSpaceActive()) return;
+    if (this.isDocked()) {
+      this.ui.showToast("undock to enter Beta Space");
+      return;
+    }
     if (!this.worldDataManager.db) {
       this.ui.showErrorToast("world database unavailable");
       return;
@@ -3395,6 +5272,34 @@ export class GameManager {
   animate() {
     if (this.disposed) return;
 
+    // Mobile frame cap: keep the rAF loop alive but skip work until the interval elapses.
+    if (this._frameIntervalMs > 0) {
+      const nowPerf = performance.now();
+      if (this._lastRenderAt && nowPerf - this._lastRenderAt < this._frameIntervalMs) {
+        this.animationFrameId = requestAnimationFrame(() => this.animate());
+        return;
+      }
+      this._lastRenderAt = nowPerf;
+    }
+
+    // Docked: render the isolated docking scene only — the entire space simulation is skipped.
+    if (this.isDocked()) {
+      this._lastFrameTimestamp = Date.now();
+      const dockDt = Math.min(this.clock.getDelta(), 0.05);
+      if (this.dockCutscene) this.updateDockCutscene(dockDt);
+      this.updateDockingScene();
+      if (this.dockingScene) {
+        if (this.renderPipeline) {
+          this.renderPipeline.setRenderTarget(this.dockingScene, this.camera);
+          this.renderPipeline.render();
+        } else {
+          this.renderer.render(this.dockingScene, this.camera);
+        }
+      }
+      this.animationFrameId = requestAnimationFrame(() => this.animate());
+      return;
+    }
+
     const nowMs = Date.now();
     const frameGapMs = this._lastFrameTimestamp ? nowMs - this._lastFrameTimestamp : 0;
     this._lastFrameTimestamp = nowMs;
@@ -3442,6 +5347,15 @@ export class GameManager {
     if (this.state.phase !== "running") return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
+
+    if (this.isDocked()) {
+      this.renderer.domElement.setPointerCapture(event.pointerId);
+      this.dockingControl.dragging = true;
+      this.dockingControl.pointerId = event.pointerId;
+      this.dockingControl.lastX = event.clientX;
+      this.dockingControl.lastY = event.clientY;
+      return;
+    }
 
     if (this.cameraContext === "target") {
       this.startSelectionPointer(event, this.targetCamControl.pointers.size === 0);
@@ -3499,6 +5413,17 @@ export class GameManager {
   }
 
   onPointerMove(event) {
+    if (this.isDocked()) {
+      if (!this.dockingControl.dragging || this.dockingControl.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      const dx = event.clientX - this.dockingControl.lastX;
+      const dy = event.clientY - this.dockingControl.lastY;
+      this.dockingControl.lastX = event.clientX;
+      this.dockingControl.lastY = event.clientY;
+      if (dx !== 0 || dy !== 0) this.applyDockingOrbitDrag(dx, dy);
+      return;
+    }
+
     this.updateSelectionPointer(event);
 
     if (this.cameraContext === "target") {
@@ -3600,6 +5525,17 @@ export class GameManager {
   }
 
   onPointerUp(event) {
+    if (this.isDocked()) {
+      if (this.dockingControl.pointerId === event.pointerId) {
+        this.dockingControl.dragging = false;
+        this.dockingControl.pointerId = null;
+      }
+      if (this.renderer.domElement.hasPointerCapture(event.pointerId)) {
+        this.renderer.domElement.releasePointerCapture(event.pointerId);
+      }
+      return;
+    }
+
     if (this.cameraContext === "target") {
       const shouldSelect = this.shouldSelectFromPointer(event);
       this.stopTargetCamDrag(event);
@@ -4184,6 +6120,14 @@ export class GameManager {
   onWheel(event) {
     if (this.state.phase !== "running") return;
     event.preventDefault();
+    if (this.isDocked()) {
+      this.dockingControl.orbitDistance = THREE.MathUtils.clamp(
+        this.dockingControl.orbitDistance + event.deltaY * this.config.cameraZoomSensitivity,
+        8,
+        200
+      );
+      return;
+    }
     this.applyCameraZoomDelta(event.deltaY * this.config.cameraZoomSensitivity);
   }
 
@@ -4292,6 +6236,7 @@ export class GameManager {
     }
 
     this.ui.dispose();
+    this.closeFittingPreview();
     this.targetingOverlay.dispose();
     this.minimapManager?.dispose();
     this.worldMapManager.dispose();

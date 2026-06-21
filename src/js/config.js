@@ -85,6 +85,8 @@ export const ASSETS = {
     mainBgm: new URL("../rss/sounds/bgm_main_01.ogg", import.meta.url).href,
     sectorBgm: new URL("../rss/sounds/bgm_sector_01.ogg", import.meta.url).href,
     dangerBgm: new URL("../rss/sounds/bgm_danger_01.ogg", import.meta.url).href,
+    warpBgm: new URL("../rss/sounds/sfx_warp-ambient.ogg", import.meta.url).href,
+    hangerBgm: new URL("../rss/sounds/bgm_hanger_01.ogg", import.meta.url).href,
     cameraToggle: new URL("../rss/sounds/sfx_data_01.ogg", import.meta.url).href
   },
   ships: {

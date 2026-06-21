@@ -104,6 +104,7 @@ class BufferSoundInstance {
     this.source = null;
     this.gain = null;
     this.started = false;
+    this.playing = false; // parity with MediaSoundInstance; lets _applyBgm/enterGame dedup buffer BGM
     this.disposed = false;
   }
 
@@ -121,11 +122,13 @@ class BufferSoundInstance {
     this.source.addEventListener("ended", () => this.handleEnded(), { once: true });
     this.source.start();
     this.started = true;
+    this.playing = true;
     return true;
   }
 
   stop() {
     if (this.disposed || !this.source) return;
+    this.playing = false;
     try {
       this.source.stop();
     } catch {
@@ -134,6 +137,7 @@ class BufferSoundInstance {
   }
 
   handleEnded() {
+    this.playing = false;
     if (this.destroyOnEnd) {
       this.dispose();
     }
@@ -141,6 +145,7 @@ class BufferSoundInstance {
 
   dispose() {
     if (this.disposed) return;
+    this.playing = false;
     if (this.source) this.source.disconnect();
     if (this.gain) this.gain.disconnect();
     this.source = null;
@@ -180,6 +185,19 @@ export class SoundManager {
       ["bgm_danger_01", {
         source: ASSETS.sounds.dangerBgm,
         mode: "media"
+      }],
+      // Hyperdrive warp ambience — occupies the single BGM slot while warping, regardless of sector.
+      // Buffer mode: short ambient that loops continuously, so it uses Web Audio (sample-accurate,
+      // gapless `source.loop`) instead of HTML media looping which inserts an audible seam.
+      ["bgm_warp_01", {
+        source: ASSETS.sounds.warpBgm,
+        mode: "buffer"
+      }],
+      // Default docking-scene BGM; stations may override via building_defs `docking.theme_music_id`.
+      // Buffer mode for the same gapless-loop reason as the warp ambience above.
+      ["bgm_hanger_01", {
+        source: ASSETS.sounds.hangerBgm,
+        mode: "buffer"
       }],
       ["camera_toggle", {
         source: ASSETS.sounds.cameraToggle,
@@ -316,7 +334,21 @@ export class SoundManager {
         this.playPromise = null;
       });
 
+    // Warm the buffer-mode looping ambients (warp/dock) now that we're past the start gate, so the
+    // AudioContext resumes on a user gesture and they decode ahead of first use — no warp/dock hitch.
+    void this.warmAmbientBuffers();
+
     return this.playPromise;
+  }
+
+  // Decode the gapless looping ambients into Web Audio buffers ahead of time. Must run post-gesture
+  // (AudioContext.resume() can stay pending before a user interaction), so it is kicked off here.
+  async warmAmbientBuffers() {
+    if (this.disposed) return;
+    await Promise.allSettled([
+      this.load("bgm_warp_01"),
+      this.load("bgm_hanger_01")
+    ]);
   }
 
   async playBgm(id = "bgm_main_01") {

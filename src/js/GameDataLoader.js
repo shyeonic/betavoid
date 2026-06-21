@@ -3,9 +3,26 @@ import { WORLD_CONFIG } from "./worldDefinitions.js";
 
 const DEFAULT_GAME_DATA_BASE_URL = new URL("../gamedata/", import.meta.url);
 const DEFAULT_GMAP_FILE_NAME = "galaxyMapData.gmap";
-const RUNTIME_DATA_SCHEMA_VERSION = 3;
+const RUNTIME_DATA_SCHEMA_VERSION = 9;
 
 const DEFAULT_SHIP_ID = "ship_01";
+const COMBAT_SLOT_TYPES = ["weapon", "shield", "equipment"];
+const EQUIPMENT_SIZES = ["s", "m", "l", "ex"];
+const DEFAULT_SIZE_COMPATIBILITY = {
+  s: ["s"],
+  m: ["s", "m"],
+  l: ["s", "m", "l"],
+  ex: ["ex"]
+};
+const DEFAULT_SHIP_COMBAT_BASE_STATS = {
+  processing_capacity: 0,
+  power_capacity: 0,
+  power_recharge: 0,
+  cargo_capacity: 0,
+  evasion: 0,
+  hull_capacity: 0,
+  hull_recharge_base: 0
+};
 const DEFAULT_SHIP_LIGHT_SETTINGS = {
   color: "#9b9bff",
   emissiveIntensity: 3,
@@ -27,6 +44,10 @@ export async function loadGameData({ baseUrl = DEFAULT_GAME_DATA_BASE_URL, gmapF
     buildingDefs,
     sectorDefs,
     shipDefs,
+    weaponDefs,
+    shieldDefs,
+    equipmentDefs,
+    combatCompatibilityDefs,
     i18n,
     chunkMap,
     assetRegistry,
@@ -37,6 +58,10 @@ export async function loadGameData({ baseUrl = DEFAULT_GAME_DATA_BASE_URL, gmapF
     loadJson(base, "building_defs.json"),
     loadJson(base, "sector_defs.json"),
     loadJson(base, "ship_defs.json"),
+    loadJson(base, "weapon_defs.json"),
+    loadJson(base, "shield_defs.json"),
+    loadJson(base, "equipment_defs.json"),
+    loadJson(base, "combat_compatibility_defs.json"),
     loadJson(base, "i18n.json"),
     loadJson(base, "chunk_map.gmapdata"),
     loadJson(base, "asset_registry.json"),
@@ -51,7 +76,15 @@ export async function loadGameData({ baseUrl = DEFAULT_GAME_DATA_BASE_URL, gmapF
   const buildingDefinitions = normalizeBuildingDefinitions(buildingDefs);
   const sectorDefinitions = normalizeSectorDefinitions(sectorDefs, i18n);
   const vfxDefinitions = normalizeVfxDefinitions(vfxDefs);
-  const shipDefinitions = normalizeShipDefinitions(shipDefs, vfxDefinitions);
+  const shipDefinitions = normalizeShipDefinitions(shipDefs, vfxDefinitions, itemDefinitions);
+  const weaponDefinitions = normalizeWeaponDefinitions(weaponDefs, itemDefinitions);
+  const shieldDefinitions = normalizeShieldDefinitions(shieldDefs, itemDefinitions);
+  const equipmentDefinitions = normalizeEquipmentDefinitions(equipmentDefs, itemDefinitions);
+  const combatCompatibilityDefinitions = normalizeCombatCompatibilityDefinitions(combatCompatibilityDefs, {
+    weapon: weaponDefinitions,
+    shield: shieldDefinitions,
+    equipment: equipmentDefinitions
+  });
   const defaultShipId = resolveDefaultShipId(shipDefs, shipDefinitions);
   const messages = createMessages(i18n);
 
@@ -71,6 +104,13 @@ export async function loadGameData({ baseUrl = DEFAULT_GAME_DATA_BASE_URL, gmapF
     sectorTemplates: Object.values(sectorDefinitions),
     shipDefinitions,
     shipIds: Object.keys(shipDefinitions),
+    weaponDefinitions,
+    weaponIds: Object.keys(weaponDefinitions),
+    shieldDefinitions,
+    shieldIds: Object.keys(shieldDefinitions),
+    equipmentDefinitions,
+    equipmentIds: Object.keys(equipmentDefinitions),
+    combatCompatibilityDefinitions,
     vfxDefinitions,
     defaultShipId,
     initialResourceTypes: Object.keys(resourceDefinitions),
@@ -91,6 +131,10 @@ export async function loadGameData({ baseUrl = DEFAULT_GAME_DATA_BASE_URL, gmapF
       sectorDefs,
       sectorText: createSectorTextSignature(i18n),
       shipDefs,
+      weaponDefs,
+      shieldDefs,
+      equipmentDefs,
+      combatCompatibilityDefs,
       vfxDefs
     })
   };
@@ -286,20 +330,30 @@ function normalizeItemDefinitions(raw = {}) {
   const result = {};
   for (const [key, value] of Object.entries(raw.items || {})) {
     const id = value.id || key;
+    const kind = value.kind || value.category || "resource";
+    const identity = normalizeItemIdentity(value.identity, value);
     result[id] = {
       ...value,
       id,
       item_id: id,
       label_key: value.label_key || `item.${id}.name`,
       description_key: value.description_key || `item.${id}.description`,
-      category: value.category || "resource",
-      type: value.type || "mineral",
-      mass: Number(value.mass ?? 1),
+      kind,
+      category: kind,
+      type: value.type || kind,
+      identity,
+      mass: nonnegativeNumber(value.mass, 1),
       tradable: value.tradable !== false,
-      stackable: value.stackable !== false
+      stackable: value.stackable ?? identity !== "unique"
     };
   }
   return result;
+}
+
+function normalizeItemIdentity(identity, value = {}) {
+  if (["quantity", "unique", "conditional_unique"].includes(identity)) return identity;
+  if (value.stackable === false) return "unique";
+  return "quantity";
 }
 
 function normalizeResourceDefinitions(raw = {}) {
@@ -326,6 +380,28 @@ function normalizeResourceDefinitions(raw = {}) {
   return result;
 }
 
+function normalizeDocking(raw = {}) {
+  const docking = raw && typeof raw === "object" ? raw : {};
+  // capacity may be null (unlimited) or a number; preserve as-is, default 0 when absent.
+  const capacity = docking.capacity === undefined ? 0 : docking.capacity;
+  // Deterministic station-fixed front direction used to compute the undock anchor.
+  return {
+    ...docking,
+    capacity,
+    facing: normalizeUnitVector(docking.facing, [0, 0, 1])
+  };
+}
+
+function normalizeUnitVector(value, fallback) {
+  const source = Array.isArray(value) && value.length >= 3 ? value : fallback;
+  const x = Number(source[0]) || 0;
+  const y = Number(source[1]) || 0;
+  const z = Number(source[2]) || 0;
+  const length = Math.hypot(x, y, z);
+  if (!(length > 0)) return [...fallback];
+  return [x / length, y / length, z / length];
+}
+
 function normalizeBuildingDefinitions(raw = {}) {
   const result = {};
   for (const [key, value] of Object.entries(raw.buildings || {})) {
@@ -346,7 +422,7 @@ function normalizeBuildingDefinitions(raw = {}) {
       admin_cost: Number(value.adminCost ?? 0),
       placement_rule: placementRule,
       production_profile: productionProfile,
-      docking: value.docking || { capacity: 0 },
+      docking: normalizeDocking(value.docking),
       trade: value.trade || { enabled: false, handling_speed: 0, cargo_capacity: 0, min_reputation: 0 },
       initial_inventory: value.initialInventory || {},
       visual: normalizeVisual(value.visual, "hq_01")
@@ -396,23 +472,190 @@ function normalizeVfxDefinitions(raw = {}) {
   return { version: raw.version || 1, effects };
 }
 
-function normalizeShipDefinitions(raw = {}, vfxDefinitions = { effects: {} }) {
+function normalizeShipDefinitions(raw = {}, vfxDefinitions = { effects: {} }, itemDefinitions = {}) {
   const result = {};
   for (const [key, value] of Object.entries(raw.ships || {})) {
     const id = value.id || key;
+    const itemId = value.item_id || id;
+    const item = requireItemDefinition(itemDefinitions, itemId, `ship ${id}`);
     result[id] = {
       ...value,
       id,
+      item_id: itemId,
       labelKey: value.labelKey || `ui.settings.gameplay.${id}`,
+      label_key: value.label_key || item.label_key || `ship.${id}.name`,
       fallbackLabel: value.fallbackLabel || id,
+      mass: item.mass,
       specs: {
         ...(value.specs || {}),
         hyperdriveSpecs: value.hyperdriveSpecs || {}
       },
-      visual: normalizeShipVisual(id, value.visual, vfxDefinitions)
+      visual: normalizeShipVisual(id, value.visual, vfxDefinitions),
+      combat: normalizeShipCombatProfile(id, value.combat)
     };
   }
   return result;
+}
+
+function normalizeWeaponDefinitions(raw = {}, itemDefinitions = {}) {
+  const result = {};
+  for (const [key, value] of Object.entries(raw.weapons || {})) {
+    const id = value.id || key;
+    result[id] = {
+      ...normalizeCommonEquipmentDefinition(id, value, itemDefinitions, "weapon"),
+      damage_kinetic: nonnegativeNumber(value.damage_kinetic),
+      damage_thermal: nonnegativeNumber(value.damage_thermal),
+      damage_energy: nonnegativeNumber(value.damage_energy),
+      damage_beta: nonnegativeNumber(value.damage_beta),
+      power_use: nonnegativeNumber(value.power_use),
+      acc: normalizedRatio(value.acc, 1),
+      range: nonnegativeNumber(value.range),
+      crit_chance: normalizedRatio(value.crit_chance),
+      crit_damage: normalizedRatio(value.crit_damage),
+      special_skill: value.special_skill || null
+    };
+  }
+  return result;
+}
+
+function normalizeShieldDefinitions(raw = {}, itemDefinitions = {}) {
+  const result = {};
+  for (const [key, value] of Object.entries(raw.shields || {})) {
+    const id = value.id || key;
+    result[id] = {
+      ...normalizeCommonEquipmentDefinition(id, value, itemDefinitions, "shield"),
+      def_bonus_kinetic: normalizedRatio(value.def_bonus_kinetic),
+      def_bonus_thermal: normalizedRatio(value.def_bonus_thermal),
+      def_bonus_energy: normalizedRatio(value.def_bonus_energy),
+      capacity: nonnegativeNumber(value.capacity),
+      recharge_base: nonnegativeNumber(value.recharge_base),
+      recharge_rate: nonnegativeNumber(value.recharge_rate),
+      power_use_cap: nonnegativeNumber(value.power_use_cap)
+    };
+  }
+  return result;
+}
+
+function normalizeEquipmentDefinitions(raw = {}, itemDefinitions = {}) {
+  const result = {};
+  for (const [key, value] of Object.entries(raw.equipment || {})) {
+    const id = value.id || key;
+    result[id] = {
+      ...normalizeCommonEquipmentDefinition(id, value, itemDefinitions, "equipment"),
+      processing_capacity_bonus: nonnegativeNumber(value.processing_capacity_bonus),
+      power_capacity_bonus: nonnegativeNumber(value.power_capacity_bonus),
+      power_recharge_bonus: nonnegativeNumber(value.power_recharge_bonus),
+      cargo_capacity_bonus: nonnegativeNumber(value.cargo_capacity_bonus),
+      evasion_bonus: normalizedRatio(value.evasion_bonus),
+      hull_capacity_bonus: nonnegativeNumber(value.hull_capacity_bonus),
+      hull_recharge_base_bonus: nonnegativeNumber(value.hull_recharge_base_bonus)
+    };
+  }
+  return result;
+}
+
+function normalizeCommonEquipmentDefinition(id, value = {}, itemDefinitions = {}, domain = "equipment") {
+  const itemId = value.item_id || id;
+  const item = requireItemDefinition(itemDefinitions, itemId, `${domain} ${id}`);
+  return {
+    ...value,
+    id,
+    item_id: itemId,
+    name_id: value.name_id || item.label_key || `${id}.name`,
+    label_key: value.label_key || value.name_id || item.label_key || `${id}.name`,
+    size: normalizeEquipmentSize(value.size),
+    mass: Math.max(0, Number(item.mass) || 0),
+    identity: item.identity,
+    stackable: item.stackable,
+    tradable: item.tradable,
+    processing_load: Math.max(0, Math.round(Number(value.processing_load ?? 0) || 0))
+  };
+}
+
+function requireItemDefinition(itemDefinitions, itemId, context) {
+  const item = itemDefinitions[itemId];
+  if (!item) throw new Error(`${context} references missing item_defs entry ${itemId}.`);
+  return item;
+}
+
+function normalizeCombatCompatibilityDefinitions(raw = {}, definitionMaps = {}) {
+  const presets = {};
+  for (const type of COMBAT_SLOT_TYPES) {
+    const definitions = definitionMaps[type] || {};
+    presets[type] = {};
+    for (const [key, value] of Object.entries(raw.compatibilityPresets?.[type] || {})) {
+      const id = value.id || key;
+      const compatibleIds = Array.isArray(value.compatible_ids)
+        ? value.compatible_ids.filter((definitionId) => definitionId && definitions[definitionId])
+        : [];
+      presets[type][id] = {
+        id,
+        name_id: value.name_id || `${id}.name`,
+        label_key: value.label_key || value.name_id || `${id}.name`,
+        compatible_ids: [...new Set(compatibleIds)]
+      };
+    }
+  }
+
+  return {
+    version: raw.version || 1,
+    sizeCompatibility: normalizeSizeCompatibility(raw.sizeCompatibility),
+    compatibilityPresets: presets
+  };
+}
+
+function normalizeShipCombatProfile(shipId, raw = {}) {
+  const baseStats = { ...DEFAULT_SHIP_COMBAT_BASE_STATS };
+  for (const key of Object.keys(baseStats)) {
+    baseStats[key] = key === "evasion"
+      ? normalizedRatio(raw?.base_stats?.[key])
+      : nonnegativeNumber(raw?.base_stats?.[key]);
+  }
+
+  const slots = {};
+  for (const type of COMBAT_SLOT_TYPES) {
+    slots[type] = Array.isArray(raw?.slots?.[type])
+      ? raw.slots[type].map((slot, index) => ({
+        id: slot.id || `${type}_slot_${String(index + 1).padStart(2, "0")}`,
+        slot_type: type,
+        size: normalizeEquipmentSize(slot.size),
+        compatibility_preset_id: slot.compatibility_preset_id || null,
+        equipped_id: slot.equipped_id || null
+      }))
+      : [];
+  }
+
+  return {
+    ship_id: raw?.ship_id || shipId,
+    ship_class: typeof raw?.ship_class === "string" && raw.ship_class ? raw.ship_class : "lf",
+    base_stats: baseStats,
+    slots
+  };
+}
+
+function normalizeSizeCompatibility(raw = {}) {
+  const result = {};
+  for (const size of EQUIPMENT_SIZES) {
+    const allowed = Array.isArray(raw[size]) ? raw[size] : DEFAULT_SIZE_COMPATIBILITY[size];
+    result[size] = [...new Set(allowed.map(normalizeEquipmentSize))];
+  }
+  result.ex = ["ex"];
+  return result;
+}
+
+function normalizeEquipmentSize(value) {
+  const normalized = String(value || "s").toLowerCase();
+  return EQUIPMENT_SIZES.includes(normalized) ? normalized : "s";
+}
+
+function nonnegativeNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, number) : fallback;
+}
+
+function normalizedRatio(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : fallback;
 }
 
 function resolveDefaultShipId(raw = {}, shipDefinitions = {}) {

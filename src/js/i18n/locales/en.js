@@ -18,7 +18,9 @@ export const en = {
       common: {
         none: "None",
         off: "Off",
-        on: "On"
+        on: "On",
+        outline: "Outline",
+        full: "Full"
       },
       world: {
         seed: "Seed",
@@ -51,6 +53,7 @@ export const en = {
         all: "All",
         sector: "Sector",
         materialTextures: "Material Textures",
+        stylizedRendering: "Stylized Rendering",
         renderResolution: "Render Resolution",
         antialias: "Anti-Aliasing",
         bloomQuality: "Bloom Quality",

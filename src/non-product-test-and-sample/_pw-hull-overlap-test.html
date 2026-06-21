@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Inverted Hull — Inter-object Overlap Outline Proof</title>
+<style>html,body{margin:0;height:100%;background:#cfcabd;overflow:hidden}canvas{display:block}</style>
+<script type="importmap">
+{ "imports": {
+  "three":"https://unpkg.com/three@0.165.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.165.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from "three";
+
+const params = new URLSearchParams(location.search);
+const MODE = params.get("mode") || "hull"; // "plain" | "hull"
+const W = 900, H = 600;
+
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false, powerPreference:"high-performance" });
+renderer.setPixelRatio(1);
+renderer.setSize(W, H);
+renderer.autoClear = false;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, W/H, 0.1, 100);
+camera.position.set(0, 1.4, 7);
+camera.lookAt(0, 0, 0);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dir = new THREE.DirectionalLight(0xffffff, 2.2);
+dir.position.set(4, 6, 5);
+scene.add(dir);
+
+/* smooth-normal bake (welds positions, averages normals) — from cartoon-render-optimize-idea.html */
+function bakeSmoothNormals(geo){
+  geo.computeBoundingBox();
+  const s = geo.boundingBox.getSize(new THREE.Vector3());
+  const eps = Math.max((s.x+s.y+s.z)/3*1e-4, 1e-6);
+  const pos = geo.attributes.position, nor = geo.attributes.normal;
+  const key=(x,y,z)=>Math.round(x/eps)+"_"+Math.round(y/eps)+"_"+Math.round(z/eps);
+  const acc=new Map();
+  for(let i=0;i<pos.count;i++){ const k=key(pos.getX(i),pos.getY(i),pos.getZ(i)); let a=acc.get(k); if(!a){a=[0,0,0];acc.set(k,a);} a[0]+=nor.getX(i);a[1]+=nor.getY(i);a[2]+=nor.getZ(i); }
+  const out=new Float32Array(pos.count*3);
+  for(let i=0;i<pos.count;i++){ const a=acc.get(key(pos.getX(i),pos.getY(i),pos.getZ(i))); const l=Math.hypot(a[0],a[1],a[2])||1; out[i*3]=a[0]/l;out[i*3+1]=a[1]/l;out[i*3+2]=a[2]/l; }
+  geo.setAttribute("aSmoothNormal", new THREE.BufferAttribute(out,3));
+}
+
+const outlineMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  uniforms:{ uColor:{value:new THREE.Color("#0a0a0a")}, uWidthPx:{value:3.0}, uExtrudeScale:{value: 2.0*Math.tan(THREE.MathUtils.degToRad(42*0.5))/H } },
+  vertexShader:`
+    attribute vec3 aSmoothNormal;
+    uniform float uWidthPx,uExtrudeScale;
+    void main(){
+      vec4 vp=modelViewMatrix*vec4(position,1.0);
+      vec3 vn=normalize(normalMatrix*aSmoothNormal);
+      float d=max(-vp.z,1e-3);
+      vp.xyz+=vn*(uWidthPx*uExtrudeScale*d);
+      gl_Position=projectionMatrix*vp;
+    }`,
+  fragmentShader:`uniform vec3 uColor; void main(){ gl_FragColor=vec4(uColor,1.0); }`
+});
+
+function makeMesh(geo, color, pos){
+  bakeSmoothNormals(geo);
+  const m = new THREE.Mesh(geo, new THREE.MeshToonMaterial({ color }));
+  m.position.copy(pos);
+  scene.add(m);
+  return m;
+}
+
+// "Building" — gray box, sitting BEHIND (farther from camera), to the right/center
+const building = makeMesh(new THREE.BoxGeometry(2.6, 3.4, 2.6), 0xbfc4cb, new THREE.Vector3(0.9, 0, -0.6));
+// "Ship" — blue elongated shape, IN FRONT, overlapping the building in screen space
+const shipGeo = new THREE.CapsuleGeometry(0.7, 2.2, 8, 20);
+const ship = makeMesh(shipGeo, 0x4f86ff, new THREE.Vector3(-0.5, -0.1, 1.8));
+ship.rotation.z = Math.PI * 0.18;
+ship.rotation.x = Math.PI * 0.5; // lay capsule horizontally so it crosses the building
+
+const bg = new THREE.Color("#dad6cb");
+function renderFrame(){
+  renderer.setRenderTarget(null);
+  renderer.setClearColor(bg, 1.0);
+  renderer.clear(true, true, true);
+  if (MODE === "hull"){
+    scene.overrideMaterial = outlineMat;
+    renderer.render(scene, camera);
+    scene.overrideMaterial = null;
+  }
+  renderer.render(scene, camera);
+}
+
+// render a few frames then mark ready
+let n = 0;
+function loop(){
+  renderFrame();
+  if (++n >= 4){ window.__ready = true; return; }
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

@@ -78,6 +78,26 @@
         "item_010": {
           "name": "탈리스",
           "description": "가스 자원"
+        },
+        "equipment_capacitor_dense_l": {
+          "name": "equipment_capacitor_dense_l",
+          "description": ""
+        },
+        "equipment_repair_core_l": {
+          "name": "equipment_repair_core_l",
+          "description": ""
+        },
+        "equipment_vector_thruster_m": {
+          "name": "equipment_vector_thruster_m",
+          "description": ""
+        },
+        "shield_aegis_citadel_l": {
+          "name": "shield_aegis_citadel_l",
+          "description": ""
+        },
+        "shield_aegis_service_l": {
+          "name": "shield_aegis_service_l",
+          "description": ""
         }
       },
       "resource": {
@@ -290,6 +310,634 @@
         "item_010": {
           "name": "Talis",
           "description": "Gas resource"
+        },
+        "equipment_capacitor_dense_l": {
+          "name": "equipment_capacitor_dense_l",
+          "description": ""
+        },
+        "equipment_capacitor_dense_m": {
+          "name": "equipment_capacitor_dense_m",
+          "description": ""
+        },
+        "equipment_capacitor_dense_s": {
+          "name": "equipment_capacitor_dense_s",
+          "description": ""
+        },
+        "equipment_capacitor_exotic_l": {
+          "name": "equipment_capacitor_exotic_l",
+          "description": ""
+        },
+        "equipment_capacitor_exotic_m": {
+          "name": "equipment_capacitor_exotic_m",
+          "description": ""
+        },
+        "equipment_capacitor_exotic_s": {
+          "name": "equipment_capacitor_exotic_s",
+          "description": ""
+        },
+        "equipment_cargo_compression_l": {
+          "name": "equipment_cargo_compression_l",
+          "description": ""
+        },
+        "equipment_cargo_compression_m": {
+          "name": "equipment_cargo_compression_m",
+          "description": ""
+        },
+        "equipment_cargo_compression_s": {
+          "name": "equipment_cargo_compression_s",
+          "description": ""
+        },
+        "equipment_cargo_lattice_l": {
+          "name": "equipment_cargo_lattice_l",
+          "description": ""
+        },
+        "equipment_cargo_lattice_m": {
+          "name": "equipment_cargo_lattice_m",
+          "description": ""
+        },
+        "equipment_cargo_lattice_s": {
+          "name": "equipment_cargo_lattice_s",
+          "description": ""
+        },
+        "equipment_cargo_rack_l": {
+          "name": "equipment_cargo_rack_l",
+          "description": ""
+        },
+        "equipment_cargo_rack_m": {
+          "name": "equipment_cargo_rack_m",
+          "description": ""
+        },
+        "equipment_cargo_rack_s": {
+          "name": "equipment_cargo_rack_s",
+          "description": ""
+        },
+        "equipment_ex_dimensional_hold": {
+          "name": "equipment_ex_dimensional_hold",
+          "description": ""
+        },
+        "equipment_ex_living_hull": {
+          "name": "equipment_ex_living_hull",
+          "description": ""
+        },
+        "equipment_ex_singularity_core": {
+          "name": "equipment_ex_singularity_core",
+          "description": ""
+        },
+        "equipment_flux_charger_l": {
+          "name": "equipment_flux_charger_l",
+          "description": ""
+        },
+        "equipment_flux_charger_m": {
+          "name": "equipment_flux_charger_m",
+          "description": ""
+        },
+        "equipment_flux_charger_s": {
+          "name": "equipment_flux_charger_s",
+          "description": ""
+        },
+        "equipment_hull_composite_l": {
+          "name": "equipment_hull_composite_l",
+          "description": ""
+        },
+        "equipment_hull_composite_m": {
+          "name": "equipment_hull_composite_m",
+          "description": ""
+        },
+        "equipment_hull_composite_s": {
+          "name": "equipment_hull_composite_s",
+          "description": ""
+        },
+        "equipment_hull_fortress_l": {
+          "name": "equipment_hull_fortress_l",
+          "description": ""
+        },
+        "equipment_hull_fortress_m": {
+          "name": "equipment_hull_fortress_m",
+          "description": ""
+        },
+        "equipment_hull_fortress_s": {
+          "name": "equipment_hull_fortress_s",
+          "description": ""
+        },
+        "equipment_hull_plating_l": {
+          "name": "equipment_hull_plating_l",
+          "description": ""
+        },
+        "equipment_hull_plating_m": {
+          "name": "equipment_hull_plating_m",
+          "description": ""
+        },
+        "equipment_hull_plating_s": {
+          "name": "equipment_hull_plating_s",
+          "description": ""
+        },
+        "equipment_inertial_control_l": {
+          "name": "equipment_inertial_control_l",
+          "description": ""
+        },
+        "equipment_inertial_control_m": {
+          "name": "equipment_inertial_control_m",
+          "description": ""
+        },
+        "equipment_inertial_control_s": {
+          "name": "equipment_inertial_control_s",
+          "description": ""
+        },
+        "equipment_maneuver_predictor_l": {
+          "name": "equipment_maneuver_predictor_l",
+          "description": ""
+        },
+        "equipment_maneuver_predictor_m": {
+          "name": "equipment_maneuver_predictor_m",
+          "description": ""
+        },
+        "equipment_maneuver_predictor_s": {
+          "name": "equipment_maneuver_predictor_s",
+          "description": ""
+        },
+        "equipment_power_cell_l": {
+          "name": "equipment_power_cell_l",
+          "description": ""
+        },
+        "equipment_power_cell_m": {
+          "name": "equipment_power_cell_m",
+          "description": ""
+        },
+        "equipment_power_cell_s": {
+          "name": "equipment_power_cell_s",
+          "description": ""
+        },
+        "equipment_processor_aux_l": {
+          "name": "equipment_processor_aux_l",
+          "description": ""
+        },
+        "equipment_processor_aux_m": {
+          "name": "equipment_processor_aux_m",
+          "description": ""
+        },
+        "equipment_processor_aux_s": {
+          "name": "equipment_processor_aux_s",
+          "description": ""
+        },
+        "equipment_processor_quantum_l": {
+          "name": "equipment_processor_quantum_l",
+          "description": ""
+        },
+        "equipment_processor_quantum_m": {
+          "name": "equipment_processor_quantum_m",
+          "description": ""
+        },
+        "equipment_processor_quantum_s": {
+          "name": "equipment_processor_quantum_s",
+          "description": ""
+        },
+        "equipment_processor_tactical_l": {
+          "name": "equipment_processor_tactical_l",
+          "description": ""
+        },
+        "equipment_processor_tactical_m": {
+          "name": "equipment_processor_tactical_m",
+          "description": ""
+        },
+        "equipment_processor_tactical_s": {
+          "name": "equipment_processor_tactical_s",
+          "description": ""
+        },
+        "equipment_reactor_catalyst_l": {
+          "name": "equipment_reactor_catalyst_l",
+          "description": ""
+        },
+        "equipment_reactor_catalyst_m": {
+          "name": "equipment_reactor_catalyst_m",
+          "description": ""
+        },
+        "equipment_reactor_catalyst_s": {
+          "name": "equipment_reactor_catalyst_s",
+          "description": ""
+        },
+        "equipment_reactor_regulator_l": {
+          "name": "equipment_reactor_regulator_l",
+          "description": ""
+        },
+        "equipment_reactor_regulator_m": {
+          "name": "equipment_reactor_regulator_m",
+          "description": ""
+        },
+        "equipment_reactor_regulator_s": {
+          "name": "equipment_reactor_regulator_s",
+          "description": ""
+        },
+        "equipment_repair_core_l": {
+          "name": "equipment_repair_core_l",
+          "description": ""
+        },
+        "equipment_repair_core_m": {
+          "name": "equipment_repair_core_m",
+          "description": ""
+        },
+        "equipment_repair_core_s": {
+          "name": "equipment_repair_core_s",
+          "description": ""
+        },
+        "equipment_repair_matrix_l": {
+          "name": "equipment_repair_matrix_l",
+          "description": ""
+        },
+        "equipment_repair_matrix_m": {
+          "name": "equipment_repair_matrix_m",
+          "description": ""
+        },
+        "equipment_repair_matrix_s": {
+          "name": "equipment_repair_matrix_s",
+          "description": ""
+        },
+        "equipment_repair_nanos_l": {
+          "name": "equipment_repair_nanos_l",
+          "description": ""
+        },
+        "equipment_repair_nanos_m": {
+          "name": "equipment_repair_nanos_m",
+          "description": ""
+        },
+        "equipment_repair_nanos_s": {
+          "name": "equipment_repair_nanos_s",
+          "description": ""
+        },
+        "equipment_vector_thruster_l": {
+          "name": "equipment_vector_thruster_l",
+          "description": ""
+        },
+        "equipment_vector_thruster_m": {
+          "name": "equipment_vector_thruster_m",
+          "description": ""
+        },
+        "equipment_vector_thruster_s": {
+          "name": "equipment_vector_thruster_s",
+          "description": ""
+        },
+        "shield_aegis_citadel_l": {
+          "name": "shield_aegis_citadel_l",
+          "description": ""
+        },
+        "shield_aegis_citadel_m": {
+          "name": "shield_aegis_citadel_m",
+          "description": ""
+        },
+        "shield_aegis_citadel_s": {
+          "name": "shield_aegis_citadel_s",
+          "description": ""
+        },
+        "shield_aegis_military_l": {
+          "name": "shield_aegis_military_l",
+          "description": ""
+        },
+        "shield_aegis_military_m": {
+          "name": "shield_aegis_military_m",
+          "description": ""
+        },
+        "shield_aegis_military_s": {
+          "name": "shield_aegis_military_s",
+          "description": ""
+        },
+        "shield_aegis_service_l": {
+          "name": "shield_aegis_service_l",
+          "description": ""
+        },
+        "shield_aegis_service_m": {
+          "name": "shield_aegis_service_m",
+          "description": ""
+        },
+        "shield_aegis_service_s": {
+          "name": "shield_aegis_service_s",
+          "description": ""
+        },
+        "shield_bulwark_reinforced_l": {
+          "name": "shield_bulwark_reinforced_l",
+          "description": ""
+        },
+        "shield_bulwark_reinforced_m": {
+          "name": "shield_bulwark_reinforced_m",
+          "description": ""
+        },
+        "shield_bulwark_reinforced_s": {
+          "name": "shield_bulwark_reinforced_s",
+          "description": ""
+        },
+        "shield_bulwark_service_l": {
+          "name": "shield_bulwark_service_l",
+          "description": ""
+        },
+        "shield_bulwark_service_m": {
+          "name": "shield_bulwark_service_m",
+          "description": ""
+        },
+        "shield_bulwark_service_s": {
+          "name": "shield_bulwark_service_s",
+          "description": ""
+        },
+        "shield_dynamo_overdrive_l": {
+          "name": "shield_dynamo_overdrive_l",
+          "description": ""
+        },
+        "shield_dynamo_overdrive_m": {
+          "name": "shield_dynamo_overdrive_m",
+          "description": ""
+        },
+        "shield_dynamo_overdrive_s": {
+          "name": "shield_dynamo_overdrive_s",
+          "description": ""
+        },
+        "shield_dynamo_service_l": {
+          "name": "shield_dynamo_service_l",
+          "description": ""
+        },
+        "shield_dynamo_service_m": {
+          "name": "shield_dynamo_service_m",
+          "description": ""
+        },
+        "shield_dynamo_service_s": {
+          "name": "shield_dynamo_service_s",
+          "description": ""
+        },
+        "shield_ex_event_horizon": {
+          "name": "shield_ex_event_horizon",
+          "description": ""
+        },
+        "shield_ex_trinity_screen": {
+          "name": "shield_ex_trinity_screen",
+          "description": ""
+        },
+        "shield_kinetic_scatter_l": {
+          "name": "shield_kinetic_scatter_l",
+          "description": ""
+        },
+        "shield_kinetic_scatter_m": {
+          "name": "shield_kinetic_scatter_m",
+          "description": ""
+        },
+        "shield_kinetic_scatter_s": {
+          "name": "shield_kinetic_scatter_s",
+          "description": ""
+        },
+        "shield_phase_screen_l": {
+          "name": "shield_phase_screen_l",
+          "description": ""
+        },
+        "shield_phase_screen_m": {
+          "name": "shield_phase_screen_m",
+          "description": ""
+        },
+        "shield_phase_screen_s": {
+          "name": "shield_phase_screen_s",
+          "description": ""
+        },
+        "shield_thermal_sink_l": {
+          "name": "shield_thermal_sink_l",
+          "description": ""
+        },
+        "shield_thermal_sink_m": {
+          "name": "shield_thermal_sink_m",
+          "description": ""
+        },
+        "shield_thermal_sink_s": {
+          "name": "shield_thermal_sink_s",
+          "description": ""
+        },
+        "ship_01": {
+          "name": "ship_01",
+          "description": ""
+        },
+        "ship_02": {
+          "name": "ship_02",
+          "description": ""
+        },
+        "weapon_autocannon_precision_l": {
+          "name": "weapon_autocannon_precision_l",
+          "description": ""
+        },
+        "weapon_autocannon_precision_m": {
+          "name": "weapon_autocannon_precision_m",
+          "description": ""
+        },
+        "weapon_autocannon_precision_s": {
+          "name": "weapon_autocannon_precision_s",
+          "description": ""
+        },
+        "weapon_autocannon_service_l": {
+          "name": "weapon_autocannon_service_l",
+          "description": ""
+        },
+        "weapon_autocannon_service_m": {
+          "name": "weapon_autocannon_service_m",
+          "description": ""
+        },
+        "weapon_autocannon_service_s": {
+          "name": "weapon_autocannon_service_s",
+          "description": ""
+        },
+        "weapon_autocannon_vanguard_l": {
+          "name": "weapon_autocannon_vanguard_l",
+          "description": ""
+        },
+        "weapon_autocannon_vanguard_m": {
+          "name": "weapon_autocannon_vanguard_m",
+          "description": ""
+        },
+        "weapon_autocannon_vanguard_s": {
+          "name": "weapon_autocannon_vanguard_s",
+          "description": ""
+        },
+        "weapon_beta_fracture_l": {
+          "name": "weapon_beta_fracture_l",
+          "description": ""
+        },
+        "weapon_beta_fracture_m": {
+          "name": "weapon_beta_fracture_m",
+          "description": ""
+        },
+        "weapon_beta_fracture_s": {
+          "name": "weapon_beta_fracture_s",
+          "description": ""
+        },
+        "weapon_beta_rupture_l": {
+          "name": "weapon_beta_rupture_l",
+          "description": ""
+        },
+        "weapon_beta_rupture_m": {
+          "name": "weapon_beta_rupture_m",
+          "description": ""
+        },
+        "weapon_beta_rupture_s": {
+          "name": "weapon_beta_rupture_s",
+          "description": ""
+        },
+        "weapon_beta_stabilized_l": {
+          "name": "weapon_beta_stabilized_l",
+          "description": ""
+        },
+        "weapon_beta_stabilized_m": {
+          "name": "weapon_beta_stabilized_m",
+          "description": ""
+        },
+        "weapon_beta_stabilized_s": {
+          "name": "weapon_beta_stabilized_s",
+          "description": ""
+        },
+        "weapon_ex_beta_cascade": {
+          "name": "weapon_ex_beta_cascade",
+          "description": ""
+        },
+        "weapon_ex_siege_driver": {
+          "name": "weapon_ex_siege_driver",
+          "description": ""
+        },
+        "weapon_ex_starfire_array": {
+          "name": "weapon_ex_starfire_array",
+          "description": ""
+        },
+        "weapon_laser_overcharge_l": {
+          "name": "weapon_laser_overcharge_l",
+          "description": ""
+        },
+        "weapon_laser_overcharge_m": {
+          "name": "weapon_laser_overcharge_m",
+          "description": ""
+        },
+        "weapon_laser_overcharge_s": {
+          "name": "weapon_laser_overcharge_s",
+          "description": ""
+        },
+        "weapon_laser_precision_l": {
+          "name": "weapon_laser_precision_l",
+          "description": ""
+        },
+        "weapon_laser_precision_m": {
+          "name": "weapon_laser_precision_m",
+          "description": ""
+        },
+        "weapon_laser_precision_s": {
+          "name": "weapon_laser_precision_s",
+          "description": ""
+        },
+        "weapon_laser_service_l": {
+          "name": "weapon_laser_service_l",
+          "description": ""
+        },
+        "weapon_laser_service_m": {
+          "name": "weapon_laser_service_m",
+          "description": ""
+        },
+        "weapon_laser_service_s": {
+          "name": "weapon_laser_service_s",
+          "description": ""
+        },
+        "weapon_plasma_arc_l": {
+          "name": "weapon_plasma_arc_l",
+          "description": ""
+        },
+        "weapon_plasma_arc_m": {
+          "name": "weapon_plasma_arc_m",
+          "description": ""
+        },
+        "weapon_plasma_arc_s": {
+          "name": "weapon_plasma_arc_s",
+          "description": ""
+        },
+        "weapon_plasma_inferno_l": {
+          "name": "weapon_plasma_inferno_l",
+          "description": ""
+        },
+        "weapon_plasma_inferno_m": {
+          "name": "weapon_plasma_inferno_m",
+          "description": ""
+        },
+        "weapon_plasma_inferno_s": {
+          "name": "weapon_plasma_inferno_s",
+          "description": ""
+        },
+        "weapon_plasma_service_l": {
+          "name": "weapon_plasma_service_l",
+          "description": ""
+        },
+        "weapon_plasma_service_m": {
+          "name": "weapon_plasma_service_m",
+          "description": ""
+        },
+        "weapon_plasma_service_s": {
+          "name": "weapon_plasma_service_s",
+          "description": ""
+        },
+        "weapon_pulse_capacitor_l": {
+          "name": "weapon_pulse_capacitor_l",
+          "description": ""
+        },
+        "weapon_pulse_capacitor_m": {
+          "name": "weapon_pulse_capacitor_m",
+          "description": ""
+        },
+        "weapon_pulse_capacitor_s": {
+          "name": "weapon_pulse_capacitor_s",
+          "description": ""
+        },
+        "weapon_pulse_resonance_l": {
+          "name": "weapon_pulse_resonance_l",
+          "description": ""
+        },
+        "weapon_pulse_resonance_m": {
+          "name": "weapon_pulse_resonance_m",
+          "description": ""
+        },
+        "weapon_pulse_resonance_s": {
+          "name": "weapon_pulse_resonance_s",
+          "description": ""
+        },
+        "weapon_pulse_service_l": {
+          "name": "weapon_pulse_service_l",
+          "description": ""
+        },
+        "weapon_pulse_service_m": {
+          "name": "weapon_pulse_service_m",
+          "description": ""
+        },
+        "weapon_pulse_service_s": {
+          "name": "weapon_pulse_service_s",
+          "description": ""
+        },
+        "weapon_railgun_hunter_l": {
+          "name": "weapon_railgun_hunter_l",
+          "description": ""
+        },
+        "weapon_railgun_hunter_m": {
+          "name": "weapon_railgun_hunter_m",
+          "description": ""
+        },
+        "weapon_railgun_hunter_s": {
+          "name": "weapon_railgun_hunter_s",
+          "description": ""
+        },
+        "weapon_railgun_service_l": {
+          "name": "weapon_railgun_service_l",
+          "description": ""
+        },
+        "weapon_railgun_service_m": {
+          "name": "weapon_railgun_service_m",
+          "description": ""
+        },
+        "weapon_railgun_service_s": {
+          "name": "weapon_railgun_service_s",
+          "description": ""
+        },
+        "weapon_railgun_siege_l": {
+          "name": "weapon_railgun_siege_l",
+          "description": ""
+        },
+        "weapon_railgun_siege_m": {
+          "name": "weapon_railgun_siege_m",
+          "description": ""
+        },
+        "weapon_railgun_siege_s": {
+          "name": "weapon_railgun_siege_s",
+          "description": ""
         }
       },
       "resource": {

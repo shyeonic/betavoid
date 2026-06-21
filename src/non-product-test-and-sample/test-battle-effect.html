@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Shield Hit — One-shot Animation</title>
+  <style>
+    html, body { margin:0; width:100%; height:100%; overflow:hidden; background:#02040c; font-family:system-ui,sans-serif; }
+    #panel {
+      position:fixed; right:16px; top:16px; width:268px; max-height:calc(100vh - 32px); overflow-y:auto;
+      padding:14px 14px 16px; border:1px solid rgba(120,220,255,0.22); border-radius:14px;
+      background:rgba(4,10,22,0.78); color:rgba(225,248,255,0.92);
+      box-shadow:0 0 30px rgba(40,160,220,0.12); backdrop-filter:blur(10px); z-index:20; user-select:none;
+    }
+    #panel h3 { margin:0 0 10px; font-size:14px; font-weight:700; letter-spacing:.03em; color:#bff4ff; }
+    .sec { margin:14px 0 6px; font-size:11px; font-weight:700; letter-spacing:.08em; color:#6fd2ff; text-transform:uppercase; opacity:.85; }
+    .ctrl { margin:9px 0; }
+    .row { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:12px; }
+    .row span:last-child { color:#7de7ff; font-variant-numeric:tabular-nums; }
+    input[type="range"] { width:100%; accent-color:#66ddff; }
+    .btns { display:flex; gap:8px; align-items:center; margin-top:14px; }
+    button {
+      flex:1; padding:9px 0; border:1px solid rgba(120,220,255,0.4); border-radius:9px;
+      background:rgba(40,120,180,0.35); color:#dffaff; font-size:13px; font-weight:600; cursor:pointer;
+    }
+    button:hover { background:rgba(60,150,220,0.5); }
+    .chk { display:flex; align-items:center; gap:6px; font-size:12px; color:#bfe8ff; white-space:nowrap; }
+  </style>
+  <script type="importmap">
+  { "imports": {
+      "three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+      "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }}
+  </script>
+</head>
+<body>
+  <div id="panel">
+    <h3>Shield Hit — One-shot</h3>
+    <div id="sliders"></div>
+    <div class="btns">
+      <button id="fire">▶ Replay</button>
+      <label class="chk"><input type="checkbox" id="auto" checked> Auto</label>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+    import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+    import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+    // ── 파라미터 ────────────────────────────────────────────────────────────
+    const P = {
+      duration:4.0, beamTravel:0.10, impactGrow:0.50, fadeOut:0.05, replayGap:0.50,
+      ringCount:1, rippleSpeed:1.20, rippleStrength:0.20,
+      shieldAlpha:0.10, shieldSize:0.60, shieldSoftness:1.00, surfaceGlow:0.50, grazingFade:0.75,
+      laserCore:1.00, autoReplay:true
+    };
+    const SLIDERS = [
+      ['§','Timing'],
+      ['duration','Duration (s)',0.5,8,0.1,1],
+      ['beamTravel','Beam Travel (s)',0.02,1,0.01,2],
+      ['impactGrow','Impact Grow (s)',0.05,2,0.01,2],
+      ['fadeOut','Fade Out (s)',0.05,3,0.01,2],
+      ['replayGap','Replay Gap (s)',0,3,0.05,2],
+      ['§','Ripple Loop'],
+      ['ringCount','Ring Count',1,12,1,0],
+      ['rippleSpeed','Ripple Speed',0,4,0.05,2],
+      ['rippleStrength','Ripple Strength',0,1,0.01,2],
+      ['§','Shield'],
+      ['shieldAlpha','Shield Alpha',0,1.5,0.01,2],
+      ['shieldSize','Shield Size',0.25,1,0.01,2],
+      ['shieldSoftness','Shield Softness',0,1,0.01,2],
+      ['surfaceGlow','Surface Glow',0,1,0.01,2],
+      ['grazingFade','Grazing Fade',0.05,0.75,0.01,2],
+      ['§','Laser'],
+      ['laserCore','Laser Core',0,1,0.01,2],
+    ];
+
+    const clamp = (x,a,b)=>Math.min(Math.max(x,a),b);
+
+    // ── 씬 / 렌더러 ─────────────────────────────────────────────────────────
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x02040c);
+    const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 200);
+    camera.position.set(0, 4.2, 11.5);
+    const renderer = new THREE.WebGLRenderer({ antialias:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    document.body.appendChild(renderer.domElement);
+
+    const orbit = new OrbitControls(camera, renderer.domElement);
+    orbit.enableDamping = true; orbit.target.set(0, 0.3, 0);
+
+    // essential: HDR 버퍼 + 톤매핑 (블룸 패스만 제외)
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(new OutputPass());
+
+    scene.add(new THREE.AmbientLight(0x6688aa, 0.35));
+    const k = new THREE.DirectionalLight(0xffffff, 2.2); k.position.set(4,7,5); scene.add(k);
+    const r = new THREE.DirectionalLight(0x66ddff, 1.8); r.position.set(-6,2,-4); scene.add(r);
+
+    const clock = new THREE.Clock();
+    const tmpStart=new THREE.Vector3(), tmpEnd=new THREE.Vector3(), tmpMid=new THREE.Vector3(), tmpTip=new THREE.Vector3(), tmpTail=new THREE.Vector3();
+    const tmpDir=new THREE.Vector3(), tCenter=new THREE.Vector3(), aCenter=new THREE.Vector3(), tNormal=new THREE.Vector3();
+    const yAxis=new THREE.Vector3(0,1,0), zAxis=new THREE.Vector3(0,0,1);
+
+    const attacker = createShip(0xff7755, 0xffb199);
+    attacker.position.set(5.2,-0.15,0); attacker.scale.setScalar(0.92); scene.add(attacker);
+    const target = createShip(0x77aaff, 0xb8eaff);
+    target.position.set(-4.2,0.18,0.1); target.scale.setScalar(1.08); scene.add(target);
+
+    const shieldRadius = 1.45;
+
+    const laserCoreMaterial = new THREE.MeshBasicMaterial({
+      color:new THREE.Color().setRGB(0.85,1.9,2.4), transparent:true, opacity:P.laserCore,
+      blending:THREE.AdditiveBlending, depthWrite:false
+    });
+    const laserCore = new THREE.Mesh(new THREE.CylinderGeometry(0.024,0.024,1,16,1,true), laserCoreMaterial);
+    scene.add(laserCore);
+
+    // ── 반구 캡 쉴드 (애니메이션 셰이더) ────────────────────────────────────
+    const shieldGeo = createSphericalCapGeometry({ radius:shieldRadius, capAngle:Math.PI*0.6, radialSegments:40, angularSegments:72 });
+    const shieldMat = new THREE.ShaderMaterial({
+      transparent:true, depthWrite:false, depthTest:true, side:THREE.DoubleSide, blending:THREE.AdditiveBlending,
+      uniforms:{
+        uColor:{value:new THREE.Color(0x54ddff)},
+        uAlpha:{value:P.shieldAlpha}, uVisibleSize:{value:P.shieldSize}, uSoftness:{value:P.shieldSoftness},
+        uSurfaceGlow:{value:P.surfaceGlow}, uGraze:{value:P.grazingFade},
+        uRippleCount:{value:P.ringCount}, uRippleSpeed:{value:P.rippleSpeed}, uRippleStrength:{value:P.rippleStrength},
+        uEnv:{value:0.0},        // 전체 수명 엔벨로프 (in/out)
+        uGrowFront:{value:0.0},  // 충돌점에서 바깥으로 확장하는 front (0..1)
+        uTime:{value:0.0}        // 쉴드 경과시간 → 파동 위상
+      },
+      vertexShader:`
+        attribute float aRadial;
+        varying float vRadial; varying vec3 vWN; varying vec3 vWP;
+        void main(){
+          vRadial=aRadial;
+          vec4 wp=modelMatrix*vec4(position,1.0); vWP=wp.xyz;
+          vWN=normalize(mat3(modelMatrix)*normal);
+          gl_Position=projectionMatrix*viewMatrix*wp;
+        }`,
+      fragmentShader:`
+        #define TAU 6.2831853
+        uniform vec3 uColor; uniform float uAlpha,uVisibleSize,uSoftness,uSurfaceGlow,uGraze;
+        uniform float uRippleCount,uRippleSpeed,uRippleStrength,uEnv,uGrowFront,uTime;
+        varying float vRadial; varying vec3 vWN; varying vec3 vWP;
+        void main(){
+          float visible=clamp(uVisibleSize,0.05,1.0);
+          float nr=vRadial/visible;                       // 0=충돌점, 1=가시 외곽
+          float falloffPow=mix(6.5,2.2,uSoftness);
+          float radialFade=exp(-pow(nr,falloffPow));
+          float edgeStart=visible*mix(0.7,0.32,uSoftness);
+          float edgeFade=1.0-smoothstep(edgeStart,visible,vRadial);
+          float mask=radialFade*edgeFade;
+
+          vec3 N=normalize(vWN); if(!gl_FrontFacing)N=-N;
+          vec3 V=normalize(cameraPosition-vWP);
+          float facing=clamp(dot(N,V),0.0,1.0);
+          float graze=smoothstep(0.0,uGraze,facing);      // 실루엣 모서리 제거
+          float faceGlow=pow(facing,1.5);
+          float centerGlow=exp(-pow(vRadial/0.13,2.0));
+
+          // (A) 충돌점에서 바깥으로 켜지는 확장 게이트
+          float growGate=1.0-smoothstep(uGrowFront,uGrowFront+0.12,nr);
+          // (B) 충돌점에서 계속 퍼지는 동심원 (연속 트래블링 웨이브 = 깔끔한 루프)
+          float ring=sin((nr*uRippleCount - uTime*uRippleSpeed)*TAU);
+          ring=pow(max(ring,0.0),3.0);
+          float ripple=ring*uRippleStrength*growGate;
+
+          float body=uSurfaceGlow*0.16 + radialFade*0.5 + faceGlow*0.5 + centerGlow*0.5;
+          float shape=body*mask*graze;
+
+          float alpha=shape*growGate + ripple*0.5*mask*graze;
+          alpha*=uAlpha*uEnv;
+          if(alpha<=0.0015) discard;
+
+          float brightness=0.35 + radialFade*1.2 + faceGlow*0.55 + centerGlow*2.6;
+          brightness+=ripple*2.0;
+          gl_FragColor=vec4(uColor*brightness, clamp(alpha,0.0,0.9));
+        }`
+    });
+    const shield = new THREE.Mesh(shieldGeo, shieldMat);
+    shield.renderOrder = 3; scene.add(shield);
+
+    // ── 1회성 시퀀스 상태 ───────────────────────────────────────────────────
+    let hitStart = -1e9;
+    function fire(){ hitStart = clock.getElapsedTime(); }
+
+    // ── geometry / ships / bg ───────────────────────────────────────────────
+    function createSphericalCapGeometry({radius=1,capAngle=Math.PI*0.5,radialSegments=48,angularSegments=96}){
+      const pos=[],nor=[],rad=[],idx=[]; const cols=angularSegments+1;
+      for(let i=0;i<=radialSegments;i++){ const r01=i/radialSegments,th=r01*capAngle,sT=Math.sin(th),cT=Math.cos(th);
+        for(let j=0;j<=angularSegments;j++){ const ph=(j/angularSegments)*Math.PI*2;
+          pos.push(radius*sT*Math.cos(ph),radius*sT*Math.sin(ph),radius*cT);
+          nor.push(sT*Math.cos(ph),sT*Math.sin(ph),cT); rad.push(r01);
+      }}
+      for(let i=0;i<radialSegments;i++)for(let j=0;j<angularSegments;j++){
+        const a=i*cols+j,b=(i+1)*cols+j,c=(i+1)*cols+j+1,d=i*cols+j+1; idx.push(a,b,d,b,c,d);
+      }
+      const g=new THREE.BufferGeometry(); g.setIndex(idx);
+      g.setAttribute("position",new THREE.Float32BufferAttribute(pos,3));
+      g.setAttribute("normal",new THREE.Float32BufferAttribute(nor,3));
+      g.setAttribute("aRadial",new THREE.Float32BufferAttribute(rad,1));
+      g.computeBoundingSphere(); return g;
+    }
+    function createShip(base,glow){
+      const grp=new THREE.Group();
+      const m=new THREE.MeshStandardMaterial({color:base,metalness:0.72,roughness:0.32,emissive:new THREE.Color(base).multiplyScalar(0.08)});
+      const b=new THREE.MeshStandardMaterial({color:glow,metalness:0.25,roughness:0.2,emissive:new THREE.Color(glow).multiplyScalar(0.35)});
+      const body=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.48,1.55,7),m); body.rotation.x=Math.PI/2; grp.add(body);
+      const nose=new THREE.Mesh(new THREE.ConeGeometry(0.37,0.78,7),m); nose.rotation.x=-Math.PI/2; nose.position.z=-1.12; grp.add(nose);
+      const rear=new THREE.Mesh(new THREE.CylinderGeometry(0.52,0.38,0.34,7),m); rear.rotation.x=Math.PI/2; rear.position.z=0.92; grp.add(rear);
+      const wg=new THREE.BoxGeometry(1.55,0.08,0.5);
+      const lw=new THREE.Mesh(wg,m); lw.position.set(-0.58,-0.03,0.1); lw.rotation.z=0.16; grp.add(lw);
+      const rw=new THREE.Mesh(wg,m); rw.position.set(0.58,-0.03,0.1); rw.rotation.z=-0.16; grp.add(rw);
+      const eng=new THREE.Mesh(new THREE.SphereGeometry(0.18,24,12),b); eng.position.z=1.14; grp.add(eng);
+      return grp;
+    }
+    function updateCyl(mesh,s,e){
+      tmpDir.subVectors(e,s); const L=tmpDir.length(); if(L<1e-4)return;
+      tmpDir.normalize(); tmpMid.copy(s).add(e).multiplyScalar(0.5);
+      mesh.position.copy(tmpMid); mesh.quaternion.setFromUnitVectors(yAxis,tmpDir); mesh.scale.set(1,L,1);
+    }
+
+    // ── 패널 ────────────────────────────────────────────────────────────────
+    const cont = document.getElementById('sliders');
+    for(const def of SLIDERS){
+      if(def[0]==='§'){ const h=document.createElement('div'); h.className='sec'; h.textContent=def[1]; cont.appendChild(h); continue; }
+      const [key,label,min,max,step,dp]=def;
+      const c=document.createElement('div'); c.className='ctrl';
+      c.innerHTML=`<div class="row"><span>${label}</span><span class="v"></span></div>
+                   <input type="range" min="${min}" max="${max}" step="${step}" value="${P[key]}">`;
+      const inp=c.querySelector('input'), v=c.querySelector('.v');
+      const upd=()=>{ P[key]=Number(inp.value); v.textContent=P[key].toFixed(dp); applyParams(); };
+      inp.addEventListener('input',upd); cont.appendChild(c); upd();
+    }
+    document.getElementById('fire').addEventListener('click', fire);
+    document.getElementById('auto').addEventListener('change', e=>{ P.autoReplay=e.target.checked; });
+
+    function applyParams(){
+      const u=shieldMat.uniforms;
+      u.uAlpha.value=P.shieldAlpha; u.uVisibleSize.value=P.shieldSize; u.uSoftness.value=P.shieldSoftness;
+      u.uSurfaceGlow.value=P.surfaceGlow; u.uGraze.value=P.grazingFade;
+      u.uRippleCount.value=P.ringCount; u.uRippleSpeed.value=P.rippleSpeed; u.uRippleStrength.value=P.rippleStrength;
+    }
+
+    // ── 프레임 업데이트 ─────────────────────────────────────────────────────
+    function updateScene(t){
+      target.position.y=0.18+Math.sin(t*0.8)*0.18;
+      attacker.position.y=-0.15+Math.sin(t*0.65+1.2)*0.08;
+      target.getWorldPosition(tCenter); attacker.getWorldPosition(aCenter);
+      attacker.lookAt(tCenter); target.lookAt(aCenter);
+
+      tmpDir.subVectors(tCenter,aCenter).normalize();
+      tmpStart.copy(aCenter).addScaledVector(tmpDir,0.95);
+      tNormal.copy(tmpDir).multiplyScalar(-1.0);
+      tmpEnd.copy(tCenter).addScaledVector(tNormal,shieldRadius);  // 레이저-구체 충돌점(=캡의 극)
+
+      shield.position.copy(tCenter);
+      shield.quaternion.setFromUnitVectors(zAxis,tNormal);
+
+      // ── 타임라인 ──
+      const ht=t-hitStart, D=P.duration;
+      const travel=Math.max(P.beamTravel,1e-3);
+      const laserEnd=D+travel;                    // 발사 중지 후 꼬리가 충돌점까지 도달하는 시간 포함
+      let active=(ht>=0 && ht<=laserEnd), beamHead=0, beamTail=0, env=0, grow=0, sT=0, endFade=0;
+      if(active){
+        // 시작: 레이저 앞쪽이 발사 함선에서 충돌점까지 travel 시간 동안 뻗음
+        beamHead=clamp(ht/travel,0,1);
+
+        // 종료: D초에 발사가 끊기면, 레이저 꼬리도 발사 함선에서부터 travel 시간 동안 따라가며 끊김
+        beamTail=clamp((ht-D)/travel,0,1);
+
+        endFade=clamp((laserEnd-ht)/Math.max(P.fadeOut,1e-3),0,1);
+        sT=ht-P.beamTravel;                       // 레이저가 닿은 뒤 쉴드 경과시간
+        if(sT>=0){
+          grow=clamp(sT/Math.max(P.impactGrow,1e-3),0,1);
+          const fadeIn=clamp(sT/Math.max(P.impactGrow*0.5,1e-3),0,1);
+          env=Math.min(fadeIn,endFade);
+        }
+      }
+      if(P.autoReplay && ht>laserEnd+P.replayGap) fire();
+
+      // 레이저: 앞쪽은 충돌점까지 뻗고, 끝날 때는 발사 함선 쪽부터 잘려 나감
+      tmpTail.copy(tmpStart).lerp(tmpEnd, beamTail);
+      tmpTip.copy(tmpStart).lerp(tmpEnd, beamHead);
+      laserCore.visible = active && (beamHead-beamTail)>0.001;
+      if(laserCore.visible){ updateCyl(laserCore,tmpTail,tmpTip); laserCore.material.opacity=P.laserCore; }
+
+      // 쉴드 유니폼
+      shield.visible = active && env>0.0001;
+      const u=shieldMat.uniforms;
+      u.uEnv.value=env; u.uGrowFront.value=grow; u.uTime.value=Math.max(sT,0.0);
+
+    }
+
+    function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime(); updateScene(t); orbit.update(); composer.render(); }
+    addEventListener("resize",()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight); });
+
+    fire();      // 로드 시 1회 재생
+    animate();
+  </script>
+</body>
+</html>

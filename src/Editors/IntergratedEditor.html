@@ -371,6 +371,12 @@
       border-bottom: 1px solid var(--line);
     }
 
+    .filter-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 108px;
+      gap: 8px;
+    }
+
     .panel-title {
       margin-bottom: 8px;
       color: var(--quiet);
@@ -742,6 +748,65 @@
       font-size: 12px;
     }
 
+    .compatibility-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 8px;
+      padding: 12px;
+    }
+
+    .compatibility-filter-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 128px;
+      gap: 8px;
+      padding: 12px 12px 0;
+    }
+
+    .compatibility-option {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 44px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-2);
+    }
+
+    .compatibility-option input {
+      width: 16px;
+      height: 16px;
+      min-height: 16px;
+    }
+
+    .compatibility-option-main {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .compatibility-option-main b,
+    .compatibility-option-main span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .compatibility-option-main span,
+    .compatibility-option-size {
+      color: var(--quiet);
+      font-size: 10px;
+    }
+
+    .slot-card {
+      border-top: 1px solid var(--line);
+    }
+
+    .slot-card:first-of-type {
+      border-top: 0;
+    }
+
     .json-error {
       color: #ff9a9a;
       font-size: 11px;
@@ -929,6 +994,7 @@
           <button id="btn-save-project" class="btn-primary">Save</button>
         </div>
         <div class="command-group">
+          <button id="btn-load-combat-defaults" class="btn-warn" title="Replace weapon, shield, and equipment definitions with the built-in catalog">Load Combat Defaults</button>
           <button id="btn-export-all" class="btn-warn">Export Game Data</button>
         </div>
         <div class="command-spacer"></div>
@@ -945,11 +1011,18 @@
         <button class="tab-btn" data-tab="resources"><span class="tab-index">03</span><span>Resources</span><span class="tab-count" id="count-resources">0</span></button>
         <button class="tab-btn" data-tab="items"><span class="tab-index">04</span><span>Items</span><span class="tab-count" id="count-items">0</span></button>
         <button class="tab-btn" data-tab="buildings"><span class="tab-index">05</span><span>Buildings</span><span class="tab-count" id="count-buildings">0</span></button>
-        <button class="tab-btn" data-tab="ships"><span class="tab-index">06</span><span>Ships</span><span class="tab-count" id="count-ships">0</span></button>
-        <button class="tab-btn" data-tab="ship-visuals"><span class="tab-index">07</span><span>Ship Visuals</span><span class="tab-count" id="count-ship-visuals">0</span></button>
-        <button class="tab-btn" data-tab="vfx"><span class="tab-index">08</span><span>VFX</span><span class="tab-count" id="count-vfx">0</span></button>
-        <button class="tab-btn" data-tab="assets"><span class="tab-index">09</span><span>Assets</span><span class="tab-count" id="count-assets">0</span></button>
-        <button class="tab-btn" data-tab="integrity"><span class="tab-index">10</span><span>Integrity</span><span class="tab-count" id="count-integrity">0</span></button>
+        <button class="tab-btn" data-tab="weapons"><span class="tab-index">06</span><span>Weapons</span><span class="tab-count" id="count-weapons">0</span></button>
+        <button class="tab-btn" data-tab="shields"><span class="tab-index">07</span><span>Shields</span><span class="tab-count" id="count-shields">0</span></button>
+        <button class="tab-btn" data-tab="equipment"><span class="tab-index">08</span><span>Equipment</span><span class="tab-count" id="count-equipment">0</span></button>
+        <button class="tab-btn" data-tab="weapon-compatibility"><span class="tab-index">09</span><span>Weapon Compatibility</span><span class="tab-count" id="count-weapon-compatibility">0</span></button>
+        <button class="tab-btn" data-tab="shield-compatibility"><span class="tab-index">10</span><span>Shield Compatibility</span><span class="tab-count" id="count-shield-compatibility">0</span></button>
+        <button class="tab-btn" data-tab="equipment-compatibility"><span class="tab-index">11</span><span>Equipment Compatibility</span><span class="tab-count" id="count-equipment-compatibility">0</span></button>
+        <button class="tab-btn" data-tab="ships"><span class="tab-index">12</span><span>Ships</span><span class="tab-count" id="count-ships">0</span></button>
+        <button class="tab-btn" data-tab="ship-slots"><span class="tab-index">13</span><span>Ship Slots</span><span class="tab-count" id="count-ship-slots">0</span></button>
+        <button class="tab-btn" data-tab="ship-visuals"><span class="tab-index">14</span><span>Ship Visuals</span><span class="tab-count" id="count-ship-visuals">0</span></button>
+        <button class="tab-btn" data-tab="vfx"><span class="tab-index">15</span><span>VFX</span><span class="tab-count" id="count-vfx">0</span></button>
+        <button class="tab-btn" data-tab="assets"><span class="tab-index">16</span><span>Assets</span><span class="tab-count" id="count-assets">0</span></button>
+        <button class="tab-btn" data-tab="integrity"><span class="tab-index">17</span><span>Integrity</span><span class="tab-count" id="count-integrity">0</span></button>
       </nav>
 
       <main class="content">
@@ -1030,7 +1103,14 @@
         <section id="tab-resources" class="tab-page"></section>
         <section id="tab-items" class="tab-page"></section>
         <section id="tab-buildings" class="tab-page"></section>
+        <section id="tab-weapons" class="tab-page"></section>
+        <section id="tab-shields" class="tab-page"></section>
+        <section id="tab-equipment" class="tab-page"></section>
+        <section id="tab-weapon-compatibility" class="tab-page"></section>
+        <section id="tab-shield-compatibility" class="tab-page"></section>
+        <section id="tab-equipment-compatibility" class="tab-page"></section>
         <section id="tab-ships" class="tab-page"></section>
+        <section id="tab-ship-slots" class="tab-page"></section>
         <section id="tab-ship-visuals" class="tab-page"></section>
         <section id="tab-vfx" class="tab-page"></section>
 
@@ -1072,6 +1152,10 @@ const FILES = {
   buildingDefs: "building_defs.json",
   sectorDefs: "sector_defs.json",
   shipDefs: "ship_defs.json",
+  weaponDefs: "weapon_defs.json",
+  shieldDefs: "shield_defs.json",
+  equipmentDefs: "equipment_defs.json",
+  combatCompatibilityDefs: "combat_compatibility_defs.json",
   vfxDefs: "vfx_defs.json",
   i18n: "i18n.json",
   chunkMap: "chunk_map.gmapdata"
@@ -1082,6 +1166,8 @@ const PROJECT_VERSION = 1;
 const PROJECT_SAVE_COUNTER_KEY = "void-zero-galaxy-editor-save-counter";
 
 const RESOURCE_CATEGORIES = ["hydrite_mineral", "mineral", "gas"];
+const ITEM_KINDS = ["resource", "weapon", "shield", "equipment", "ship", "item"];
+const ITEM_IDENTITIES = ["quantity", "unique", "conditional_unique"];
 const ITEM_TYPES = ["hydrite_mineral", "mineral", "gas"];
 const NODE_TYPES = ["PERMANENT", "DECAYING"];
 const PLACEMENT_TYPES = ["sector_anchor", "free_space", "resource_node"];
@@ -1108,6 +1194,201 @@ const DEFAULT_SHIP_LIGHT_SETTINGS = {
 };
 const SHIP_COMPONENT_KINDS = ["engine", "head_light", "emissive_light"];
 const VFX_EFFECT_KINDS = ["emissive_light"];
+const EQUIPMENT_SIZES = ["s", "m", "l", "ex"];
+const SLOT_TYPES = ["weapon", "shield", "equipment"];
+const SIZE_COMPATIBILITY = {
+  s: ["s"],
+  m: ["s", "m"],
+  l: ["s", "m", "l"],
+  ex: ["ex"]
+};
+const SIZE_FILTER_KINDS = new Set(["weapons", "shields", "equipment"]);
+const SHIP_CLASSES = [
+  ["li", "Interceptor"],
+  ["lf", "Fighter"],
+  ["lb", "Bomber"],
+  ["ct", "Corvette"],
+  ["ff", "Frigate"],
+  ["dd", "Destroyer"],
+  ["cc", "Cruiser"],
+  ["bb", "Battleship"],
+  ["cv", "Carrier"],
+  ["ts", "Transport"],
+  ["tl", "Life Transport"],
+  ["mm", "Heavy Mining"],
+  ["ms", "Light Mining"],
+  ["cn", "Construction"],
+  ["mp", "Production Platform"]
+];
+const SHIP_CLASS_VALUES = new Set(SHIP_CLASSES.map(([value]) => value));
+const DEFAULT_SHIP_CLASS = "lf";
+
+const DEFAULT_COMBAT_CATALOG = {
+  // weapon: id, size, mass, processing load, four damage values, power, accuracy, range, crit chance, crit damage
+  weapons: [
+    ["weapon_autocannon_service_s","s",3,2,12,0,0,0,1,0.88,620,0.08,0.45],
+    ["weapon_autocannon_service_m","m",7,5,27,0,0,0,3,0.84,780,0.11,0.55],
+    ["weapon_autocannon_service_l","l",15,10,58,0,0,0,6,0.78,1050,0.16,0.7],
+    ["weapon_autocannon_vanguard_s","s",4,4,16,0,0,0,3,0.89,650,0.1,0.5],
+    ["weapon_autocannon_vanguard_m","m",9,8,36,0,0,0,6,0.85,820,0.14,0.6],
+    ["weapon_autocannon_vanguard_l","l",19,16,76,0,0,0,12,0.8,1120,0.19,0.75],
+    ["weapon_autocannon_precision_s","s",3,5,11,0,0,0,2,0.95,820,0.17,0.65],
+    ["weapon_autocannon_precision_m","m",8,10,25,0,0,0,5,0.92,1080,0.21,0.75],
+    ["weapon_autocannon_precision_l","l",17,19,53,0,0,0,10,0.88,1450,0.27,0.9],
+    ["weapon_railgun_service_s","s",5,4,18,0,0,0,4,0.74,1050,0.14,0.7],
+    ["weapon_railgun_service_m","m",11,9,41,0,0,0,8,0.71,1450,0.18,0.82],
+    ["weapon_railgun_service_l","l",24,18,88,0,0,0,16,0.67,1950,0.23,0.95],
+    ["weapon_railgun_siege_s","s",7,6,24,0,0,0,6,0.68,1350,0.18,0.85],
+    ["weapon_railgun_siege_m","m",15,13,54,0,0,0,13,0.65,1800,0.23,0.98],
+    ["weapon_railgun_siege_l","l",31,25,116,0,0,0,25,0.61,2400,0.29,1],
+    ["weapon_railgun_hunter_s","s",6,8,21,0,0,0,7,0.86,1200,0.24,0.9],
+    ["weapon_railgun_hunter_m","m",13,16,48,0,0,0,14,0.83,1650,0.3,1],
+    ["weapon_railgun_hunter_l","l",27,31,102,0,0,0,28,0.8,2250,0.36,1],
+    ["weapon_laser_service_s","s",3,3,0,11,0,0,4,0.95,850,0.04,0.3],
+    ["weapon_laser_service_m","m",7,7,0,25,0,0,9,0.94,1150,0.06,0.35],
+    ["weapon_laser_service_l","l",14,14,0,54,0,0,18,0.92,1550,0.08,0.4],
+    ["weapon_laser_overcharge_s","s",4,6,0,16,0,0,8,0.91,780,0.05,0.35],
+    ["weapon_laser_overcharge_m","m",9,12,0,36,0,0,17,0.9,1080,0.07,0.4],
+    ["weapon_laser_overcharge_l","l",18,23,0,77,0,0,34,0.88,1480,0.1,0.48],
+    ["weapon_laser_precision_s","s",3,8,0,13,0,0,6,0.99,1150,0.1,0.5],
+    ["weapon_laser_precision_m","m",8,16,0,30,0,0,13,0.98,1550,0.13,0.58],
+    ["weapon_laser_precision_l","l",16,30,0,64,0,0,26,0.97,2100,0.17,0.68],
+    ["weapon_plasma_service_s","s",5,5,0,9,5,0,7,0.8,650,0.07,0.45],
+    ["weapon_plasma_service_m","m",11,11,0,21,12,0,15,0.78,880,0.09,0.52],
+    ["weapon_plasma_service_l","l",23,22,0,45,25,0,30,0.74,1200,0.12,0.6],
+    ["weapon_plasma_inferno_s","s",6,8,0,17,4,0,12,0.75,600,0.08,0.5],
+    ["weapon_plasma_inferno_m","m",14,16,0,38,9,0,25,0.73,820,0.11,0.58],
+    ["weapon_plasma_inferno_l","l",28,31,0,81,19,0,49,0.7,1120,0.14,0.68],
+    ["weapon_plasma_arc_s","s",6,10,0,10,12,0,14,0.83,720,0.12,0.55],
+    ["weapon_plasma_arc_m","m",13,20,0,23,28,0,29,0.81,980,0.15,0.65],
+    ["weapon_plasma_arc_l","l",27,38,0,49,59,0,57,0.78,1320,0.19,0.78],
+    ["weapon_pulse_service_s","s",3,4,0,0,14,0,5,0.89,720,0.08,0.4],
+    ["weapon_pulse_service_m","m",8,8,0,0,32,0,11,0.87,960,0.1,0.48],
+    ["weapon_pulse_service_l","l",16,16,0,0,68,0,22,0.84,1300,0.13,0.58],
+    ["weapon_pulse_capacitor_s","s",5,7,0,0,20,0,10,0.86,760,0.1,0.48],
+    ["weapon_pulse_capacitor_m","m",11,14,0,0,46,0,21,0.84,1020,0.13,0.57],
+    ["weapon_pulse_capacitor_l","l",22,27,0,0,98,0,42,0.81,1380,0.17,0.68],
+    ["weapon_pulse_resonance_s","s",4,10,0,0,23,0,13,0.92,900,0.14,0.6],
+    ["weapon_pulse_resonance_m","m",10,20,0,0,52,0,27,0.9,1220,0.18,0.72],
+    ["weapon_pulse_resonance_l","l",20,39,0,0,111,0,54,0.88,1660,0.23,0.86],
+    ["weapon_beta_fracture_s","s",3,8,0,0,0,5,9,0.78,580,0.03,0.2],
+    ["weapon_beta_fracture_m","m",7,17,0,0,0,12,19,0.76,780,0.05,0.25],
+    ["weapon_beta_fracture_l","l",15,33,0,0,0,25,38,0.73,1050,0.07,0.3],
+    ["weapon_beta_stabilized_s","s",4,12,0,0,0,7,13,0.88,700,0.05,0.28],
+    ["weapon_beta_stabilized_m","m",9,24,0,0,0,16,27,0.86,940,0.07,0.34],
+    ["weapon_beta_stabilized_l","l",18,46,0,0,0,34,53,0.83,1260,0.1,0.42],
+    ["weapon_beta_rupture_s","s",5,15,0,0,0,9,18,0.7,620,0.08,0.38],
+    ["weapon_beta_rupture_m","m",11,30,0,0,0,20,37,0.68,840,0.11,0.46],
+    ["weapon_beta_rupture_l","l",22,58,0,0,0,43,73,0.65,1140,0.14,0.56],
+    ["weapon_ex_siege_driver","ex",38,28,145,0,0,0,18,0.64,2800,0.25,1],
+    ["weapon_ex_starfire_array","ex",34,36,0,94,41,0,42,0.86,2350,0.11,0.72],
+    ["weapon_ex_beta_cascade","ex",29,48,0,0,0,52,58,0.72,1900,0.09,0.55]
+  ],
+  // shield: id, size, mass, processing load, three defense bonuses, capacity, base recharge, recharge rate, power cap
+  shields: [
+    ["shield_aegis_service_s","s",4,3,0.08,0.08,0.08,80,2,1,3],
+    ["shield_aegis_service_m","m",9,7,0.12,0.12,0.12,190,4,1.4,6],
+    ["shield_aegis_service_l","l",18,14,0.16,0.16,0.16,450,8,2,10],
+    ["shield_aegis_military_s","s",5,6,0.12,0.12,0.12,100,2.5,1.2,4],
+    ["shield_aegis_military_m","m",11,12,0.17,0.17,0.17,235,5,1.7,8],
+    ["shield_aegis_military_l","l",22,23,0.22,0.22,0.22,555,10,2.5,14],
+    ["shield_aegis_citadel_s","s",7,10,0.17,0.17,0.17,125,3,1.5,6],
+    ["shield_aegis_citadel_m","m",15,20,0.23,0.23,0.23,295,6,2.1,11],
+    ["shield_aegis_citadel_l","l",30,39,0.3,0.3,0.3,700,12,3.1,18],
+    ["shield_bulwark_service_s","s",5,3,0.06,0.06,0.06,115,1.2,0.7,2],
+    ["shield_bulwark_service_m","m",11,7,0.09,0.09,0.09,275,2.5,1,4],
+    ["shield_bulwark_service_l","l",23,14,0.12,0.12,0.12,650,5,1.4,7],
+    ["shield_bulwark_reinforced_s","s",7,7,0.1,0.1,0.1,155,1.5,0.8,3],
+    ["shield_bulwark_reinforced_m","m",15,14,0.14,0.14,0.14,370,3,1.1,5],
+    ["shield_bulwark_reinforced_l","l",31,27,0.19,0.19,0.19,875,6,1.6,9],
+    ["shield_dynamo_service_s","s",3,5,0.04,0.04,0.04,65,3,1.5,5],
+    ["shield_dynamo_service_m","m",8,10,0.07,0.07,0.07,155,6,2.2,9],
+    ["shield_dynamo_service_l","l",16,19,0.1,0.1,0.1,365,12,3.2,15],
+    ["shield_dynamo_overdrive_s","s",4,9,0.06,0.06,0.06,75,4,2.2,8],
+    ["shield_dynamo_overdrive_m","m",9,18,0.1,0.1,0.1,180,8,3.2,14],
+    ["shield_dynamo_overdrive_l","l",18,35,0.14,0.14,0.14,425,16,4.7,23],
+    ["shield_kinetic_scatter_s","s",5,5,0.23,0.03,0.03,90,1.5,0.8,2],
+    ["shield_kinetic_scatter_m","m",12,11,0.34,0.05,0.05,215,3,1.1,5],
+    ["shield_kinetic_scatter_l","l",24,21,0.46,0.07,0.07,510,6,1.6,8],
+    ["shield_thermal_sink_s","s",4,7,0.04,0.25,0.07,78,2,1.1,4],
+    ["shield_thermal_sink_m","m",10,14,0.06,0.36,0.11,185,4,1.6,7],
+    ["shield_thermal_sink_l","l",20,27,0.08,0.48,0.15,440,8,2.3,12],
+    ["shield_phase_screen_s","s",4,8,0.03,0.07,0.27,72,2.2,1.2,5],
+    ["shield_phase_screen_m","m",10,16,0.05,0.11,0.38,170,4.5,1.8,9],
+    ["shield_phase_screen_l","l",20,31,0.07,0.15,0.5,405,9,2.6,15],
+    ["shield_ex_event_horizon","ex",42,38,0.28,0.28,0.28,1450,24,4.2,28],
+    ["shield_ex_trinity_screen","ex",36,46,0.18,0.32,0.58,1180,30,5,36]
+  ],
+  // equipment: id, size, mass, processing load, processing, power, recharge, cargo, evasion, hull, hull recharge bonuses
+  equipment: [
+    ["equipment_processor_aux_s","s",2,1,6,0,0,0,0,0,0],
+    ["equipment_processor_aux_m","m",5,3,14,0,0,0,0,0,0],
+    ["equipment_processor_aux_l","l",11,6,30,0,0,0,0,0,0],
+    ["equipment_processor_tactical_s","s",3,3,11,0,0,0,0.01,0,0],
+    ["equipment_processor_tactical_m","m",7,7,26,0,0,0,0.02,0,0],
+    ["equipment_processor_tactical_l","l",15,14,56,0,0,0,0.03,0,0],
+    ["equipment_processor_quantum_s","s",4,6,18,0,0,0,0.02,0,0],
+    ["equipment_processor_quantum_m","m",9,13,43,0,0,0,0.03,0,0],
+    ["equipment_processor_quantum_l","l",19,25,92,0,0,0,0.05,0,0],
+    ["equipment_power_cell_s","s",3,1,0,20,0,0,0,0,0],
+    ["equipment_power_cell_m","m",7,3,0,55,0,0,0,0,0],
+    ["equipment_power_cell_l","l",15,6,0,130,0,0,0,0,0],
+    ["equipment_capacitor_dense_s","s",4,4,0,38,1,0,0,0,0],
+    ["equipment_capacitor_dense_m","m",10,8,0,95,2,0,0,0,0],
+    ["equipment_capacitor_dense_l","l",21,16,0,225,4,0,0,0,0],
+    ["equipment_capacitor_exotic_s","s",5,8,0,62,2,0,0,0,0],
+    ["equipment_capacitor_exotic_m","m",12,16,0,155,4,0,0,0,0],
+    ["equipment_capacitor_exotic_l","l",25,31,0,370,8,0,0,0,0],
+    ["equipment_flux_charger_s","s",3,2,0,0,3,0,0,0,0],
+    ["equipment_flux_charger_m","m",7,5,0,0,7,0,0,0,0],
+    ["equipment_flux_charger_l","l",14,10,0,0,16,0,0,0,0],
+    ["equipment_reactor_regulator_s","s",4,5,0,15,6,0,0,0,0],
+    ["equipment_reactor_regulator_m","m",9,11,0,38,14,0,0,0,0],
+    ["equipment_reactor_regulator_l","l",18,21,0,90,31,0,0,0,0],
+    ["equipment_reactor_catalyst_s","s",6,10,0,25,10,0,0,0,0],
+    ["equipment_reactor_catalyst_m","m",13,20,0,63,24,0,0,0,0],
+    ["equipment_reactor_catalyst_l","l",27,39,0,150,53,0,0,0,0],
+    ["equipment_cargo_rack_s","s",2,1,0,0,0,25,0,0,0],
+    ["equipment_cargo_rack_m","m",6,2,0,0,0,75,0,0,0],
+    ["equipment_cargo_rack_l","l",15,4,0,0,0,190,0,0,0],
+    ["equipment_cargo_lattice_s","s",4,3,0,0,0,48,0,15,0],
+    ["equipment_cargo_lattice_m","m",9,6,0,0,0,135,0,40,0],
+    ["equipment_cargo_lattice_l","l",21,12,0,0,0,330,0,100,0],
+    ["equipment_cargo_compression_s","s",6,8,0,0,0,85,0,0,0],
+    ["equipment_cargo_compression_m","m",14,16,0,0,0,235,0,0,0],
+    ["equipment_cargo_compression_l","l",30,31,0,0,0,575,0,0,0],
+    ["equipment_vector_thruster_s","s",3,3,0,0,0,0,0.03,0,0],
+    ["equipment_vector_thruster_m","m",7,7,0,0,0,0,0.04,0,0],
+    ["equipment_vector_thruster_l","l",15,14,0,0,0,0,0.05,0,0],
+    ["equipment_maneuver_predictor_s","s",3,7,4,0,0,0,0.05,0,0],
+    ["equipment_maneuver_predictor_m","m",8,14,10,0,0,0,0.07,0,0],
+    ["equipment_maneuver_predictor_l","l",17,27,22,0,0,0,0.09,0,0],
+    ["equipment_inertial_control_s","s",5,12,8,0,3,0,0.08,0,0],
+    ["equipment_inertial_control_m","m",11,24,20,0,7,0,0.11,0,0],
+    ["equipment_inertial_control_l","l",23,46,44,0,15,0,0.14,0,0],
+    ["equipment_hull_plating_s","s",5,1,0,0,0,0,0,60,0],
+    ["equipment_hull_plating_m","m",12,3,0,0,0,0,0,140,0],
+    ["equipment_hull_plating_l","l",26,6,0,0,0,0,0,420,0],
+    ["equipment_hull_composite_s","s",6,4,0,0,0,0,0.01,110,0],
+    ["equipment_hull_composite_m","m",14,9,0,0,0,0,0.01,265,0],
+    ["equipment_hull_composite_l","l",30,18,0,0,0,0,0.02,630,0],
+    ["equipment_hull_fortress_s","s",9,8,0,0,0,0,0,190,2],
+    ["equipment_hull_fortress_m","m",21,16,0,0,0,0,0,455,4],
+    ["equipment_hull_fortress_l","l",45,31,0,0,0,0,0,1080,9],
+    ["equipment_repair_nanos_s","s",2,3,0,0,0,0,0,0,1.5],
+    ["equipment_repair_nanos_m","m",6,7,0,0,0,0,0,0,3],
+    ["equipment_repair_nanos_l","l",13,14,0,0,0,0,0,0,7],
+    ["equipment_repair_core_s","s",4,7,0,0,0,0,0,35,3],
+    ["equipment_repair_core_m","m",10,15,0,0,0,0,0,90,7],
+    ["equipment_repair_core_l","l",21,29,0,0,0,0,0,220,16],
+    ["equipment_repair_matrix_s","s",6,13,0,0,0,0,0,80,5],
+    ["equipment_repair_matrix_m","m",14,26,0,0,0,0,0,195,12],
+    ["equipment_repair_matrix_l","l",30,51,0,0,0,0,0,470,27],
+    ["equipment_ex_singularity_core","ex",36,20,80,280,18,0,0,0,0],
+    ["equipment_ex_dimensional_hold","ex",32,14,0,0,0,620,0,0,0],
+    ["equipment_ex_living_hull","ex",41,26,0,0,0,0,0,1250,19]
+  ]
+};
 
 function makeEmptyI18n() {
   const buckets = { item: {}, resource: {}, building: {}, sector: {}, ship: {} };
@@ -1128,8 +1409,76 @@ function makeEmptyCapsule() {
     shipDefs: { version: 1, ships: {} },
     vfxDefs: { version: 1, effects: {} },
     i18n: makeEmptyI18n(),
-    chunkMap: { version: 2, sourceGmap: "", clusters: {}, chunks: {} }
+    chunkMap: { version: 2, sourceGmap: "", clusters: {}, chunks: {} },
+    combatEditor: makeEmptyCombatEditor()
   };
+}
+
+function makeEmptyCombatEditor() {
+  return {
+    version: 1,
+    weapons: {},
+    shields: {},
+    equipment: {},
+    compatibilityPresets: {
+      weapon: {},
+      shield: {},
+      equipment: {}
+    },
+    shipProfiles: {}
+  };
+}
+
+function makeDefaultCombatDefinitions() {
+  const weapons = Object.fromEntries(DEFAULT_COMBAT_CATALOG.weapons.map((row) => {
+    const [id, size, mass, processing_load, damage_kinetic, damage_thermal, damage_energy, damage_beta, power_use, acc, range, crit_chance, crit_damage] = row;
+    return [id, { id, item_id: id, name_id: id + ".name", size, mass, processing_load, damage_kinetic, damage_thermal, damage_energy, damage_beta, power_use, acc, range, crit_chance, crit_damage, special_skill: null }];
+  }));
+  const shields = Object.fromEntries(DEFAULT_COMBAT_CATALOG.shields.map((row) => {
+    const [id, size, mass, processing_load, def_bonus_kinetic, def_bonus_thermal, def_bonus_energy, capacity, recharge_base, recharge_rate, power_use_cap] = row;
+    return [id, { id, item_id: id, name_id: id + ".name", size, mass, processing_load, def_bonus_kinetic, def_bonus_thermal, def_bonus_energy, capacity, recharge_base, recharge_rate, power_use_cap }];
+  }));
+  const equipment = Object.fromEntries(DEFAULT_COMBAT_CATALOG.equipment.map((row) => {
+    const [id, size, mass, processing_load, processing_capacity_bonus, power_capacity_bonus, power_recharge_bonus, cargo_capacity_bonus, evasion_bonus, hull_capacity_bonus, hull_recharge_base_bonus] = row;
+    return [id, { id, item_id: id, name_id: id + ".name", size, mass, processing_load, processing_capacity_bonus, power_capacity_bonus, power_recharge_bonus, cargo_capacity_bonus, evasion_bonus, hull_capacity_bonus, hull_recharge_base_bonus }];
+  }));
+  return { weapons, shields, equipment };
+}
+
+function loadDefaultCombatCatalog() {
+  const combat = capsule.combatEditor;
+  const existing = {
+    weapons: Object.keys(combat.weapons || {}).length,
+    shields: Object.keys(combat.shields || {}).length,
+    equipment: Object.keys(combat.equipment || {}).length
+  };
+  const message = [
+    "Replace the current combat definitions with the built-in default catalog?",
+    "",
+    "Current: " + existing.weapons + " weapons, " + existing.shields + " shields, " + existing.equipment + " equipment",
+    "Defaults: " + DEFAULT_COMBAT_CATALOG.weapons.length + " weapons, " + DEFAULT_COMBAT_CATALOG.shields.length + " shields, " + DEFAULT_COMBAT_CATALOG.equipment.length + " equipment",
+    "",
+    "Compatibility preset IDs and ship slots will remain, but their compatible and equipped item references will be cleared."
+  ].join("\n");
+  if (!confirm(message)) return;
+
+  const defaults = makeDefaultCombatDefinitions();
+  combat.weapons = defaults.weapons;
+  combat.shields = defaults.shields;
+  combat.equipment = defaults.equipment;
+  syncItemDefinitions();
+  for (const type of SLOT_TYPES) {
+    for (const preset of Object.values(combat.compatibilityPresets?.[type] || {})) preset.compatible_ids = [];
+    for (const profile of Object.values(combat.shipProfiles || {})) {
+      for (const slot of profile.slots?.[type] || []) slot.equipped_id = null;
+    }
+  }
+  selected.weapons = Object.keys(combat.weapons).sort()[0] || null;
+  selected.shields = Object.keys(combat.shields).sort()[0] || null;
+  selected.equipment = Object.keys(combat.equipment).sort()[0] || null;
+  setDirty();
+  rerender();
+  setActiveTab("weapons");
 }
 
 function makeShip(id, highlightColor) {
@@ -1156,6 +1505,7 @@ function makeShip(id, highlightColor) {
   };
   return {
     id,
+    item_id: id,
     labelKey: `ui.settings.gameplay.${id}`,
     fallbackLabel: id,
     specs,
@@ -1264,7 +1614,7 @@ function createShipComponent({
 }
 
 function firstHighlightColor(visual = {}) {
-  const first = Object.values(visual.materials?.highlights || {})[0];
+  const first = Object.values(visual.materials?.highlights || visual.highlights || {})[0];
   return first?.defaultColor || null;
 }
 
@@ -1276,7 +1626,21 @@ function normalizeColorString(value) {
 }
 
 function makeEmptySelection() {
-  return { sectors: null, resources: null, items: null, buildings: null, ships: null, vfx: null };
+  return {
+    sectors: null,
+    resources: null,
+    items: null,
+    buildings: null,
+    weapons: null,
+    shields: null,
+    equipment: null,
+    weaponCompatibility: null,
+    shieldCompatibility: null,
+    equipmentCompatibility: null,
+    ships: null,
+    shipSlots: null,
+    vfx: null
+  };
 }
 
 let capsule = makeEmptyCapsule();
@@ -1291,6 +1655,12 @@ const entityConfig = {
   resources: { label: "Resources", singular: "resource", collection: () => capsule.resourceDefs.resources, make: makeNewResource, render: renderResourceDetail },
   items: { label: "Items", singular: "item", collection: () => capsule.itemDefs.items, make: makeNewItem, render: renderItemDetail },
   buildings: { label: "Buildings", singular: "building", collection: () => capsule.buildingDefs.buildings, make: makeNewBuilding, render: renderBuildingDetail },
+  weapons: { label: "Weapons", singular: "weapon", editorOnly: true, collection: () => capsule.combatEditor.weapons, make: makeNewWeapon, render: renderWeaponDetail },
+  shields: { label: "Shields", singular: "shield", editorOnly: true, collection: () => capsule.combatEditor.shields, make: makeNewShield, render: renderShieldDetail },
+  equipment: { label: "Equipment", singular: "equipment", editorOnly: true, collection: () => capsule.combatEditor.equipment, make: makeNewEquipment, render: renderEquipmentDetail },
+  weaponCompatibility: { label: "Weapon Compatibility", singular: "weapon preset", editorOnly: true, tab: "weapon-compatibility", targetType: "weapon", collection: () => capsule.combatEditor.compatibilityPresets.weapon, make: makeNewCompatibilityPreset, render: renderCompatibilityPresetDetail },
+  shieldCompatibility: { label: "Shield Compatibility", singular: "shield preset", editorOnly: true, tab: "shield-compatibility", targetType: "shield", collection: () => capsule.combatEditor.compatibilityPresets.shield, make: makeNewCompatibilityPreset, render: renderCompatibilityPresetDetail },
+  equipmentCompatibility: { label: "Equipment Compatibility", singular: "equipment preset", editorOnly: true, tab: "equipment-compatibility", targetType: "equipment", collection: () => capsule.combatEditor.compatibilityPresets.equipment, make: makeNewCompatibilityPreset, render: renderCompatibilityPresetDetail },
   ships: { label: "Ships", singular: "ship", collection: () => capsule.shipDefs.ships, make: makeNewShip, render: renderShipDetail }
 };
 
@@ -1411,7 +1781,14 @@ function countValues() {
   $("#count-resources").textContent = Object.keys(capsule.resourceDefs.resources || {}).length;
   $("#count-items").textContent = Object.keys(capsule.itemDefs.items || {}).length;
   $("#count-buildings").textContent = Object.keys(capsule.buildingDefs.buildings || {}).length;
+  $("#count-weapons").textContent = Object.keys(capsule.combatEditor.weapons || {}).length;
+  $("#count-shields").textContent = Object.keys(capsule.combatEditor.shields || {}).length;
+  $("#count-equipment").textContent = Object.keys(capsule.combatEditor.equipment || {}).length;
+  $("#count-weapon-compatibility").textContent = Object.keys(capsule.combatEditor.compatibilityPresets.weapon || {}).length;
+  $("#count-shield-compatibility").textContent = Object.keys(capsule.combatEditor.compatibilityPresets.shield || {}).length;
+  $("#count-equipment-compatibility").textContent = Object.keys(capsule.combatEditor.compatibilityPresets.equipment || {}).length;
   $("#count-ships").textContent = Object.keys(capsule.shipDefs.ships || {}).length;
+  $("#count-ship-slots").textContent = Object.keys(capsule.shipDefs.ships || {}).length;
   $("#count-ship-visuals").textContent = Object.keys(capsule.shipDefs.ships || {}).length;
   $("#count-vfx").textContent = Object.keys(capsule.vfxDefs.effects || {}).length;
   const refs = collectAssetRefs();
@@ -1420,7 +1797,9 @@ function countValues() {
 }
 
 function rerender() {
+  ensureShipProfiles();
   for (const kind of Object.keys(entityConfig)) renderEntityPage(kind);
+  renderShipSlotsPage();
   renderShipVisualPage();
   renderVfxPage();
   renderAssets();
@@ -1438,8 +1817,54 @@ function setActiveTab(tab) {
   $$(".tab-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === activeTab));
   $$(".tab-page").forEach((page) => page.classList.toggle("active", page.id === `tab-${activeTab}`));
   if (activeTab === "map") resizeRenderer();
+  if (activeTab === "ship-slots") renderShipSlotsPage();
   if (activeTab === "ship-visuals") renderShipVisualPage();
   if (activeTab === "vfx") renderVfxPage();
+}
+
+function scrollSelectorForElement(element) {
+  if (!element) return null;
+  if (element === document.scrollingElement) return "__document__";
+  if (element.dataset?.listKind) return `[data-list-kind="${CSS.escape(element.dataset.listKind)}"]`;
+  if (element.id) return `#${CSS.escape(element.id)}`;
+  if (element.classList?.contains("compatibility-list")) {
+    const detail = element.closest(".detail-panel[id]");
+    return detail ? `#${CSS.escape(detail.id)} .compatibility-list` : null;
+  }
+  if (element.classList?.contains("nav")) return ".nav";
+  if (element.classList?.contains("side")) return element.classList.contains("left") ? ".side.left" : ".side.right";
+  return null;
+}
+
+function captureScrollPositions() {
+  const positions = new Map();
+  const elements = [
+    document.scrollingElement,
+    ...$$("[data-list-kind], .detail-panel[id], .compatibility-list, .nav, .side")
+  ];
+  for (const element of elements) {
+    const selector = scrollSelectorForElement(element);
+    if (!selector || positions.has(selector)) continue;
+    positions.set(selector, { top: element.scrollTop || 0, left: element.scrollLeft || 0 });
+  }
+  return positions;
+}
+
+function restoreScrollPositions(positions) {
+  for (const [selector, position] of positions.entries()) {
+    const element = selector === "__document__" ? document.scrollingElement : $(selector);
+    if (!element) continue;
+    element.scrollTop = position.top;
+    element.scrollLeft = position.left;
+  }
+}
+
+function withPreservedScroll(callback) {
+  const positions = captureScrollPositions();
+  const result = callback();
+  restoreScrollPositions(positions);
+  requestAnimationFrame(() => restoreScrollPositions(positions));
+  return result;
 }
 
 $("#tab-nav").addEventListener("click", (event) => {
@@ -1448,97 +1873,372 @@ $("#tab-nav").addEventListener("click", (event) => {
 });
 
 function renderEntityPage(kind) {
-  const cfg = entityConfig[kind];
-  const root = $(`#tab-${kind}`);
-  const collection = cfg.collection();
-  const ids = Object.keys(collection).sort();
-  if (!selected[kind] || !collection[selected[kind]]) selected[kind] = ids[0] || null;
-  root.innerHTML = `
-    <div class="entity-layout">
-      <aside class="entity-list-panel">
-        <div class="section-head">
-          <div class="section-title">${escapeHtml(cfg.label)}</div>
-          <button class="btn-small btn-primary" data-add-kind="${kind}">Add</button>
-        </div>
-        <div class="panel-block"><input type="search" data-search-kind="${kind}" placeholder="Filter" /></div>
-        <div class="entity-list" data-list-kind="${kind}">
-          ${ids.map((id) => entityListItem(kind, id, collection[id])).join("")}
-        </div>
-      </aside>
-      <main class="detail-panel" id="${kind}-detail"></main>
-    </div>
-  `;
-  const detail = $(`#${kind}-detail`);
-  if (!selected[kind]) {
-    detail.innerHTML = `<div class="empty-state">No ${escapeHtml(cfg.singular)} selected</div>`;
-  } else {
-    cfg.render(detail, selected[kind], collection[selected[kind]]);
+  return withPreservedScroll(() => {
+    const cfg = entityConfig[kind];
+    const root = $(`#tab-${cfg.tab || kind}`);
+    const collection = cfg.collection();
+    const ids = Object.keys(collection).sort();
+    if (!selected[kind] || !collection[selected[kind]]) selected[kind] = ids[0] || null;
+    root.innerHTML = `
+      <div class="entity-layout">
+        <aside class="entity-list-panel">
+          <div class="section-head">
+            <div class="section-title">${escapeHtml(cfg.label)}</div>
+            <button class="btn-small btn-primary" data-add-kind="${kind}">Add</button>
+          </div>
+          <div class="panel-block ${SIZE_FILTER_KINDS.has(kind) ? "filter-row" : ""}">
+            <input type="search" data-search-kind="${kind}" placeholder="Filter" />
+            ${sizeFilterSelect(kind)}
+          </div>
+          <div class="entity-list" data-list-kind="${kind}">
+            ${ids.map((id) => entityListItem(kind, id, collection[id])).join("")}
+          </div>
+        </aside>
+        <main class="detail-panel" id="${kind}-detail"></main>
+      </div>
+    `;
+    const detail = $(`#${kind}-detail`);
+    if (!selected[kind]) {
+      detail.innerHTML = `<div class="empty-state">No ${escapeHtml(cfg.singular)} selected</div>`;
+    } else {
+      cfg.render(detail, selected[kind], collection[selected[kind]], kind);
+    }
+  });
+}
+
+function sizeFilterSelect(kind, attr = "data-size-filter-kind") {
+  if (!SIZE_FILTER_KINDS.has(kind)) return "";
+  return `<select ${attr}="${escapeAttr(kind)}" title="Filter by size">
+    <option value="">All sizes</option>
+    ${sizeFilterOptions()}
+  </select>`;
+}
+
+function sizeFilterOptions() {
+  return EQUIPMENT_SIZES.map((size) => `<option value="${escapeAttr(size)}">${escapeHtml(size.toUpperCase())}</option>`).join("");
+}
+
+function ensureShipProfiles() {
+  capsule.combatEditor ??= makeEmptyCombatEditor();
+  capsule.combatEditor.shipProfiles ??= {};
+  for (const shipId of Object.keys(capsule.shipDefs.ships || {})) {
+    capsule.combatEditor.shipProfiles[shipId] ??= makeShipProfile(shipId);
   }
+}
+
+function makeShipProfile(shipId) {
+  return {
+    ship_id: shipId,
+    ship_class: DEFAULT_SHIP_CLASS,
+    base_stats: {
+      processing_capacity: 0,
+      power_capacity: 0,
+      power_recharge: 0,
+      cargo_capacity: 0,
+      evasion: 0,
+      hull_capacity: 0,
+      hull_recharge_base: 0
+    },
+    slots: {
+      weapon: [],
+      shield: [],
+      equipment: []
+    }
+  };
+}
+
+function renderShipSlotsPage() {
+  return withPreservedScroll(() => {
+    ensureShipProfiles();
+    const root = $("#tab-ship-slots");
+    const shipIds = Object.keys(capsule.shipDefs.ships || {}).sort();
+    if (!selected.shipSlots || !capsule.shipDefs.ships?.[selected.shipSlots]) selected.shipSlots = shipIds[0] || null;
+    root.innerHTML = `
+      <div class="entity-layout">
+        <aside class="entity-list-panel">
+          <div class="section-head"><div class="section-title">Ship Slots</div></div>
+          <div class="panel-block"><input type="search" data-search-kind="ship-slots" placeholder="Filter" /></div>
+          <div class="entity-list" data-list-kind="ship-slots">
+            ${shipIds.map((shipId) => shipSlotListItem(shipId)).join("")}
+          </div>
+        </aside>
+        <main class="detail-panel" id="ship-slots-detail"></main>
+      </div>`;
+    const detail = $("#ship-slots-detail");
+    if (!selected.shipSlots) {
+      detail.innerHTML = `<div class="empty-state">Create a ship definition before configuring slots.</div>`;
+      return;
+    }
+    renderShipSlotProfileDetail(detail, selected.shipSlots, capsule.combatEditor.shipProfiles[selected.shipSlots]);
+  });
+}
+
+function shipSlotListItem(shipId) {
+  const profile = capsule.combatEditor.shipProfiles[shipId] || makeShipProfile(shipId);
+  const slotCount = SLOT_TYPES.reduce((total, type) => total + (profile.slots?.[type]?.length || 0), 0);
+  return `
+    <button class="entity-item ${selected.shipSlots === shipId ? "active" : ""}" data-select-ship-slots="${escapeAttr(shipId)}">
+      <span class="entity-main">
+        <span class="entity-id">${escapeHtml(shipId)}</span>
+        <span class="entity-name">${escapeHtml(entityName("ship", shipId))}</span>
+      </span>
+      <span class="entity-meta">${escapeHtml(profile.ship_class || DEFAULT_SHIP_CLASS)} / ${slotCount} slots</span>
+    </button>`;
+}
+
+function renderShipSlotProfileDetail(root, shipId, profile) {
+  const summary = calculateShipProfileSummary(profile);
+  root.innerHTML = `
+    <div class="section-head">
+      <div class="section-title">${escapeHtml(shipId)} Slot Structure</div>
+      <div class="section-actions"><span class="pill">GED Only</span></div>
+    </div>
+    <div class="form-wrap">
+      <div class="panel-block" style="color:var(--quiet)">Ship class and base combat stats are edited in the Ships tab.</div>
+      <div class="form-section"><h3>Ship And Equipped Summary</h3><div class="form-grid">
+        ${field("Ship Class", `<input value="${escapeAttr(shipClassLabel(profile.ship_class))}" disabled />`)}
+        ${field("Processing Load", `<input value="${escapeAttr(summary.processing_load)} / ${escapeAttr(summary.processing_capacity)}" disabled />`)}
+        ${field("Power Capacity", `<input value="${escapeAttr(summary.power_capacity)}" disabled />`)}
+        ${field("Power Recharge", `<input value="${escapeAttr(summary.power_recharge)}" disabled />`)}
+        ${field("Cargo Capacity", `<input value="${escapeAttr(summary.cargo_capacity)}" disabled />`)}
+        ${field("Evasion", `<input value="${escapeAttr(summary.evasion)}" disabled />`)}
+        ${field("Hull Capacity", `<input value="${escapeAttr(summary.hull_capacity)}" disabled />`)}
+        ${field("Hull Base Recharge", `<input value="${escapeAttr(summary.hull_recharge_base)}" disabled />`)}
+      </div></div>
+      ${SLOT_TYPES.map((type) => renderShipSlotSection(type, profile)).join("")}
+    </div>`;
+  bindShipProfileControls(root, shipId, profile);
+}
+
+function profileNumberInput(path, value, step = "1", extra = "") {
+  return `<input type="number" data-profile-path="${escapeAttr(path)}" value="${escapeAttr(value ?? 0)}" step="${escapeAttr(step)}" ${extra} />`;
+}
+
+function renderShipSlotSection(type, profile) {
+  const slots = profile.slots?.[type] || [];
+  return `
+    <div class="form-section">
+      <div class="section-head">
+        <h3>${escapeHtml(type)} Slots</h3>
+        <button type="button" class="btn-small btn-primary" data-add-slot-type="${escapeAttr(type)}">Add Slot</button>
+      </div>
+      ${slots.length ? slots.map((slot, index) => renderShipSlotCard(type, slot, index)).join("") : `<div class="empty-state">No ${escapeHtml(type)} slots</div>`}
+    </div>`;
+}
+
+function renderShipSlotCard(type, slot, index) {
+  const presets = capsule.combatEditor.compatibilityPresets?.[type] || {};
+  return `
+    <div class="slot-card">
+      <div class="section-head">
+        <div class="panel-title">${escapeHtml(slot.id || `${type}_slot_${index + 1}`)}</div>
+        <button type="button" class="btn-small btn-danger" data-delete-slot-type="${escapeAttr(type)}" data-delete-slot-index="${index}">Delete</button>
+      </div>
+      <div class="form-grid">
+        ${field("Slot ID", profileInput(`slots.${type}.${index}.id`, slot.id || ""))}
+        ${field("Slot Type", `<input value="${escapeAttr(type)}" disabled />`)}
+        ${field("Size", profileSelect(`slots.${type}.${index}.size`, slot.size || "s", EQUIPMENT_SIZES, true))}
+        ${field("Compatibility Preset", `<select data-profile-path="slots.${type}.${index}.compatibility_preset_id" data-rerender="true">${idOptions(presets, slot.compatibility_preset_id || "", "None")}</select>`)}
+        ${field("Equipped", `<select data-profile-path="slots.${type}.${index}.equipped_id">${slotEquipmentOptions(type, slot)}</select>`)}
+      </div>
+    </div>`;
+}
+
+function profileInput(path, value, extra = "") {
+  return `<input data-profile-path="${escapeAttr(path)}" value="${escapeAttr(value ?? "")}" ${extra} />`;
+}
+
+function profileSelect(path, value, values, rerender = false) {
+  return `<select data-profile-path="${escapeAttr(path)}" ${rerender ? `data-rerender="true"` : ""}>${options(values, value)}</select>`;
+}
+
+function shipClassSelect(value) {
+  return `<select data-profile-path="ship_class">
+    ${SHIP_CLASSES.map(([code, label]) => `<option value="${escapeAttr(code)}" ${code === value ? "selected" : ""}>${escapeHtml(code)} - ${escapeHtml(label)}</option>`).join("")}
+  </select>`;
+}
+
+function shipClassLabel(value) {
+  const entry = SHIP_CLASSES.find(([code]) => code === value);
+  return entry ? `${entry[0]} - ${entry[1]}` : value || "Unknown";
+}
+
+function slotEquipmentOptions(type, slot) {
+  const definitions = combatDefinitionsForType(type);
+  const preset = capsule.combatEditor.compatibilityPresets?.[type]?.[slot.compatibility_preset_id];
+  const compatibleIds = (preset?.compatible_ids || []).filter((id) => definitions[id] && isSizeCompatible(slot.size, definitions[id].size));
+  const rows = [`<option value="">Empty</option>`];
+  if (slot.equipped_id && !compatibleIds.includes(slot.equipped_id)) {
+    rows.push(`<option value="${escapeAttr(slot.equipped_id)}" selected>[Invalid] ${escapeHtml(slot.equipped_id)}</option>`);
+  }
+  rows.push(...compatibleIds.sort().map((id) => `<option value="${escapeAttr(id)}" ${id === slot.equipped_id ? "selected" : ""}>${escapeHtml(id)} [${escapeHtml(definitions[id].size)}]</option>`));
+  return rows.join("");
+}
+
+function isSizeCompatible(slotSize, equipmentSize) {
+  return (SIZE_COMPATIBILITY[slotSize] || []).includes(equipmentSize);
+}
+
+function bindShipProfileControls(root, shipId, profile) {
+  root.querySelectorAll("[data-profile-path]").forEach((element) => {
+    const eventName = element.type === "checkbox" || element.tagName === "SELECT" ? "change" : "input";
+    element.addEventListener(eventName, () => {
+      let value = element.type === "number" ? toNumber(element.value) : element.value;
+      if (element.dataset.nullable === "true" && element.value === "") value = null;
+      pathSet(profile, element.dataset.profilePath, value);
+      setDirty();
+      runValidation();
+      renderIntegrity();
+      if (element.dataset.profilePath === "ship_class") updateShipProfileListMeta(shipId, profile);
+      if (element.dataset.rerender === "true") renderShipSlotsPage();
+    });
+  });
+  root.querySelectorAll("[data-add-slot-type]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const type = button.dataset.addSlotType;
+      profile.slots[type].push(makeShipSlot(type, profile));
+      setDirty();
+      renderShipSlotsPage();
+      runValidation();
+      renderIntegrity();
+    });
+  });
+  root.querySelectorAll("[data-delete-slot-type]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const type = button.dataset.deleteSlotType;
+      const index = Number(button.dataset.deleteSlotIndex);
+      if (!confirm(`Delete ${profile.slots[type][index]?.id || `${type} slot`}?`)) return;
+      profile.slots[type].splice(index, 1);
+      setDirty();
+      renderShipSlotsPage();
+      runValidation();
+      renderIntegrity();
+    });
+  });
+}
+
+function updateShipProfileListMeta(shipId, profile) {
+  const shipMeta = $(`[data-list-kind="ships"] [data-id="${CSS.escape(shipId)}"] .entity-meta`);
+  if (shipMeta) shipMeta.textContent = shipClassLabel(profile.ship_class || DEFAULT_SHIP_CLASS);
+  const slotMeta = $(`[data-list-kind="ship-slots"] [data-select-ship-slots="${CSS.escape(shipId)}"] .entity-meta`);
+  if (slotMeta) {
+    const slotCount = SLOT_TYPES.reduce((total, type) => total + (profile.slots?.[type]?.length || 0), 0);
+    slotMeta.textContent = `${profile.ship_class || DEFAULT_SHIP_CLASS} / ${slotCount} slots`;
+  }
+}
+
+function makeShipSlot(type, profile) {
+  const ids = new Set(SLOT_TYPES.flatMap((slotType) => (profile.slots?.[slotType] || []).map((slot) => slot.id)));
+  let index = (profile.slots?.[type]?.length || 0) + 1;
+  let id = `${type}_slot_${String(index).padStart(2, "0")}`;
+  while (ids.has(id)) {
+    index += 1;
+    id = `${type}_slot_${String(index).padStart(2, "0")}`;
+  }
+  return { id, slot_type: type, size: "s", compatibility_preset_id: null, equipped_id: null };
+}
+
+function calculateShipProfileSummary(profile) {
+  const stats = { ...profile.base_stats };
+  let processingLoad = 0;
+  for (const type of SLOT_TYPES) {
+    const definitions = combatDefinitionsForType(type);
+    for (const slot of profile.slots?.[type] || []) {
+      const definition = definitions[slot.equipped_id];
+      if (!definition) continue;
+      processingLoad += Number(definition.processing_load || 0);
+      if (type !== "equipment") continue;
+      stats.processing_capacity += Number(definition.processing_capacity_bonus || 0);
+      stats.power_capacity += Number(definition.power_capacity_bonus || 0);
+      stats.power_recharge += Number(definition.power_recharge_bonus || 0);
+      stats.cargo_capacity += Number(definition.cargo_capacity_bonus || 0);
+      stats.evasion += Number(definition.evasion_bonus || 0);
+      stats.hull_capacity += Number(definition.hull_capacity_bonus || 0);
+      stats.hull_recharge_base += Number(definition.hull_recharge_base_bonus || 0);
+    }
+  }
+  return {
+    processing_load: processingLoad,
+    processing_capacity: Number(stats.processing_capacity || 0),
+    power_capacity: Number(stats.power_capacity || 0),
+    power_recharge: Number(stats.power_recharge || 0),
+    cargo_capacity: Number(stats.cargo_capacity || 0),
+    evasion: Number(stats.evasion || 0),
+    hull_capacity: Number(stats.hull_capacity || 0),
+    hull_recharge_base: Number(stats.hull_recharge_base || 0)
+  };
 }
 
 function renderShipVisualPage() {
-  const root = $("#tab-ship-visuals");
-  const collection = capsule.shipDefs.ships || {};
-  const ids = Object.keys(collection).sort();
-  if (!selected.ships || !collection[selected.ships]) selected.ships = ids[0] || null;
-  root.innerHTML = `
-    <div class="entity-layout">
-      <aside class="entity-list-panel">
-        <div class="section-head">
-          <div class="section-title">Ship Visuals</div>
-        </div>
-        <div class="panel-block"><input type="search" data-search-kind="ship-visuals" placeholder="Filter" /></div>
-        <div class="entity-list" data-list-kind="ship-visuals">
-          ${ids.map((id) => shipVisualListItem(id, collection[id])).join("")}
-        </div>
-      </aside>
-      <main class="detail-panel" id="ship-visual-detail"></main>
-    </div>
-  `;
-  const detail = $("#ship-visual-detail");
-  if (!selected.ships) {
-    detail.innerHTML = `<div class="empty-state">No ship selected</div>`;
-  } else {
-    renderShipVisualDetail(detail, selected.ships, collection[selected.ships]);
-  }
+  return withPreservedScroll(() => {
+    const root = $("#tab-ship-visuals");
+    const collection = capsule.shipDefs.ships || {};
+    const ids = Object.keys(collection).sort();
+    if (!selected.ships || !collection[selected.ships]) selected.ships = ids[0] || null;
+    root.innerHTML = `
+      <div class="entity-layout">
+        <aside class="entity-list-panel">
+          <div class="section-head">
+            <div class="section-title">Ship Visuals</div>
+          </div>
+          <div class="panel-block"><input type="search" data-search-kind="ship-visuals" placeholder="Filter" /></div>
+          <div class="entity-list" data-list-kind="ship-visuals">
+            ${ids.map((id) => shipVisualListItem(id, collection[id])).join("")}
+          </div>
+        </aside>
+        <main class="detail-panel" id="ship-visual-detail"></main>
+      </div>
+    `;
+    const detail = $("#ship-visual-detail");
+    if (!selected.ships) {
+      detail.innerHTML = `<div class="empty-state">No ship selected</div>`;
+    } else {
+      renderShipVisualDetail(detail, selected.ships, collection[selected.ships]);
+    }
+  });
 }
 
 function renderVfxPage() {
-  const root = $("#tab-vfx");
-  const effects = capsule.vfxDefs.effects || {};
-  const ids = Object.keys(effects).sort();
-  if (!selected.vfx || !effects[selected.vfx]) selected.vfx = ids[0] || null;
-  root.innerHTML = `
-    <div class="entity-layout">
-      <aside class="entity-list-panel">
-        <div class="section-head">
-          <div class="section-title">VFX</div>
-          <button class="btn-small btn-primary" data-add-vfx>Add</button>
-        </div>
-        <div class="panel-block"><input type="search" data-search-kind="vfx" placeholder="Filter" /></div>
-        <div class="entity-list" data-list-kind="vfx">
-          ${ids.map((id) => vfxListItem(id, effects[id])).join("")}
-        </div>
-      </aside>
-      <main class="detail-panel" id="vfx-detail"></main>
-    </div>
-  `;
-  const detail = $("#vfx-detail");
-  if (!selected.vfx) {
-    detail.innerHTML = `<div class="empty-state">No VFX selected</div>`;
-  } else {
-    renderVfxDetail(detail, selected.vfx, effects[selected.vfx]);
-  }
+  return withPreservedScroll(() => {
+    const root = $("#tab-vfx");
+    const effects = capsule.vfxDefs.effects || {};
+    const ids = Object.keys(effects).sort();
+    if (!selected.vfx || !effects[selected.vfx]) selected.vfx = ids[0] || null;
+    root.innerHTML = `
+      <div class="entity-layout">
+        <aside class="entity-list-panel">
+          <div class="section-head">
+            <div class="section-title">VFX</div>
+            <button class="btn-small btn-primary" data-add-vfx>Add</button>
+          </div>
+          <div class="panel-block"><input type="search" data-search-kind="vfx" placeholder="Filter" /></div>
+          <div class="entity-list" data-list-kind="vfx">
+            ${ids.map((id) => vfxListItem(id, effects[id])).join("")}
+          </div>
+        </aside>
+        <main class="detail-panel" id="vfx-detail"></main>
+      </div>
+    `;
+    const detail = $("#vfx-detail");
+    if (!selected.vfx) {
+      detail.innerHTML = `<div class="empty-state">No VFX selected</div>`;
+    } else {
+      renderVfxDetail(detail, selected.vfx, effects[selected.vfx]);
+    }
+  });
 }
 
 function entityListItem(kind, id, entity) {
   const cfg = entityConfig[kind];
-  const meta = entity.type || entity.nodeType || entity.category || entity.theme || entity.size || "";
+  const meta = kind === "ships"
+    ? shipClassLabel(capsule.combatEditor.shipProfiles?.[id]?.ship_class || DEFAULT_SHIP_CLASS)
+    : cfg.targetType ? `${(entity.compatible_ids || []).length} entries` : entity.type || entity.nodeType || entity.category || entity.theme || entity.size || "";
+  const name = cfg.editorOnly ? entity.name_id || id : entityName(cfg.singular, id);
   return `
-    <button class="entity-item ${selected[kind] === id ? "active" : ""}" data-select-kind="${kind}" data-id="${escapeAttr(id)}">
+    <button class="entity-item ${selected[kind] === id ? "active" : ""}" data-select-kind="${kind}" data-id="${escapeAttr(id)}" data-size="${escapeAttr(entity.size || "")}">
       <span class="entity-main">
         <span class="entity-id">${escapeHtml(id)}</span>
-        <span class="entity-name">${escapeHtml(entityName(cfg.singular, id))}</span>
+        <span class="entity-name">${escapeHtml(name)}</span>
       </span>
       <span class="entity-meta">${escapeHtml(meta)}</span>
     </button>
@@ -1572,6 +2272,12 @@ function shipVisualListItem(id, ship) {
 }
 
 document.addEventListener("click", (event) => {
+  const shipSlotsSelectBtn = event.target.closest("[data-select-ship-slots]");
+  if (shipSlotsSelectBtn) {
+    selected.shipSlots = shipSlotsSelectBtn.dataset.selectShipSlots;
+    renderShipSlotsPage();
+    return;
+  }
   const vfxSelectBtn = event.target.closest("[data-select-vfx]");
   if (vfxSelectBtn) {
     selected.vfx = vfxSelectBtn.dataset.selectVfx;
@@ -1615,25 +2321,66 @@ document.addEventListener("click", (event) => {
 document.addEventListener("input", (event) => {
   const search = event.target.closest("[data-search-kind]");
   if (search) {
-    const kind = search.dataset.searchKind;
-    const term = search.value.toLowerCase();
-    $$(`[data-list-kind="${kind}"] .entity-item`).forEach((item) => {
-      item.style.display = item.textContent.toLowerCase().includes(term) ? "" : "none";
-    });
+    applyEntityListFilters(search.dataset.searchKind);
+  }
+  const compatibilitySearch = event.target.closest("[data-compatible-search]");
+  if (compatibilitySearch) {
+    applyCompatibilityFilters(compatibilitySearch.closest(".form-section"));
   }
 });
+
+document.addEventListener("change", (event) => {
+  const sizeFilter = event.target.closest("[data-size-filter-kind]");
+  if (sizeFilter) {
+    applyEntityListFilters(sizeFilter.dataset.sizeFilterKind);
+  }
+  const compatibilitySizeFilter = event.target.closest("[data-compatible-size-filter]");
+  if (compatibilitySizeFilter) {
+    applyCompatibilityFilters(compatibilitySizeFilter.closest(".form-section"));
+  }
+});
+
+function applyEntityListFilters(kind) {
+  const term = $(`[data-search-kind="${kind}"]`)?.value.toLowerCase() || "";
+  const size = $(`[data-size-filter-kind="${kind}"]`)?.value || "";
+  $$(`[data-list-kind="${kind}"] .entity-item`).forEach((item) => {
+    const matchesText = item.textContent.toLowerCase().includes(term);
+    const matchesSize = !size || item.dataset.size === size;
+    item.style.display = matchesText && matchesSize ? "" : "none";
+  });
+}
+
+function applyCompatibilityFilters(root) {
+  if (!root) return;
+  const term = root.querySelector("[data-compatible-search]")?.value.toLowerCase() || "";
+  const size = root.querySelector("[data-compatible-size-filter]")?.value || "";
+  root.querySelectorAll("[data-compatible-option]").forEach((option) => {
+    const matchesText = option.textContent.toLowerCase().includes(term);
+    const matchesSize = !size || option.dataset.size === size;
+    option.style.display = matchesText && matchesSize ? "" : "none";
+  });
+}
 
 function bindDetail(detail, kind, id, obj, rerenderOnChange = false) {
   const cfg = entityConfig[kind];
   detail.querySelectorAll("[data-path]").forEach((el) => {
-    const eventName = el.type === "checkbox" || el.tagName === "SELECT" ? "change" : "input";
+    const eventName = el.type === "checkbox" || el.tagName === "SELECT" || el.dataset.decimals ? "change" : "input";
     el.addEventListener(eventName, () => {
       let value = el.type === "checkbox" ? el.checked : el.value;
       if (el.type === "number") value = toNumber(value);
       pathSet(obj, el.dataset.path, value);
       if (el.dataset.normalize === "int") pathSet(obj, el.dataset.path, Math.round(toNumber(value)));
+      if (el.dataset.decimals) {
+        const normalized = Number(toNumber(value).toFixed(Number(el.dataset.decimals)));
+        pathSet(obj, el.dataset.path, normalized);
+        el.value = String(normalized);
+      }
       if (el.dataset.nullable === "true" && el.value === "") pathSet(obj, el.dataset.path, null);
       setDirty();
+      if (cfg.editorOnly && el.dataset.path === "name_id") {
+        const activeItem = detail.closest(".entity-layout")?.querySelector(`.entity-item.active .entity-name`);
+        if (activeItem) activeItem.textContent = value || id;
+      }
       if (rerenderOnChange || el.dataset.rerender === "true") {
         renderEntityPage(kind);
       } else {
@@ -1687,15 +2434,19 @@ function renderItemDetail(root, id, item) {
     <div class="form-wrap">
       <div class="form-section"><h3>Item Definition</h3><div class="form-grid">
         ${field("ID", `<input value="${escapeAttr(item.id)}" disabled />`)}
-        ${field("Category", input("category", item.category))}
-        ${field("Type", selectInput("type", item.type, ITEM_TYPES))}
+        ${field("Kind", selectInput("kind", item.kind || item.category || "resource", ITEM_KINDS, `data-rerender="true"`))}
+        ${field("Type", item.kind === "resource" || item.category === "resource"
+          ? selectInput("type", item.type || "mineral", ITEM_TYPES)
+          : input("type", item.type || ""))}
+        ${field("Identity", selectInput("identity", item.identity || inferItemIdentity(item), ITEM_IDENTITIES))}
         ${field("Mass", numberInput("mass", item.mass, "0.1"))}
-        ${field("Tradable", `<input value="${item.tradable ? "true" : "false"}" disabled />`)}
-        ${field("Stackable", `<input value="${item.stackable ? "true" : "false"}" disabled />`)}
+        ${field("Tradable", checkboxInput("tradable", item.tradable !== false))}
+        ${field("Stackable", checkboxInput("stackable", item.stackable !== false))}
       </div></div>
       ${i18nFields("item", id)}
     </div>`;
   bindDetail(root, "items", id, item);
+  bindItemCombatMirror(root, id, item);
 }
 
 function renderResourceDetail(root, id, res) {
@@ -1770,6 +2521,7 @@ function renderBuildingDetail(root, id, b) {
       </div></div>
       <div class="form-section"><h3>Docking And Trade</h3><div class="form-grid">
         ${field("Docking Capacity", numberInput("docking.capacity", b.docking?.capacity ?? "", "1", `data-nullable="true"`))}
+        ${field("Docking Music", input("docking.theme_music_id", b.docking?.theme_music_id || ""))}
         ${field("Trade", checkboxInput("trade.enabled", !!b.trade?.enabled))}
         ${field("Handling Speed", numberInput("trade.handling_speed", b.trade?.handling_speed ?? 0, "0.1"))}
         ${field("Cargo Capacity", numberInput("trade.cargo_capacity", b.trade?.cargo_capacity ?? 0, "1"))}
@@ -1786,6 +2538,172 @@ function renderBuildingDetail(root, id, b) {
       ${i18nFields("building", id)}
     </div>`;
   bindDetail(root, "buildings", id, b);
+}
+
+function renderEditorOnlyHeader(kind, id) {
+  return `${detailHeader(kind, id)}<div class="panel-block" style="color:var(--quiet)">Stored in the .ged project and exported through the combat gamedata files.</div>`;
+}
+
+function renderCommonEquipmentFields(definition) {
+  return `
+    ${field("ID", `<input value="${escapeAttr(definition.id)}" disabled />`)}
+    ${field("Item ID", input("item_id", definition.item_id || definition.id))}
+    ${field("Name ID", input("name_id", definition.name_id))}
+    ${field("Size", selectInput("size", definition.size, EQUIPMENT_SIZES))}
+    ${field("Mass / Cargo Volume", numberInput("mass", definition.mass, "1", `min="1" data-normalize="int"`))}
+    ${field("Processing Load", numberInput("processing_load", definition.processing_load, "1", `min="0" data-normalize="int"`))}
+  `;
+}
+
+function renderWeaponDetail(root, id, weapon) {
+  root.innerHTML = `${renderEditorOnlyHeader("weapons", id)}
+    <div class="form-wrap">
+      <div class="form-section"><h3>Common</h3><div class="form-grid">
+        ${renderCommonEquipmentFields(weapon)}
+      </div></div>
+      <div class="form-section"><h3>Damage Per Combat Tick</h3><div class="form-grid">
+        ${field("Kinetic Damage", numberInput("damage_kinetic", weapon.damage_kinetic, "0.01", `min="0"`))}
+        ${field("Thermal Damage", numberInput("damage_thermal", weapon.damage_thermal, "0.01", `min="0"`))}
+        ${field("Energy Damage", numberInput("damage_energy", weapon.damage_energy, "0.01", `min="0"`))}
+        ${field("Beta Damage (Shield + Hull)", numberInput("damage_beta", weapon.damage_beta, "0.01", `min="0"`))}
+      </div></div>
+      <div class="form-section"><h3>Attack</h3><div class="form-grid">
+        ${field("Power Use / Tick", numberInput("power_use", weapon.power_use, "0.01", `min="0"`))}
+        ${field("Accuracy (0-1)", numberInput("acc", weapon.acc, "0.01", `min="0" max="1" data-decimals="2"`))}
+        ${field("Range", numberInput("range", weapon.range, "1", `min="0"`))}
+        ${field("Critical Chance (0-1)", numberInput("crit_chance", weapon.crit_chance, "0.01", `min="0" max="1"`))}
+        ${field("Critical Damage (0-1)", numberInput("crit_damage", weapon.crit_damage, "0.01", `min="0" max="1"`))}
+        ${field("Special Skill", `<input value="${escapeAttr(weapon.special_skill || "None")}" disabled />`)}
+      </div></div>
+    </div>`;
+  bindDetail(root, "weapons", id, weapon);
+  bindCombatItemMirror(root, "weapon", weapon);
+}
+
+function renderShieldDetail(root, id, shield) {
+  root.innerHTML = `${renderEditorOnlyHeader("shields", id)}
+    <div class="form-wrap">
+      <div class="form-section"><h3>Common</h3><div class="form-grid">
+        ${renderCommonEquipmentFields(shield)}
+      </div></div>
+      <div class="form-section"><h3>Defense Bonus Coefficients</h3><div class="form-grid">
+        ${field("Kinetic Defense (0-1)", numberInput("def_bonus_kinetic", shield.def_bonus_kinetic, "0.01", `min="0" max="1"`))}
+        ${field("Thermal Defense (0-1)", numberInput("def_bonus_thermal", shield.def_bonus_thermal, "0.01", `min="0" max="1"`))}
+        ${field("Energy Defense (0-1)", numberInput("def_bonus_energy", shield.def_bonus_energy, "0.01", `min="0" max="1"`))}
+      </div></div>
+      <div class="form-section"><h3>Capacity And Recharge</h3><div class="form-grid">
+        ${field("Capacity", numberInput("capacity", shield.capacity, "0.01", `min="0"`))}
+        ${field("Base Recharge / Tick", numberInput("recharge_base", shield.recharge_base, "0.01", `min="0"`))}
+        ${field("Recharge Per Power", numberInput("recharge_rate", shield.recharge_rate, "0.01", `min="0"`))}
+        ${field("Power Use Cap / Tick", numberInput("power_use_cap", shield.power_use_cap, "0.01", `min="0"`))}
+      </div></div>
+    </div>`;
+  bindDetail(root, "shields", id, shield);
+  bindCombatItemMirror(root, "shield", shield);
+}
+
+function renderEquipmentDetail(root, id, equipment) {
+  root.innerHTML = `${renderEditorOnlyHeader("equipment", id)}
+    <div class="form-wrap">
+      <div class="form-section"><h3>Common</h3><div class="form-grid">
+        ${renderCommonEquipmentFields(equipment)}
+      </div></div>
+      <div class="form-section"><h3>Ship Bonuses</h3><div class="form-grid">
+        ${field("Processing Capacity", numberInput("processing_capacity_bonus", equipment.processing_capacity_bonus, "0.01", `min="0"`))}
+        ${field("Power Capacity", numberInput("power_capacity_bonus", equipment.power_capacity_bonus, "0.01", `min="0"`))}
+        ${field("Power Recharge", numberInput("power_recharge_bonus", equipment.power_recharge_bonus, "0.01", `min="0"`))}
+        ${field("Cargo Capacity", numberInput("cargo_capacity_bonus", equipment.cargo_capacity_bonus, "0.01", `min="0"`))}
+        ${field("Evasion (0-1)", numberInput("evasion_bonus", equipment.evasion_bonus, "0.01", `min="0" max="1"`))}
+        ${field("Hull Capacity", numberInput("hull_capacity_bonus", equipment.hull_capacity_bonus, "0.01", `min="0"`))}
+        ${field("Hull Base Recharge", numberInput("hull_recharge_base_bonus", equipment.hull_recharge_base_bonus, "0.01", `min="0"`))}
+      </div></div>
+    </div>`;
+  bindDetail(root, "equipment", id, equipment);
+  bindCombatItemMirror(root, "equipment", equipment);
+}
+
+function renderCompatibilityPresetDetail(root, id, preset, kind) {
+  const cfg = entityConfig[kind];
+  const definitions = combatDefinitionsForType(cfg.targetType);
+  const selectedIds = new Set(preset.compatible_ids || []);
+  const ids = [...new Set([...Object.keys(definitions), ...selectedIds])].sort();
+  root.innerHTML = `${renderEditorOnlyHeader(kind, id)}
+    <div class="form-wrap">
+      <div class="form-section"><h3>Compatibility Preset</h3><div class="form-grid">
+        ${field("ID", `<input value="${escapeAttr(preset.id)}" disabled />`)}
+        ${field("Name ID", input("name_id", preset.name_id))}
+        ${field("Target Type", `<input value="${escapeAttr(cfg.targetType)}" disabled />`)}
+      </div></div>
+      <div class="form-section"><h3>Compatible ${escapeHtml(cfg.targetType)} IDs</h3>
+        <div class="compatibility-filter-row">
+          <input type="search" data-compatible-search="${escapeAttr(kind)}" placeholder="Filter compatible IDs" />
+          <select data-compatible-size-filter="${escapeAttr(kind)}" title="Filter by size">
+            <option value="">All sizes</option>
+            ${sizeFilterOptions()}
+          </select>
+        </div>
+        <div class="compatibility-list">
+          ${ids.length ? ids.map((definitionId) => {
+            const definition = definitions[definitionId];
+            return `
+              <label class="compatibility-option" data-compatible-option data-size="${escapeAttr(definition?.size || "")}">
+                <input type="checkbox" data-compatible-id="${escapeAttr(definitionId)}" ${selectedIds.has(definitionId) ? "checked" : ""} />
+                <span class="compatibility-option-main">
+                  <b>${escapeHtml(definitionId)}</b>
+                  <span>${escapeHtml(definition?.name_id || "Missing definition")}</span>
+                </span>
+                <span class="compatibility-option-size">${escapeHtml(definition?.size || "missing")}</span>
+              </label>`;
+          }).join("") : `<div class="empty-state">No ${escapeHtml(cfg.targetType)} definitions</div>`}
+        </div>
+      </div>
+    </div>`;
+  bindDetail(root, kind, id, preset);
+  root.querySelectorAll("[data-compatible-id]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      const compatible = new Set(preset.compatible_ids || []);
+      if (checkbox.checked) compatible.add(checkbox.dataset.compatibleId);
+      else compatible.delete(checkbox.dataset.compatibleId);
+      preset.compatible_ids = [...compatible].sort();
+      setDirty();
+      runValidation();
+      renderIntegrity();
+      countValues();
+    });
+  });
+}
+
+function combatDefinitionsForType(type) {
+  if (type === "weapon") return capsule.combatEditor.weapons || {};
+  if (type === "shield") return capsule.combatEditor.shields || {};
+  return capsule.combatEditor.equipment || {};
+}
+
+function bindCombatItemMirror(root, type, definition) {
+  root.querySelectorAll(`[data-path="item_id"], [data-path="mass"]`).forEach((el) => {
+    const eventName = el.type === "number" ? "input" : "input";
+    el.addEventListener(eventName, () => syncItemDefinitionForCombat(type, definition));
+  });
+  syncItemDefinitionForCombat(type, definition);
+}
+
+function bindItemCombatMirror(root, itemId, item) {
+  root.querySelectorAll(`[data-path="mass"]`).forEach((el) => {
+    el.addEventListener("input", () => {
+      const definition = combatDefinitionByItemId(itemId);
+      if (!definition) return;
+      definition.mass = Math.max(1, Math.round(Number(item.mass ?? 1) || 1));
+    });
+  });
+}
+
+function combatDefinitionByItemId(itemId) {
+  for (const type of SLOT_TYPES) {
+    for (const definition of Object.values(combatDefinitionsForType(type))) {
+      if ((definition.item_id || definition.id) === itemId) return definition;
+    }
+  }
+  return null;
 }
 
 function renderVfxEffectSettings(effectId, effect) {
@@ -1849,6 +2767,8 @@ function renderShipComponentCard(component, index) {
 }
 
 function renderShipDetail(root, id, ship) {
+  ensureShipProfiles();
+  const profile = capsule.combatEditor.shipProfiles[id] || makeShipProfile(id);
   const specs = ship.specs || {};
   const hyper = ship.hyperdriveSpecs || {};
   root.innerHTML = `${detailHeader("ships", id)}
@@ -1857,6 +2777,16 @@ function renderShipDetail(root, id, ship) {
         ${field("ID", `<input value="${escapeAttr(ship.id)}" disabled />`)}
         ${field("Label Key", input("labelKey", ship.labelKey || `ui.settings.gameplay.${id}`))}
         ${field("Fallback Label", input("fallbackLabel", ship.fallbackLabel || id))}
+      </div></div>
+      <div class="form-section"><h3>Combat Base Specs (GED Only)</h3><div class="form-grid">
+        ${field("Ship Class", shipClassSelect(profile.ship_class || DEFAULT_SHIP_CLASS))}
+        ${field("Processing Capacity", profileNumberInput("base_stats.processing_capacity", profile.base_stats.processing_capacity, "0.01", `min="0"`))}
+        ${field("Power Capacity", profileNumberInput("base_stats.power_capacity", profile.base_stats.power_capacity, "0.01", `min="0"`))}
+        ${field("Power Recharge / Tick", profileNumberInput("base_stats.power_recharge", profile.base_stats.power_recharge, "0.01", `min="0"`))}
+        ${field("Cargo Capacity", profileNumberInput("base_stats.cargo_capacity", profile.base_stats.cargo_capacity, "0.01", `min="0"`))}
+        ${field("Evasion (0-1)", profileNumberInput("base_stats.evasion", profile.base_stats.evasion, "0.01", `min="0" max="1"`))}
+        ${field("Hull Capacity", profileNumberInput("base_stats.hull_capacity", profile.base_stats.hull_capacity, "0.01", `min="0"`))}
+        ${field("Hull Base Recharge", profileNumberInput("base_stats.hull_recharge_base", profile.base_stats.hull_recharge_base, "0.01", `min="0"`))}
       </div></div>
       <div class="form-section"><h3>Flight Specs</h3><div class="form-grid">
         ${Object.entries(specs).map(([key, value]) => field(key, numberInput(`specs.${key}`, value, "0.01"))).join("")}
@@ -1867,6 +2797,7 @@ function renderShipDetail(root, id, ship) {
       ${i18nFields("ship", id)}
     </div>`;
   bindDetail(root, "ships", id, ship);
+  bindShipProfileControls(root, id, profile);
 }
 
 function renderShipVisualDetail(root, id, ship) {
@@ -2150,12 +3081,18 @@ function addEntity(kind) {
     return;
   }
   collection[id] = cfg.make(id);
+  if (kind === "weapons") syncItemDefinitionForCombat("weapon", collection[id]);
+  if (kind === "shields") syncItemDefinitionForCombat("shield", collection[id]);
+  if (kind === "equipment") syncItemDefinitionForCombat("equipment", collection[id]);
+  if (kind === "ships") syncItemDefinitionForShip(collection[id]);
   selected[kind] = id;
-  contentEntry(cfg.singular, id, "ko").name = id;
-  contentEntry(cfg.singular, id, "en").name = id;
+  if (!cfg.editorOnly) {
+    contentEntry(cfg.singular, id, "ko").name = id;
+    contentEntry(cfg.singular, id, "en").name = id;
+  }
   setDirty();
   rerender();
-  setActiveTab(kind);
+  setActiveTab(cfg.tab || kind);
 }
 
 function deleteEntity(kind, id) {
@@ -2164,15 +3101,18 @@ function deleteEntity(kind, id) {
   if (!collection[id]) return;
   if (!confirm(`Delete ${id}?`)) return;
   delete collection[id];
-  const singular = cfg.singular;
-  for (const lang of ["ko", "en"]) delete capsule.i18n.content?.[lang]?.[singular]?.[id];
+  if (!cfg.editorOnly) {
+    const singular = cfg.singular;
+    for (const lang of ["ko", "en"]) delete capsule.i18n.content?.[lang]?.[singular]?.[id];
+  }
+  if (kind === "ships") delete capsule.combatEditor.shipProfiles?.[id];
   selected[kind] = Object.keys(collection).sort()[0] || null;
   setDirty();
   rerender();
 }
 
 function makeNewItem(id) {
-  return { id, category: "resource", type: "mineral", mass: 1, tradable: true, stackable: true };
+  return { id, kind: "resource", type: "mineral", identity: "quantity", mass: 1, tradable: true, stackable: true };
 }
 
 function makeNewResource(id) {
@@ -2187,6 +3127,56 @@ function makeNewBuilding(id) {
   return { id, size: "M", category: "factory", hp: 1000, adminCost: 1, placement: { type: "free_space" }, production: { kind: "NONE", outputSink: "building_inventory" }, docking: { capacity: 0 }, trade: { enabled: false, handling_speed: 0, cargo_capacity: 0, min_reputation: 0 }, initialInventory: {}, visual: { modelId: "hq_01", color: "#ffffff", emissive: "#17345e", emissiveIntensity: 0.08, scale: 4 } };
 }
 
+function makeCommonEquipmentDefinition(id) {
+  return { id, item_id: id, name_id: `${id}.name`, size: "s", mass: 1, processing_load: 0 };
+}
+
+function makeNewWeapon(id) {
+  return {
+    ...makeCommonEquipmentDefinition(id),
+    damage_kinetic: 0,
+    damage_thermal: 0,
+    damage_energy: 0,
+    damage_beta: 0,
+    power_use: 0,
+    acc: 1,
+    range: 0,
+    crit_chance: 0,
+    crit_damage: 0,
+    special_skill: null
+  };
+}
+
+function makeNewShield(id) {
+  return {
+    ...makeCommonEquipmentDefinition(id),
+    def_bonus_kinetic: 0,
+    def_bonus_thermal: 0,
+    def_bonus_energy: 0,
+    capacity: 0,
+    recharge_base: 0,
+    recharge_rate: 0,
+    power_use_cap: 0
+  };
+}
+
+function makeNewEquipment(id) {
+  return {
+    ...makeCommonEquipmentDefinition(id),
+    processing_capacity_bonus: 0,
+    power_capacity_bonus: 0,
+    power_recharge_bonus: 0,
+    cargo_capacity_bonus: 0,
+    evasion_bonus: 0,
+    hull_capacity_bonus: 0,
+    hull_recharge_base_bonus: 0
+  };
+}
+
+function makeNewCompatibilityPreset(id) {
+  return { id, name_id: `${id}.name`, compatible_ids: [] };
+}
+
 function makeNewShip(id) {
   return makeShip(id, "#44d7b6");
 }
@@ -2197,6 +3187,7 @@ function collectAssetRefs() {
   for (const ship of Object.values(capsule.shipDefs.ships || {})) if (ship.visual?.modelId) models.add(ship.visual.modelId);
   for (const res of Object.values(capsule.resourceDefs.resources || {})) if (res.visual?.modelId) models.add(res.visual.modelId);
   for (const b of Object.values(capsule.buildingDefs.buildings || {})) if (b.visual?.modelId) models.add(b.visual.modelId);
+  for (const b of Object.values(capsule.buildingDefs.buildings || {})) if (b.docking?.theme_music_id) audio.add(b.docking.theme_music_id);
   for (const sector of Object.values(capsule.sectorDefs.sectors || {})) if (sector.themeMusicId) audio.add(sector.themeMusicId);
   return { models, audio };
 }
@@ -2280,6 +3271,7 @@ function runValidation() {
     for (const entry of sector.initialBuildings || []) if (!buildings[entry.building_id]) addIssue("ERROR", "sector_defs", `${id} initialBuildings references ${entry.building_id}`);
     for (const entry of sector.initialResourceFacilities || []) if (!buildings[entry.building_id]) addIssue("ERROR", "sector_defs", `${id} initialResourceFacilities references ${entry.building_id}`);
   }
+  validateCombatEditor();
   for (const [id, ship] of Object.entries(ships)) {
     const modelId = ship.visual?.modelId;
     if (!modelId) addIssue("ERROR", "ship_defs", `${id} has no visual modelId`);
@@ -2304,7 +3296,12 @@ function runValidation() {
   for (const id of refs.models) if (!capsule.assetRegistry.models?.[id]) addIssue("WARNING", "asset_registry", `Model ${id} has no path`);
   for (const id of refs.audio) if (!capsule.assetRegistry.audio?.[id]) addIssue("WARNING", "asset_registry", `Audio ${id} has no path`);
   for (const [kind, cfg] of Object.entries(entityConfig)) {
+    if (cfg.editorOnly) continue;
     for (const id of Object.keys(cfg.collection())) {
+      if (cfg.singular === "item") {
+        const item = capsule.itemDefs.items?.[id];
+        if (normalizeItemKind(item?.kind || item?.category) !== "resource") continue;
+      }
       for (const lang of ["ko", "en"]) {
         const content = capsule.i18n.content?.[lang]?.[cfg.singular]?.[id];
         if (!content?.name) addIssue("WARNING", "i18n", `${lang}.${cfg.singular}.${id}.name is empty`);
@@ -2315,6 +3312,109 @@ function runValidation() {
   updateHeader();
   countValues();
   return issues;
+}
+
+function validateCombatEditor() {
+  for (const [id, weapon] of Object.entries(capsule.combatEditor.weapons || {})) {
+    validateCommonEquipmentDefinition("weapon", id, weapon);
+    validateNonnegativeFields("weapon", id, weapon, ["damage_kinetic", "damage_thermal", "damage_energy", "damage_beta", "power_use", "range"]);
+    validateRatioField("weapon", id, weapon, "acc");
+    if (!hasAtMostDecimals(weapon.acc, 2)) addIssue("ERROR", FILES.weaponDefs, `weapon ${id} acc must use at most 2 decimal places`);
+    validateRatioField("weapon", id, weapon, "crit_chance");
+    validateRatioField("weapon", id, weapon, "crit_damage");
+  }
+  for (const [id, shield] of Object.entries(capsule.combatEditor.shields || {})) {
+    validateCommonEquipmentDefinition("shield", id, shield);
+    validateRatioField("shield", id, shield, "def_bonus_kinetic");
+    validateRatioField("shield", id, shield, "def_bonus_thermal");
+    validateRatioField("shield", id, shield, "def_bonus_energy");
+    validateNonnegativeFields("shield", id, shield, ["capacity", "recharge_base", "recharge_rate", "power_use_cap"]);
+  }
+  for (const [id, equipment] of Object.entries(capsule.combatEditor.equipment || {})) {
+    validateCommonEquipmentDefinition("equipment", id, equipment);
+    validateNonnegativeFields("equipment", id, equipment, ["processing_capacity_bonus", "power_capacity_bonus", "power_recharge_bonus", "cargo_capacity_bonus", "hull_capacity_bonus", "hull_recharge_base_bonus"]);
+    validateRatioField("equipment", id, equipment, "evasion_bonus");
+  }
+  for (const type of SLOT_TYPES) {
+    const definitions = combatDefinitionsForType(type);
+    for (const [id, preset] of Object.entries(capsule.combatEditor.compatibilityPresets?.[type] || {})) {
+      if (!preset.name_id) addIssue("ERROR", FILES.combatCompatibilityDefs, `${type} compatibility ${id} has no name_id`);
+      for (const definitionId of preset.compatible_ids || []) {
+        if (!definitions[definitionId]) addIssue("ERROR", FILES.combatCompatibilityDefs, `${type} compatibility ${id} references missing ${definitionId}`);
+      }
+    }
+  }
+  for (const [shipId, profile] of Object.entries(capsule.combatEditor.shipProfiles || {})) {
+    if (!capsule.shipDefs.ships?.[shipId]) addIssue("WARNING", FILES.shipDefs, `Ship slot profile ${shipId} has no ship definition`);
+    validateShipProfile(shipId, profile);
+  }
+}
+
+function validateCommonEquipmentDefinition(type, id, definition) {
+  const file = combatOutputFile(type);
+  const itemId = definition.item_id || id;
+  if (!definition.name_id) addIssue("ERROR", file, `${type} ${id} has no name_id`);
+  if (!itemId) addIssue("ERROR", file, `${type} ${id} has no item_id`);
+  if (itemId && !capsule.itemDefs.items?.[itemId]) addIssue("ERROR", FILES.itemDefs, `${type} ${id} references missing item ${itemId}`);
+  if (!EQUIPMENT_SIZES.includes(definition.size)) addIssue("ERROR", file, `${type} ${id} has invalid size ${definition.size}`);
+  if (!Number.isInteger(Number(definition.mass)) || Number(definition.mass) < 1) addIssue("ERROR", file, `${type} ${id} mass must be a positive integer`);
+  if (!Number.isInteger(Number(definition.processing_load)) || Number(definition.processing_load) < 0) addIssue("ERROR", file, `${type} ${id} processing_load must be a nonnegative integer`);
+}
+
+function validateNonnegativeFields(type, id, definition, fields) {
+  const file = combatOutputFile(type);
+  for (const fieldName of fields) {
+    const value = Number(definition[fieldName]);
+    if (!Number.isFinite(value) || value < 0) addIssue("ERROR", file, `${type} ${id} ${fieldName} must be nonnegative`);
+  }
+}
+
+function validateRatioField(type, id, definition, fieldName) {
+  const value = Number(definition[fieldName]);
+  if (!Number.isFinite(value) || value < 0 || value > 1) addIssue("ERROR", combatOutputFile(type), `${type} ${id} ${fieldName} must be between 0 and 1`);
+}
+
+function combatOutputFile(type) {
+  if (type === "weapon") return FILES.weaponDefs;
+  if (type === "shield") return FILES.shieldDefs;
+  if (type === "equipment") return FILES.equipmentDefs;
+  if (type === "ship profile") return FILES.shipDefs;
+  return "combat_editor";
+}
+
+function hasAtMostDecimals(value, decimals) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return false;
+  const scale = 10 ** decimals;
+  return Math.abs(number * scale - Math.round(number * scale)) < 1e-8;
+}
+
+function validateShipProfile(shipId, profile) {
+  if (!SHIP_CLASS_VALUES.has(profile.ship_class)) addIssue("ERROR", FILES.shipDefs, `${shipId} has invalid ship_class ${profile.ship_class}`);
+  const baseStats = profile.base_stats || {};
+  validateNonnegativeFields("ship profile", shipId, baseStats, ["processing_capacity", "power_capacity", "power_recharge", "cargo_capacity", "hull_capacity", "hull_recharge_base"]);
+  validateRatioField("ship profile", shipId, baseStats, "evasion");
+  const slotIds = new Set();
+  for (const type of SLOT_TYPES) {
+    const definitions = combatDefinitionsForType(type);
+    const presets = capsule.combatEditor.compatibilityPresets?.[type] || {};
+    for (const slot of profile.slots?.[type] || []) {
+      if (!slot.id) addIssue("ERROR", FILES.shipDefs, `${shipId} has a ${type} slot without id`);
+      if (slotIds.has(slot.id)) addIssue("ERROR", FILES.shipDefs, `${shipId} has duplicate slot id ${slot.id}`);
+      slotIds.add(slot.id);
+      if (!EQUIPMENT_SIZES.includes(slot.size)) addIssue("ERROR", FILES.shipDefs, `${shipId}.${slot.id} has invalid size ${slot.size}`);
+      const preset = presets[slot.compatibility_preset_id];
+      if (slot.compatibility_preset_id && !preset) addIssue("ERROR", FILES.shipDefs, `${shipId}.${slot.id} references missing ${type} compatibility ${slot.compatibility_preset_id}`);
+      if (!slot.equipped_id) continue;
+      const definition = definitions[slot.equipped_id];
+      if (!definition) {
+        addIssue("ERROR", FILES.shipDefs, `${shipId}.${slot.id} references missing ${type} ${slot.equipped_id}`);
+        continue;
+      }
+      if (!preset?.compatible_ids?.includes(slot.equipped_id)) addIssue("ERROR", FILES.shipDefs, `${shipId}.${slot.id} equipped ${slot.equipped_id} is not listed by its compatibility preset`);
+      if (!isSizeCompatible(slot.size, definition.size)) addIssue("ERROR", FILES.shipDefs, `${shipId}.${slot.id} size ${slot.size} cannot mount ${definition.size} ${slot.equipped_id}`);
+    }
+  }
 }
 
 function addIssue(level, file, message) {
@@ -2352,7 +3452,12 @@ function mapAllocated() {
 function toFilePayload(slot) {
   syncGameDataBeforeOutput();
   if (slot === "assetRegistry") return buildAssetRegistryPayload();
+  if (slot === "itemDefs") return buildItemDefsPayload();
   if (slot === "shipDefs") return buildShipDefsPayload();
+  if (slot === "weaponDefs") return buildWeaponDefsPayload();
+  if (slot === "shieldDefs") return buildShieldDefsPayload();
+  if (slot === "equipmentDefs") return buildEquipmentDefsPayload();
+  if (slot === "combatCompatibilityDefs") return buildCombatCompatibilityDefsPayload();
   if (slot === "vfxDefs") return buildVfxDefsPayload();
   return clone(capsule[slot]);
 }
@@ -2360,8 +3465,10 @@ function toFilePayload(slot) {
 function syncGameDataBeforeOutput() {
   capsule.chunkMap.sourceGmap = GAME_GMAP_FILE;
   syncClusterCatalog();
+  syncItemDefinitions();
   syncVfxDefs();
   syncShipVisuals();
+  ensureShipProfiles();
 }
 
 function buildAssetRegistryPayload() {
@@ -2384,19 +3491,126 @@ function buildAssetRegistryPayload() {
   };
 }
 
+function buildItemDefsPayload() {
+  syncItemDefinitions();
+  return {
+    version: Math.max(2, Number(capsule.itemDefs.version || 2) || 2),
+    items: sortedItemDefinitions(capsule.itemDefs.items)
+  };
+}
+
+function sortedItemDefinitions(record = {}) {
+  return Object.fromEntries(
+    Object.entries(record || {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, value]) => [id, cleanItemDefinition(id, value)])
+  );
+}
+
+function cleanItemDefinition(id, value = {}) {
+  const kind = normalizeItemKind(value.kind || value.category);
+  const identity = inferItemIdentity(value);
+  const item = {
+    id: value.id || id,
+    kind
+  };
+  if (kind === "resource") item.type = value.type || "mineral";
+  item.identity = identity;
+  item.mass = nonnegativeNumber(value.mass, kind === "ship" ? 0 : 1);
+  item.tradable = value.tradable !== false;
+  item.stackable = value.stackable ?? identity !== "unique";
+  return item;
+}
+
+function syncItemDefinitions() {
+  capsule.itemDefs ??= { version: 2, items: {} };
+  capsule.itemDefs.version = Math.max(2, Number(capsule.itemDefs.version || 2) || 2);
+  capsule.itemDefs.items ??= {};
+
+  for (const resource of Object.values(capsule.resourceDefs.resources || {})) {
+    const itemId = resource.producesItemId;
+    if (!itemId) continue;
+    const item = capsule.itemDefs.items[itemId] || { id: itemId };
+    item.id = itemId;
+    item.kind = "resource";
+    item.type = item.type || resource.visual?.category || "mineral";
+    item.identity = inferItemIdentity(item);
+    item.mass = nonnegativeNumber(item.mass, 1);
+    item.tradable = item.tradable !== false;
+    item.stackable = item.stackable ?? true;
+    capsule.itemDefs.items[itemId] = item;
+  }
+
+  for (const type of SLOT_TYPES) {
+    for (const definition of Object.values(combatDefinitionsForType(type))) {
+      syncItemDefinitionForCombat(type, definition);
+    }
+  }
+
+  for (const ship of Object.values(capsule.shipDefs.ships || {})) {
+    syncItemDefinitionForShip(ship);
+  }
+}
+
+function syncItemDefinitionForCombat(type, definition = {}) {
+  if (!definition.id) return;
+  capsule.itemDefs ??= { version: 2, items: {} };
+  capsule.itemDefs.items ??= {};
+  const itemId = definition.item_id || definition.id;
+  definition.item_id = itemId;
+  const item = capsule.itemDefs.items[itemId] || { id: itemId };
+  item.id = itemId;
+  item.kind = type;
+  delete item.type;
+  item.identity = "conditional_unique";
+  item.mass = Math.max(1, Math.round(Number(definition.mass ?? item.mass ?? 1) || 1));
+  item.tradable = item.tradable !== false;
+  item.stackable = item.stackable ?? true;
+  definition.mass = item.mass;
+  capsule.itemDefs.items[itemId] = item;
+}
+
+function syncItemDefinitionForShip(ship = {}) {
+  if (!ship.id) return;
+  capsule.itemDefs ??= { version: 2, items: {} };
+  capsule.itemDefs.items ??= {};
+  const itemId = ship.item_id || ship.id;
+  ship.item_id = itemId;
+  const item = capsule.itemDefs.items[itemId] || { id: itemId };
+  item.id = itemId;
+  item.kind = "ship";
+  delete item.type;
+  item.identity = "unique";
+  item.mass = nonnegativeNumber(item.mass, 0);
+  item.tradable = item.tradable !== false;
+  item.stackable = false;
+  capsule.itemDefs.items[itemId] = item;
+}
+
+function normalizeItemKind(kind) {
+  return ITEM_KINDS.includes(kind) ? kind : "resource";
+}
+
+function inferItemIdentity(item = {}) {
+  if (ITEM_IDENTITIES.includes(item.identity)) return item.identity;
+  if (item.stackable === false) return "unique";
+  return normalizeItemKind(item.kind || item.category) === "resource" ? "quantity" : "conditional_unique";
+}
+
 function buildShipDefsPayload() {
   const payload = clone(capsule.shipDefs);
   for (const [id, ship] of Object.entries(payload.ships || {})) {
     const visual = ship.visual || {};
     const sourceVisual = capsule.shipDefs.ships?.[id]?.visual || {};
+    ship.item_id = ship.item_id || id;
     ship.visual = {
       modelId: visual.modelId || id,
       reflectionIntensity: Number(visual.materials?.reflectionIntensity ?? visual.reflectionIntensity ?? 0.32),
       highlightColor: sourceVisual.highlightColor || visual.highlightColor || firstHighlightColor(sourceVisual) || firstHighlightColor(visual) || "#ffffff",
       emissiveSurface: {
-        ...(visual.materials?.emissiveSurface || sourceVisual.materials?.emissiveSurface || { materialName: "EmissiveMTL_light", fallbackColor: "#ffffff" })
+        ...(visual.materials?.emissiveSurface || sourceVisual.materials?.emissiveSurface || visual.emissiveSurface || sourceVisual.emissiveSurface || { materialName: "EmissiveMTL_light", fallbackColor: "#ffffff" })
       },
-      highlights: visual.materials?.highlights || sourceVisual.materials?.highlights || {},
+      highlights: visual.materials?.highlights || sourceVisual.materials?.highlights || visual.highlights || sourceVisual.highlights || {},
       effectBindings: clone(sourceVisual.effectBindings || visual.effectBindings || [])
     };
     ship.visual.highlights.highlight_01 ??= {
@@ -2406,8 +3620,123 @@ function buildShipDefsPayload() {
       defaultColor: ship.visual.highlightColor
     };
     ship.visual.highlights.highlight_01.defaultColor = ship.visual.highlightColor;
+    ship.combat = buildShipCombatPayload(id);
   }
   return payload;
+}
+
+function buildWeaponDefsPayload() {
+  return {
+    version: capsule.combatEditor.version || 1,
+    weapons: sortedCombatRecord(capsule.combatEditor.weapons, buildWeaponDefinitionPayload)
+  };
+}
+
+function buildShieldDefsPayload() {
+  return {
+    version: capsule.combatEditor.version || 1,
+    shields: sortedCombatRecord(capsule.combatEditor.shields, buildShieldDefinitionPayload)
+  };
+}
+
+function buildEquipmentDefsPayload() {
+  return {
+    version: capsule.combatEditor.version || 1,
+    equipment: sortedCombatRecord(capsule.combatEditor.equipment, buildEquipmentDefinitionPayload)
+  };
+}
+
+function sortedCombatRecord(record = {}, builder) {
+  return Object.fromEntries(
+    Object.entries(record || {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, value]) => [id, builder(value)])
+  );
+}
+
+function commonCombatPayload(definition = {}) {
+  return {
+    id: definition.id,
+    name_id: definition.name_id || `${definition.id}.name`,
+    size: definition.size || "s",
+    processing_load: Math.max(0, Math.round(Number(definition.processing_load ?? 0) || 0))
+  };
+}
+
+function buildWeaponDefinitionPayload(weapon = {}) {
+  return {
+    ...commonCombatPayload(weapon),
+    damage_kinetic: nonnegativeNumber(weapon.damage_kinetic),
+    damage_thermal: nonnegativeNumber(weapon.damage_thermal),
+    damage_energy: nonnegativeNumber(weapon.damage_energy),
+    damage_beta: nonnegativeNumber(weapon.damage_beta),
+    power_use: nonnegativeNumber(weapon.power_use),
+    acc: normalizedRatio(weapon.acc, 1),
+    range: nonnegativeNumber(weapon.range),
+    crit_chance: normalizedRatio(weapon.crit_chance),
+    crit_damage: normalizedRatio(weapon.crit_damage),
+    special_skill: weapon.special_skill || null,
+    item_id: weapon.item_id || weapon.id
+  };
+}
+
+function buildShieldDefinitionPayload(shield = {}) {
+  return {
+    ...commonCombatPayload(shield),
+    def_bonus_kinetic: normalizedRatio(shield.def_bonus_kinetic),
+    def_bonus_thermal: normalizedRatio(shield.def_bonus_thermal),
+    def_bonus_energy: normalizedRatio(shield.def_bonus_energy),
+    capacity: nonnegativeNumber(shield.capacity),
+    recharge_base: nonnegativeNumber(shield.recharge_base),
+    recharge_rate: nonnegativeNumber(shield.recharge_rate),
+    power_use_cap: nonnegativeNumber(shield.power_use_cap),
+    item_id: shield.item_id || shield.id
+  };
+}
+
+function buildEquipmentDefinitionPayload(equipment = {}) {
+  return {
+    ...commonCombatPayload(equipment),
+    processing_capacity_bonus: nonnegativeNumber(equipment.processing_capacity_bonus),
+    power_capacity_bonus: nonnegativeNumber(equipment.power_capacity_bonus),
+    power_recharge_bonus: nonnegativeNumber(equipment.power_recharge_bonus),
+    cargo_capacity_bonus: nonnegativeNumber(equipment.cargo_capacity_bonus),
+    evasion_bonus: normalizedRatio(equipment.evasion_bonus),
+    hull_capacity_bonus: nonnegativeNumber(equipment.hull_capacity_bonus),
+    hull_recharge_base_bonus: nonnegativeNumber(equipment.hull_recharge_base_bonus),
+    item_id: equipment.item_id || equipment.id
+  };
+}
+
+function buildCombatCompatibilityDefsPayload() {
+  const presets = {};
+  for (const type of SLOT_TYPES) {
+    presets[type] = sortedCloneRecord(capsule.combatEditor.compatibilityPresets?.[type] || {});
+  }
+  return {
+    version: capsule.combatEditor.version || 1,
+    sizeCompatibility: clone(SIZE_COMPATIBILITY),
+    compatibilityPresets: presets
+  };
+}
+
+function buildShipCombatPayload(shipId) {
+  const profile = normalizeShipProfile(shipId, capsule.combatEditor.shipProfiles?.[shipId] || makeShipProfile(shipId));
+  const slots = {};
+  for (const type of SLOT_TYPES) slots[type] = profile.slots[type].map((slot) => ({ ...slot }));
+  return {
+    ship_class: profile.ship_class,
+    base_stats: { ...profile.base_stats },
+    slots
+  };
+}
+
+function sortedCloneRecord(record = {}) {
+  return Object.fromEntries(
+    Object.entries(record || {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, value]) => [id, clone(value)])
+  );
 }
 
 function buildVfxDefsPayload() {
@@ -2588,6 +3917,7 @@ function exportAllFiles() {
 $("#btn-new-project").addEventListener("click", newProject);
 $("#btn-open-project").addEventListener("click", () => $("#file-project").click());
 $("#btn-save-project").addEventListener("click", () => saveProjectFile().catch((err) => alert(err.message)));
+$("#btn-load-combat-defaults").addEventListener("click", loadDefaultCombatCatalog);
 $("#file-project").addEventListener("change", async (event) => {
   const file = event.target.files[0];
   if (!file) return;
@@ -2617,13 +3947,123 @@ function normalizeCapsule(raw) {
   next.shipDefs = normalizeShips(raw.shipDefs || base.shipDefs);
   next.i18n = normalizeI18n(raw.i18n || base.i18n);
   next.chunkMap = normalizeChunkMap(raw.chunkMap || base.chunkMap);
+  next.combatEditor = normalizeCombatEditor(raw.combatEditor || base.combatEditor, next.shipDefs, next.itemDefs);
   const previousCapsule = capsule;
   capsule = next;
+  syncItemDefinitions();
   syncVfxDefs();
   syncShipVisuals();
   const normalized = capsule;
   capsule = previousCapsule;
   return normalized;
+}
+
+function normalizeCombatEditor(raw = {}, shipDefs = { ships: {} }, itemDefs = { items: {} }) {
+  const result = makeEmptyCombatEditor();
+  result.version = Number(raw.version || 1);
+  for (const [id, value] of Object.entries(raw.weapons || {})) result.weapons[id] = normalizeWeaponDefinition(id, value, itemDefs);
+  for (const [id, value] of Object.entries(raw.shields || {})) result.shields[id] = normalizeShieldDefinition(id, value, itemDefs);
+  for (const [id, value] of Object.entries(raw.equipment || {})) result.equipment[id] = normalizeEquipmentDefinition(id, value, itemDefs);
+  for (const type of SLOT_TYPES) {
+    for (const [id, value] of Object.entries(raw.compatibilityPresets?.[type] || {})) {
+      result.compatibilityPresets[type][id] = {
+        id,
+        name_id: value.name_id || `${id}.name`,
+        compatible_ids: [...new Set(Array.isArray(value.compatible_ids) ? value.compatible_ids.filter(Boolean) : [])]
+      };
+    }
+  }
+  for (const [shipId, profile] of Object.entries(raw.shipProfiles || {})) {
+    result.shipProfiles[shipId] = normalizeShipProfile(shipId, profile);
+  }
+  for (const shipId of Object.keys(shipDefs.ships || {})) result.shipProfiles[shipId] ??= makeShipProfile(shipId);
+  return result;
+}
+
+function normalizeCommonEquipmentDefinition(id, value = {}, itemDefs = { items: {} }) {
+  const itemId = value.item_id || value.itemId || id;
+  const item = itemDefs.items?.[itemId] || {};
+  return {
+    id,
+    item_id: itemId,
+    name_id: value.name_id || `${id}.name`,
+    size: EQUIPMENT_SIZES.includes(value.size) ? value.size : "s",
+    mass: Math.max(1, Math.round(Number(value.mass ?? item.mass ?? 1) || 1)),
+    processing_load: Math.max(0, Math.round(Number(value.processing_load ?? 0) || 0))
+  };
+}
+
+function normalizeWeaponDefinition(id, value = {}, itemDefs = { items: {} }) {
+  return {
+    ...normalizeCommonEquipmentDefinition(id, value, itemDefs),
+    damage_kinetic: nonnegativeNumber(value.damage_kinetic),
+    damage_thermal: nonnegativeNumber(value.damage_thermal),
+    damage_energy: nonnegativeNumber(value.damage_energy),
+    damage_beta: nonnegativeNumber(value.damage_beta),
+    power_use: nonnegativeNumber(value.power_use),
+    acc: normalizedRatio(value.acc, 1),
+    range: nonnegativeNumber(value.range),
+    crit_chance: normalizedRatio(value.crit_chance),
+    crit_damage: normalizedRatio(value.crit_damage),
+    special_skill: value.special_skill || null
+  };
+}
+
+function normalizeShieldDefinition(id, value = {}, itemDefs = { items: {} }) {
+  return {
+    ...normalizeCommonEquipmentDefinition(id, value, itemDefs),
+    def_bonus_kinetic: normalizedRatio(value.def_bonus_kinetic),
+    def_bonus_thermal: normalizedRatio(value.def_bonus_thermal),
+    def_bonus_energy: normalizedRatio(value.def_bonus_energy),
+    capacity: nonnegativeNumber(value.capacity),
+    recharge_base: nonnegativeNumber(value.recharge_base),
+    recharge_rate: nonnegativeNumber(value.recharge_rate),
+    power_use_cap: nonnegativeNumber(value.power_use_cap)
+  };
+}
+
+function normalizeEquipmentDefinition(id, value = {}, itemDefs = { items: {} }) {
+  return {
+    ...normalizeCommonEquipmentDefinition(id, value, itemDefs),
+    processing_capacity_bonus: nonnegativeNumber(value.processing_capacity_bonus),
+    power_capacity_bonus: nonnegativeNumber(value.power_capacity_bonus),
+    power_recharge_bonus: nonnegativeNumber(value.power_recharge_bonus),
+    cargo_capacity_bonus: nonnegativeNumber(value.cargo_capacity_bonus),
+    evasion_bonus: normalizedRatio(value.evasion_bonus),
+    hull_capacity_bonus: nonnegativeNumber(value.hull_capacity_bonus),
+    hull_recharge_base_bonus: nonnegativeNumber(value.hull_recharge_base_bonus)
+  };
+}
+
+function normalizeShipProfile(shipId, value = {}) {
+  const base = makeShipProfile(shipId);
+  base.ship_class = SHIP_CLASS_VALUES.has(value.ship_class) ? value.ship_class : DEFAULT_SHIP_CLASS;
+  const baseStats = value.base_stats || {};
+  for (const key of Object.keys(base.base_stats)) {
+    base.base_stats[key] = key === "evasion" ? normalizedRatio(baseStats[key]) : nonnegativeNumber(baseStats[key]);
+  }
+  for (const type of SLOT_TYPES) {
+    base.slots[type] = Array.isArray(value.slots?.[type])
+      ? value.slots[type].map((slot, index) => ({
+        id: slot.id || `${type}_slot_${String(index + 1).padStart(2, "0")}`,
+        slot_type: type,
+        size: EQUIPMENT_SIZES.includes(slot.size) ? slot.size : "s",
+        compatibility_preset_id: slot.compatibility_preset_id || null,
+        equipped_id: slot.equipped_id || null
+      }))
+      : [];
+  }
+  return base;
+}
+
+function nonnegativeNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, number) : fallback;
+}
+
+function normalizedRatio(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? clamp(number, 0, 1) : fallback;
 }
 
 function normalizeItems(raw) {
@@ -2632,9 +4072,19 @@ function normalizeItems(raw) {
   for (const [key, value] of Object.entries(src)) {
     if (key === "version") continue;
     const id = value.id || key;
-    items[id] = { id, category: value.category || "resource", type: value.type || "mineral", mass: Number(value.mass ?? 1), tradable: value.tradable ?? true, stackable: value.stackable ?? true };
+    const kind = normalizeItemKind(value.kind || value.category);
+    const item = {
+      id,
+      kind,
+      identity: inferItemIdentity({ ...value, kind }),
+      mass: Number(value.mass ?? (kind === "ship" ? 0 : 1)),
+      tradable: value.tradable ?? true,
+      stackable: value.stackable ?? kind !== "ship"
+    };
+    if (kind === "resource") item.type = value.type || "mineral";
+    items[id] = item;
   }
-  return { version: raw.version || 1, items };
+  return { version: Math.max(2, Number(raw.version || 2) || 2), items };
 }
 
 function normalizeResources(raw) {
@@ -2735,6 +4185,7 @@ function normalizeShips(raw) {
     delete specs.hyperdriveSpecs;
     ships[id] = {
       id,
+      item_id: value.item_id || id,
       labelKey: value.labelKey || `ui.settings.gameplay.${id}`,
       fallbackLabel: value.fallbackLabel || id,
       specs,
@@ -2832,7 +4283,7 @@ function normalizeVisual(visual = {}) {
 function normalizeShipVisual(id, visual = {}) {
   const base = createDefaultShipVisual(id, {});
   const materials = visual.materials || {};
-  const highlights = materials.highlights || {};
+  const highlights = materials.highlights || visual.highlights || {};
   const reflectionIntensity = Number(materials.reflectionIntensity ?? visual.reflectionIntensity ?? base.reflectionIntensity);
   const highlightColor = normalizeColorString(visual.highlightColor || firstHighlightColor(visual) || base.highlightColor);
 
@@ -2845,7 +4296,7 @@ function normalizeShipVisual(id, visual = {}) {
       reflectionIntensity,
       emissiveSurface: {
         ...base.materials.emissiveSurface,
-        ...(materials.emissiveSurface || {})
+        ...(materials.emissiveSurface || visual.emissiveSurface || {})
       },
       highlights: Object.keys(highlights).length
         ? highlights

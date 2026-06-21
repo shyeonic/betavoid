@@ -14,7 +14,6 @@
       --line: rgba(43, 98, 140, 0.22);
       --text: #133047;
       --muted: #537083;
-      --accent: #63d2ff;
       --warn: #ffbc66;
       --danger: #e36f6f;
       --svg-default-color: #6975A0;
@@ -48,15 +47,23 @@
     }
 
     :root[data-environment-mode="light"] {
+      color-scheme: light;
+      --primary: #8288ff;
+      --primary-text: #111560;
+      --accent: #0083ff;
       --ui_color: #6975A0;
       --ui_target_color: #7373ff;
     }
 
     :root[data-environment-mode="dark"] {
       color-scheme: dark;
+      --key-primary: #00bf4c;
+      --text-primary: #c7ffde;
+      --accent: #63d2ff;
       --panel: rgba(10, 20, 36, 0.86);
       --panel-strong: #0a1624;
       --line: rgba(60, 128, 190, 0.28);
+      --text-primary: #55bbff;
       --text: #c4e2f6;
       --muted: #4e7a94;
       --svg-default-color: #5278a8;
@@ -1132,6 +1139,11 @@
       --svg-icon-source: url("./rss/svg/ui_player.svg");
     }
 
+    .svg-icon-ship {
+      color: var(--svg-default-color);
+      --svg-icon-source: url("./rss/svg/ui_ship.svg");
+    }
+
     .svg-icon-target {
       --svg-icon-source: url("./rss/svg/ui_main_toggle.svg");
     }
@@ -1144,6 +1156,11 @@
     .svg-icon-arrow-right {
       color: var(--svg-default-color);
       --svg-icon-source: url("./rss/svg/ui_arrow_right_01.svg");
+    }
+
+    .svg-icon-sic {
+      color: var(--text);
+      --svg-icon-source: url("./rss/svg/icn_sic.svg");
     }
 
     .targeting-canvas {
@@ -1434,7 +1451,8 @@
       box-shadow: 0 2.4vh 7vh var(--list-panel-shadow);
     }
 
-    .object-list-header {
+    .object-list-header,
+    .player-popup-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -1443,7 +1461,8 @@
       padding: 1vh 1.2vh 1vh 1.6vh;
     }
 
-    .object-list-title {
+    .object-list-title,
+    .player-popup-title {
       margin: 0;
       color: var(--line);
       font-size: 2.4vh;
@@ -1591,7 +1610,7 @@
     .player-popup-backdrop {
       position: fixed;
       inset: 0;
-      z-index: 16;
+      z-index: 22;
       display: none;
       place-items: center;
       padding: clamp(1.6vh, 4vw, 4vh);
@@ -1606,7 +1625,7 @@
 
     .player-popup-panel {
       position: relative;
-      width: min(52vh, 100%);
+      max-height: min(86vh, 100%);
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -1617,23 +1636,8 @@
       box-shadow: 0 2.4vh 7vh var(--list-panel-shadow);
     }
 
-    .player-popup-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1.2vh;
-      min-height: 5.6vh;
-      padding: 1vh 1.2vh 1vh 1.6vh;
-      border-bottom: 0.12vh solid var(--line);
-    }
-
-    .player-popup-title {
-      margin: 0;
-      color: var(--line);
-      font-size: 2.4vh;
-      font-weight: normal;
-      line-height: 1;
-      text-transform: uppercase;
+    .player-popup-panel {
+      width: min(46vh, 100%);
     }
 
     .player-popup-body {
@@ -1641,6 +1645,7 @@
       display: flex;
       flex-direction: column;
       gap: 1.4vh;
+      overflow: auto;
     }
 
     .player-section-label {
@@ -1651,51 +1656,901 @@
       letter-spacing: 0.08em;
     }
 
-    .player-ship-grid {
+    .player-profile-card {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(16vh, 1fr));
+      grid-template-columns: 10vh minmax(0, 1fr);
+      gap: 1.2vh;
+      align-items: center;
+      padding: 1.2vh 1.4vh;
+    }
+
+    .player-profile-portrait {
+      width: 10vh;
+      height: 10vh;
+      object-fit: cover;
+      border: 0.12vh solid var(--line);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .player-profile-fields {
+      min-width: 0;
+      display: grid;
       gap: 1vh;
     }
 
-    .player-ship-card {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 0.6vh;
-      padding: 1.2vh 1.4vh;
-      border: 0.14vh solid var(--line);
-      border-radius: 0.8vh;
-      background: transparent;
+    .player-profile-name-field,
+    .player-profile-uid {
+      min-width: 0;
+      display: grid;
+      gap: 0.35vh;
+    }
+
+    .player-profile-name-field span,
+    .player-profile-uid b {
+      color: var(--muted);
+      font-size: 0.8vh;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .player-profile-name-field input {
+      min-width: 0;
+      height: 3.3vh;
+      padding: 0 0.8vh;
+      border: 0.12vh solid var(--line);
+      border-radius: 0.7vh;
+      background: rgba(255, 255, 255, 0.06);
       color: var(--text);
-      text-align: left;
-      transition: border-color 140ms ease, background 140ms ease;
+      font-size: 1.35vh;
+      font-weight: 700;
+      text-transform: none;
     }
 
-    .player-ship-card:hover {
+    .player-profile-name-field input:focus {
+      outline: none;
       border-color: var(--accent);
-      background: var(--row-hover-bg);
     }
 
-    .player-ship-card.active {
+    .player-profile-uid span {
+      overflow: hidden;
+      color: var(--text);
+      font-size: 1.05vh;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .player-sic-zone {
+      min-height: 3.6vh;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 0 1.4vh;
+      border: 0.12vh solid var(--line);
+      border-radius: 1vh;
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .player-sic-display {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.8vh;
+      color: var(--text);
+      font-size: 1.4vh;
+      font-weight: normal;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .player-sic-display .svg-icon {
+      width: 1.8vh;
+      height: 1.8vh;
+      flex: 0 0 auto;
+    }
+
+    .ship-info-action,
+    .fitting-candidate-button,
+    .fitting-compatible-action,
+    .fitting-bubble-button {
+      border: 0.12vh solid var(--line);
+      border-radius: 0.7vh;
+      background: rgba(255, 255, 255, 0.055);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+    }
+
+    .ship-info-action:hover,
+    .fitting-candidate-button:hover,
+    .fitting-candidate-button.active,
+    .fitting-compatible-action:hover,
+    .fitting-bubble-button:hover {
       border-color: var(--accent);
       background: var(--btn-active-bg);
-    }
-
-    .player-ship-card-label {
-      font-size: 1.4vh;
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .player-ship-card.active .player-ship-card-label {
       color: var(--accent);
     }
 
-    .player-ship-card-id {
-      font-size: 1vh;
-      color: var(--muted);
+    .ship-info-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.7vh;
+      padding: 0 2vh;
+    }
+
+    .ship-info-stat {
+      display: grid;
+      gap: 0.25vh;
+      min-width: 0;
       font-variant-numeric: tabular-nums;
+    }
+
+    .ship-info-stat b {
+      color: var(--muted);
+      font-size: 0.78vh;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
+    }
+
+    .ship-info-stat span {
+      overflow: hidden;
+      color: var(--text);
+      font-size: 1.15vh;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .combat-detail-specs {
+      display: grid;
+      gap: 1vh;
+      padding: 0 2vh;
+    }
+
+    .combat-focus-stack {
+      display: flex;
+      align-items: center;
+      gap: 0.8vh;
+    }
+
+    .combat-focus-card {
+      width: 50%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7vh;
+      padding: 0.9vh 1vh;
+      border: 0.1vh solid rgba(137, 221, 255, 0.22);
+      border-radius: 0.8vh;
+    }
+
+    .combat-focus-card h4 {
+      margin: 0;
+      color: var(--accent);
+      font-size: 0.95vh;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .combat-focus-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1vh;
+      min-width: 0;
+    }
+
+    .combat-focus-title-value {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45vh;
+      color: var(--text);
+      font-size: 1vh;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .combat-focus-title-separator {
+      color: var(--muted);
+      opacity: 0.58;
+    }
+
+    .combat-attribute-list {
+      display: grid;
+      gap: 0.45vh;
+    }
+
+    .combat-attribute-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: 0.65vh;
+      min-width: 0;
+    }
+
+    .combat-shield-res-card {
+      padding: 0;
+      cursor: pointer;
+    }
+
+    .combat-shield-res-summary {
+      display: grid;
+      gap: 0.7vh;
+      padding: 0.9vh 1vh;
+      border-radius: 0.7vh;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .combat-shield-res-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .combat-shield-res-card[open] {
+      border-color: rgba(137, 221, 255, 0.4);
+    }
+
+    .combat-attribute-badge {
+      display: inline-grid;
+      place-items: center;
+      min-width: 6vh;
+      height: 1.65vh;
+      padding: 0 0.5vh;
+      border: 0.08vh solid rgba(137, 221, 255, 0.4);
+      border-radius: 999vh;
+      background: rgba(137, 221, 255, 0.1);
+      color: var(--accent);
+      font-size: 1vh;
+      line-height: 0.5vh;
+      font-weight: normal;
+      letter-spacing: 0.04em;
+    }
+
+    .combat-attribute-value {
+      color: var(--text);
+      font-size: 1.05vh;
+      font-variant-numeric: tabular-nums;
+      justify-self: end;
+      white-space: nowrap;
+    }
+
+    .combat-shield-regen-breakdown {
+      display: grid;
+      gap: 0.35vh;
+      margin: 0 1vh 0.9vh;
+      padding-top: 0.55vh;
+      border-top: 0.1vh solid rgba(137, 221, 255, 0.18);
+    }
+
+    .combat-formula-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.8vh;
+      font-size: 0.82vh;
+    }
+
+    .combat-formula-row b {
+      color: var(--muted);
+      font-weight: normal;
+      text-transform: uppercase;
+    }
+
+    .combat-formula-row span {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .combat-formula-tag {
+      justify-self: stretch;
+      max-width: 100%;
+      color: var(--muted);
+      font-size: 0.82vh;
+      letter-spacing: 0.03em;
+      text-align: right;
+      white-space: normal;
+    }
+
+    .combat-secondary-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.7vh;
+    }
+
+    .ship-info-backdrop,
+    .ship-fitting-backdrop,
+    .fitting-compatible-backdrop,
+    .fitting-item-info-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 23;
+      display: grid;
+      place-items: center;
+      padding: clamp(1.6vh, 4vw, 4vh);
+      background: var(--backdrop-bg);
+      backdrop-filter: blur(var(--backdrop-blur));
+    }
+
+    .ship-fitting-backdrop {
+      z-index: 24;
+    }
+
+    .fitting-compatible-backdrop,
+    .fitting-item-info-backdrop {
+      z-index: 25;
+    }
+
+    .ship-info-panel,
+    .ship-fitting-panel,
+    .fitting-compatible-panel,
+    .fitting-item-info-panel {
+      width: min(98vh, 100%);
+      max-height: min(88vh, 100%);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 0.12vh solid var(--line);
+      border-radius: 1.1vh;
+      background: var(--panel-strong);
+      box-shadow: 0 2.4vh 7vh var(--list-panel-shadow);
+    }
+
+    .ship-fitting-panel {
+      width: min(126vh, 100%);
+    }
+
+    .fitting-compatible-panel {
+      width: min(92vh, 100%);
+    }
+
+    .fitting-item-info-panel {
+      width: min(54vh, 100%);
+    }
+
+    .fitting-cargo-panel {
+      width: min(72vh, 100%);
+    }
+
+    .ship-info-header,
+    .ship-fitting-header,
+    .fitting-compatible-header,
+    .fitting-item-info-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.2vh;
+      min-height: 5.6vh;
+      padding: 1vh 1.2vh 1vh 1.6vh;
+    }
+
+    .ship-info-title,
+    .ship-fitting-title,
+    .fitting-compatible-title,
+    .fitting-item-info-title {
+      margin: 0;
+      color: var(--line);
+      font-size: 2.4vh;
+      font-weight: normal;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .ship-info-body,
+    .ship-fitting-body,
+    .fitting-compatible-body,
+    .fitting-item-info-body {
+      overflow: auto;
+      padding: 1.6vh;
+    }
+
+    .fitting-item-info-body {
+      flex: 0 0 45vh;
+      height: 45vh;
+      max-height: 80vh;
+    }
+
+    .ship-fitting-body {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    .ship-fitting-body::-webkit-scrollbar {
+      display: none;
+    }
+
+    .ship-info-section {
+      display: grid;
+      gap: 1vh;
+      margin-bottom: 1.5vh;
+    }
+
+    .ship-info-section h3,
+    .ship-fitting-section-title {
+      margin: 0;
+      color: var(--muted);
+      font-size: 1vh;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .ship-info-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.8vh;
+    }
+
+    .ship-info-action {
+      padding: 0.75vh 1.1vh;
+      font-size: 1.05vh;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .ship-slot-list {
+      display: grid;
+      gap: 0.7vh;
+    }
+
+    .ship-slot-row,
+    .fitting-slot-button {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 0.8vh;
+      padding: 0;
+      color: var(--text);
+      text-align: left;
+    }
+
+    .ship-slot-main,
+    .fitting-slot-main {
+      display: grid;
+      gap: 0.8vh;
+      min-width: 0;
+    }
+
+    .fitting-compatible-detail .ship-slot-row,
+    .fitting-item-info-body .ship-slot-row {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .ship-slot-main b,
+    .fitting-slot-main b {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .ship-slot-main span,
+    .fitting-slot-main span,
+    .ship-slot-meta,
+    .fitting-slot-meta {
+      color: var(--muted);
+      font-size: 0.9vh;
+      text-transform: uppercase;
+    }
+
+    .ship-slot-cost-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5vh;
+      min-width: 0;
+    }
+
+    .ship-slot-main .ship-slot-cost-badge {
+      justify-self: start;
+      padding: 0.26vh 0.62vh;
+      border: 0.08vh solid rgba(137, 221, 255, 0.32);
+      border-radius: 999vh;
+      background: rgba(137, 221, 255, 0.08);
+      color: var(--accent);
+      font-size: 0.86vh;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .ship-slot-main .ship-slot-cost-value {
+      color: var(--text);
+      font-size: 1vh;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: none;
+    }
+
+    .ship-fitting-layout {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1vh;
+    }
+
+    .ship-fitting-stage {
+      display: grid;
+      grid-template-rows: 24vh auto auto auto;
+      gap: 1vh;
+      min-width: 0;
+    }
+
+    .ship-fitting-slot-band {
+      display: grid;
+      gap: 0.7vh;
+    }
+
+    .ship-fitting-slot-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: start;
+      gap: 0.7vh;
+    }
+
+    .fitting-slot-button {
+      background: var(--row-active-bg);
+      width: 5vh;
+      height: 4vh;
+      grid-template: 1fr / 1fr;
+      place-items: center;
+      padding: 0;
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+      text-align: center;
+      transition: border-color 140ms ease, background 140ms ease;
+    }
+
+    .fitting-slot-button.empty {
+      border-style: dashed;
+      border-color: var(--bubble-border);
+      opacity: 0.78;
+    }
+
+    .fitting-slot-icon {
+      width: 4vh;
+      height: 4vh;
+      object-position: center;
+    }
+
+    .fitting-slot-button .fitting-slot-icon {
+      width: 4vh;
+      height: 4vh;
+    }
+
+    .ship-fitting-model-wrap {
+      position: relative;
+      height: 24vh;
+      min-height: 24vh;
+      overflow: hidden;
+      border: 0.12vh solid var(--line);
+      border-radius: 1vh;
+      background:
+        radial-gradient(circle at 50% 42%, rgba(102, 185, 255, 0.2), transparent 52%),
+        rgba(0, 8, 18, 0.74);
+      background-size: auto, auto;
+    }
+
+    .ship-fitting-simulation-backdrop .ship-fitting-model-wrap {
+      background:
+        linear-gradient(rgba(120, 190, 255, 0.14) 0.1vh, transparent 0.1vh),
+        linear-gradient(90deg, rgba(120, 190, 255, 0.14) 0.1vh, transparent 0.1vh),
+        radial-gradient(circle at 50% 42%, rgba(102, 185, 255, 0.2), transparent 52%),
+        rgba(0, 8, 18, 0.74);
+      background-size: 4vh 4vh, 4vh 4vh, auto, auto;
+    }
+
+    .ship-fitting-model-wrap canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .ship-fitting-model-label {
+      position: absolute;
+      left: 1vh;
+      top: 1vh;
+      max-width: calc(100% - 14vh);
+      overflow: hidden;
+      color: #fff;
+      font-size: 1.4vh;
+      letter-spacing: 0.08em;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .ship-fitting-model-cargo {
+      position: absolute;
+      left: 1vh;
+      bottom: 1vh;
+      color: #ccc;
+      font-size: 0.95vh;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+
+    .ship-fitting-mode-label {
+      position: absolute;
+      left: 50%;
+      bottom: 1vh;
+      transform: translateX(-50%);
+      color: #ff4b4b;
+      font-size: 1.05vh;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-shadow: 0 0 0.9vh rgba(255, 38, 38, 0.55);
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .ship-fitting-menu {
+      position: absolute;
+      top: 1vh;
+      right: 1vh;
+      z-index: 2;
+    }
+
+    .ship-fitting-menu-toggle {
+      width: 3.2vh;
+      height: 3.2vh;
+      display: grid;
+      place-content: center;
+      gap: 0.34vh;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      list-style: none;
+      transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+    }
+
+    .ship-fitting-menu-toggle::-webkit-details-marker {
+      display: none;
+    }
+
+    .ship-fitting-menu-toggle span {
+      width: 1.45vh;
+      height: 0.16vh;
+      border-radius: 999vh;
+      background: #fff;
+      opacity: 0.9;
+    }
+
+    .ship-fitting-menu[open] .ship-fitting-menu-toggle,
+    .ship-fitting-menu-toggle:hover {
+      border-color: var(--accent);
+      background: rgba(35, 54, 66, 0.92);
+    }
+
+    .ship-fitting-menu-panel {
+      position: absolute;
+      top: 0;
+      right: calc(100% + 0.6vh);
+      display: flex;
+      align-items: center;
+      gap: 0.45vh;
+      padding: 0.35vh;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(0.5vh);
+      transition: opacity 140ms ease, transform 140ms ease;
+      white-space: nowrap;
+    }
+
+    .ship-fitting-menu[open] .ship-fitting-menu-panel {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+
+    .ship-fitting-menu-item {
+      min-height: 2.45vh;
+      padding: 0.46vh 0.78vh;
+      border: 0.1vh solid #fff;
+      border-radius: 0.55vh;
+      background: rgba(51, 51, 51, 0.86);
+      cursor: pointer;
+      color: #fff;
+      font-size: 0.85vh;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+    }
+
+    .ship-fitting-menu-item:hover,
+    .ship-fitting-menu-item:active:not(.disabled) {
+      border-color: var(--accent);
+      background: rgba(35, 54, 66, 0.96);
+      color: var(--accent);
+    }
+
+    .fitting-candidate-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6vh;
+      max-height: 30vh;
+      overflow: auto;
+      border: 0.1vh solid var(--line);
+      border-radius: 1.2vh;
+      padding: 1vh;
+      scrollbar-color: rgba(137, 221, 255, 0.55) transparent;
+      scrollbar-width: thin;
+      align-items: start;
+    }
+
+    .fitting-candidate-list::-webkit-scrollbar {
+      width: 0.45vh;
+    }
+
+    .fitting-candidate-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .fitting-candidate-list::-webkit-scrollbar-thumb {
+      border-radius: 999vh;
+      background: rgba(137, 221, 255, 0.55);
+    }
+
+    .fitting-candidate-button {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      height: fit-content;
+      width: 100%;
+      gap: 0.8vh;
+      padding: 0.75vh;
+      text-align: left;
+      font-size: 0.95vh;
+    }
+
+    .fitting-candidate-button b {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .fitting-candidate-cost {
+      color: var(--muted);
+      font-size: 0.98vh;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .player-ship-empty {
+      padding: 1vh 0;
+      color: var(--muted);
+      font-size: 0.95vh;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .fitting-stat-strip {
+      display: grid;
+      gap: 0.8vh;
+    }
+
+    .fitting-compatible-layout {
+      display: grid;
+      grid-template-columns: minmax(22vh, 34vh) minmax(0, 1fr);
+      gap: 1.2vh;
+    }
+
+    .fitting-compatible-detail {
+      display: grid;
+      align-content: start;
+      gap: 1vh;
+      min-width: 0;
+    }
+
+    .fitting-compatible-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.8vh;
+      margin-bottom: 4vh;
+      justify-content: center;
+    }
+
+    .fitting-compatible-action {
+      padding: 0.75vh 1.1vh;
+      font-size: 1vh;
+      font-weight: 700;
+      text-transform: uppercase;
+      width: 80%;
+      height: 5vh;
+    }
+
+    .fitting-cargo-list {
+      display: grid;
+      max-height: 36vh;
+      overflow: auto;
+      /* border: 0.1vh solid var(--line);
+      border-radius: 0.8vh; */
+      padding: 0.4vh 0.8vh;
+      scrollbar-color: rgba(137, 221, 255, 0.55) transparent;
+      scrollbar-width: thin;
+    }
+
+    .fitting-cargo-controls {
+      justify-content: space-between;
+      margin-bottom: 0.4vh;
+    }
+
+    .fitting-cargo-capacity-summary {
+      color: var(--muted);
+      font-size: 1vh;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .fitting-cargo-header,
+    .fitting-cargo-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 7vh 8vh;
+      align-items: center;
+      gap: 0.8vh;
+      min-height: 3.6vh;
+      padding: 0.45vh 0;
+      border-bottom: 0.1vh solid rgba(137, 221, 255, 0.16);
+      background: transparent;
+    }
+
+    .fitting-cargo-row:last-child {
+      border-bottom: 0;
+    }
+
+    .fitting-cargo-header {
+      min-height: 2.2vh;
+      color: var(--muted);
+      font-size: 0.78vh;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .fitting-cargo-name {
+      overflow: hidden;
+      min-width: 0;
+      color: var(--text);
+      font-size: 1.02vh;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .fitting-cargo-quantity,
+    .fitting-cargo-volume {
+      color: var(--line);
+      font-size: 0.95vh;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .fitting-bubble-button {
+      padding: 0.75vh 1.1vh;
+      font-size: 1vh;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .fitting-slot-bubble {
+      position: fixed;
+      z-index: 26;
+      display: flex;
+      gap: 0.6vh;
+      padding: 0.65vh;
+      border: 0.12vh solid var(--line);
+      border-radius: 0.75vh;
+      background: var(--panel-strong);
+      box-shadow: 0 1vh 3vh rgba(0, 0, 0, 0.38);
+    }
+
+    @media (max-width: 860px) {
+
+      .ship-info-stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .ship-fitting-layout,
+      .fitting-compatible-layout {
+        grid-template-columns: 1fr;
+      }
     }
 
     .readout-location {
@@ -2054,6 +2909,18 @@
       font-size: 1.2vh;
       padding: 0;
       background: var(--bubble-button-bg);
+    }
+
+    .object-dock-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .object-dock-icon {
+      height: 2.2vh;
+      width: auto;
+      display: block;
     }
 
     .object-bubble-line {
@@ -2592,6 +3459,29 @@
       background: rgba(255, 188, 102, 0.18);
       color: var(--text);
     }
+
+    .docking-undock-button {
+      position: absolute;
+      left: 50%;
+      bottom: 8vh;
+      transform: translateX(-50%);
+      pointer-events: auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.4vh 2vh;
+      border: 0.12vh solid var(--selection-bg);
+      border-radius: 1.6vh;
+      background: var(--selection-bg);
+      color: var(--text);
+      box-shadow: 0 0.4vh 1.6vh rgba(66, 139, 190, 0.18);
+    }
+
+    .docking-undock-icon {
+      width: 4vh;
+      height: 4vh;
+      display: block;
+    }
   </style>
 </head>
 
@@ -2611,7 +3501,8 @@
       </div>
     </div>
 
-    <div class="readout" role="button" tabindex="0" aria-live="polite" aria-controls="minimapPopup" aria-expanded="false">
+    <div class="readout" role="button" tabindex="0" aria-live="polite" aria-controls="minimapPopup"
+      aria-expanded="false">
       <div class="readout-row">
         <span class="readout-value readout-location" id="locationValue">UNKNOWN</span>
       </div>
@@ -2686,7 +3577,8 @@
         </label>
       </div>
       <button class="primary nav-toggle" id="navToggle" type="submit" aria-pressed="false">Nav Off</button>
-      <button class="primary warp-toggle" id="warpToggle" type="button" aria-pressed="false" title="Engage hyperdrive">Hyperdrive</button>
+      <button class="primary warp-toggle" id="warpToggle" type="button" aria-pressed="false"
+        title="Engage hyperdrive">Hyperdrive</button>
     </form>
 
     <nav class="bottom-nav" aria-label="Bottom navigation">
@@ -2695,8 +3587,10 @@
           <button class="bottom-nav-button" id="bottomNavScanButton" type="button" aria-label="Scan" title="Scan">
             <span class="svg-icon svg-icon-scan bottom-nav-icon" aria-hidden="true"></span>
           </button>
-          <button class="bottom-nav-button" id="bottomNavPlayerButton" type="button"
-            aria-label="Pilot" data-i18n-aria-label="ui.player.title" title="Pilot">
+          <button class="bottom-nav-button" id="bottomNavShipButton" type="button" aria-label="Ship" title="Ship">
+            <span class="svg-icon svg-icon-ship bottom-nav-icon" aria-hidden="true"></span>
+          </button>
+          <button class="bottom-nav-button" id="bottomNavPlayerButton" type="button" aria-label="Pilot" title="Pilot">
             <span class="svg-icon svg-icon-player bottom-nav-icon" aria-hidden="true"></span>
           </button>
         </div>
@@ -2750,23 +3644,32 @@
     <div class="player-popup-backdrop" id="playerPopup" aria-hidden="true" hidden inert>
       <section class="player-popup-panel" role="dialog" aria-modal="true" aria-labelledby="playerPopupTitle">
         <header class="player-popup-header">
-          <h2 class="player-popup-title" id="playerPopupTitle" data-i18n="ui.player.title">Pilot</h2>
+          <h2 class="player-popup-title" id="playerPopupTitle">Pilot</h2>
           <button class="object-list-close" id="playerPopupCloseButton" type="button" aria-label="Close" title="Close">
             <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
           </button>
         </header>
         <div class="player-popup-body">
-          <div class="player-section-label" data-i18n="ui.player.shipSection">Ship</div>
-          <div class="player-ship-grid" id="playerShipGrid">
-            <button class="player-ship-card active" id="playerShipCard01" type="button" data-ship-id="ship_01">
-              <span class="player-ship-card-label" data-i18n="ui.settings.gameplay.ship01">Ship I</span>
-              <span class="player-ship-card-id">ship_01</span>
-            </button>
-            <button class="player-ship-card" id="playerShipCard02" type="button" data-ship-id="ship_02">
-              <span class="player-ship-card-label" data-i18n="ui.settings.gameplay.ship02">Ship II</span>
-              <span class="player-ship-card-id">ship_02</span>
-            </button>
-          </div>
+          <section class="player-profile-card" aria-label="Pilot profile">
+            <img class="player-profile-portrait" id="playerProfilePortrait" src="./rss/profile/portrait_01.png" alt="">
+            <div class="player-profile-fields">
+              <label class="player-profile-name-field">
+                <span>Name</span>
+                <input id="playerNameInput" type="text" maxlength="32" autocomplete="off" spellcheck="false"
+                  value="Pilot">
+              </label>
+              <div class="player-profile-uid">
+                <b>User UID</b>
+                <span id="playerUidValue">--</span>
+              </div>
+            </div>
+          </section>
+          <section class="player-sic-zone" aria-label="SIC">
+            <div class="player-sic-display" id="playerSicDisplay">
+              <span class="svg-icon svg-icon-sic" aria-hidden="true"></span>
+              <span id="playerSicValue">0</span>
+            </div>
+          </section>
         </div>
       </section>
     </div>
@@ -2934,6 +3837,28 @@
                       data-performance-toggle="materialMaps" data-performance-toggle-value="true">
                       <span class="rail-choice-dot" aria-hidden="true"></span>
                       <span class="rail-choice-label" data-i18n="ui.settings.common.on">On</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="world-setting">
+                  <div class="world-setting-label" data-i18n="ui.settings.graphics.stylizedRendering">Stylized Rendering
+                  </div>
+                  <div class="rail-choice-control is-off" role="group" aria-label="Stylized rendering"
+                    data-i18n-aria-label="ui.settings.graphics.stylizedRendering">
+                    <button class="rail-choice-option is-off active" id="performanceStylizedOffButton" type="button"
+                      data-performance-mode="stylizedRenderMode" data-performance-mode-value="off">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.common.off">Off</span>
+                    </button>
+                    <button class="rail-choice-option" id="performanceStylizedOutlineButton" type="button"
+                      data-performance-mode="stylizedRenderMode" data-performance-mode-value="outline">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.common.outline">Outline</span>
+                    </button>
+                    <button class="rail-choice-option" id="performanceStylizedFullButton" type="button"
+                      data-performance-mode="stylizedRenderMode" data-performance-mode-value="full">
+                      <span class="rail-choice-dot" aria-hidden="true"></span>
+                      <span class="rail-choice-label" data-i18n="ui.settings.common.full">Full</span>
                     </button>
                   </div>
                 </div>
