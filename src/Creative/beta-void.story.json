@@ -1,9 +1,9 @@
 {
-  "schema": "void-zero-story-helper",
+  "schema": "beta-void-story-helper",
   "version": 1,
   "updatedAt": "2026-06-28T14:57:54.820Z",
   "world": {
-    "title": "Void Zero",
+    "title": "beta-void",
     "tone": "",
     "premise": "",
     "timeline": "",

@@ -81,7 +81,7 @@ export class ToonRenderStyle {
   isStylableMesh(object) {
     return object?.isMesh
       && object.geometry
-      && !object.userData?.__voidZeroToonHelper;
+      && !object.userData?.__betaVoidToonHelper;
   }
 
   /* ── Inverted-hull outline ─────────────────────────────────── */
@@ -111,7 +111,7 @@ export class ToonRenderStyle {
           ].join("\n")
         );
     };
-    material.customProgramCacheKey = () => "void-zero-inverted-hull-outline-v2";
+    material.customProgramCacheKey = () => "beta-void-inverted-hull-outline-v2";
     return material;
   }
 
@@ -174,7 +174,7 @@ export class ToonRenderStyle {
   }
 
   ensureOutlineShell(mesh) {
-    const existing = mesh.userData?.__voidZeroOutlineShell;
+    const existing = mesh.userData?.__betaVoidOutlineShell;
     if (existing?.userData?.sourceGeometry === mesh.geometry) {
       existing.visible = true;
       return existing;
@@ -189,10 +189,10 @@ export class ToonRenderStyle {
     shell.castShadow = false;
     shell.receiveShadow = false;
     shell.renderOrder = (mesh.renderOrder || 0) - 1;
-    shell.userData.__voidZeroToonHelper = true;
+    shell.userData.__betaVoidToonHelper = true;
     shell.userData.sourceGeometry = mesh.geometry;
     mesh.add(shell);
-    mesh.userData.__voidZeroOutlineShell = shell;
+    mesh.userData.__betaVoidOutlineShell = shell;
     return shell;
   }
 
@@ -206,8 +206,8 @@ export class ToonRenderStyle {
 
   disposeOutlineShell(shell) {
     if (!shell) return;
-    if (shell.parent?.userData?.__voidZeroOutlineShell === shell) {
-      delete shell.parent.userData.__voidZeroOutlineShell;
+    if (shell.parent?.userData?.__betaVoidOutlineShell === shell) {
+      delete shell.parent.userData.__betaVoidOutlineShell;
     }
     shell.parent?.remove(shell);
     // geometry is shared with the source mesh; do not dispose it here.
@@ -217,7 +217,7 @@ export class ToonRenderStyle {
     if (!root) return;
     const shells = [];
     root.traverse((object) => {
-      const shell = object.userData?.__voidZeroOutlineShell;
+      const shell = object.userData?.__betaVoidOutlineShell;
       if (shell) shells.push(shell);
     });
     shells.forEach((shell) => this.disposeOutlineShell(shell));

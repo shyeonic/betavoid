@@ -1,0 +1,11 @@
+name = "beta-void-api"
+main = "workers/beta-void-api/src/index.js"
+compatibility_date = "2025-06-01"
+
+[vars]
+FIREBASE_PROJECT_ID = "beta-void"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "beta-void-dev"
+database_id = "2b8bfd4b-dbe4-4aa9-b624-b41008c5d963"

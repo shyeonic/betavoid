@@ -1,5 +1,5 @@
 export const WORLD_CONFIG = {
-  dbName: "void-zero",
+  dbName: "beta-void",
   dbVersion: 1,
   renderScale: 0.01,
   sectorSize: {

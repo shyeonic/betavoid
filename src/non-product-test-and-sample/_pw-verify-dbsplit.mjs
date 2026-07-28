@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import { installFirebaseAuthMock } from "./_pw-firebase-auth-mock.mjs";
 
 const URL = "http://localhost:8123/index.html";
 
@@ -9,11 +10,12 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on("pageerror", (e) => console.log("[pageerror]", e.message));
 page.on("console", (m) => { const t = m.text(); if (/error|fail|exception/i.test(t)) console.log("[page]", t); });
 
+await installFirebaseAuthMock(page);
 await page.goto(URL, { waitUntil: "load", timeout: 60000 });
-await page.waitForFunction(() => !!window.__voidZeroGame, { timeout: 60000 });
+await page.waitForFunction(() => !!window.__betaVoidGame, { timeout: 60000 });
 
 const boot = await page.evaluate(async () => {
-  const g = window.__voidZeroGame;
+  const g = window.__betaVoidGame;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const waitPhase = async (p, ms = 45000) => {
     const t0 = performance.now();
@@ -47,7 +49,7 @@ const report = await page.evaluate(async () => {
   });
 
   const dbList = (await indexedDB.databases()).map((d) => d.name).filter(Boolean).sort();
-  const db = await openDb("void-zero");
+  const db = await openDb("beta-void");
   const allStores = [...db.objectStoreNames].sort();
   const worldStores = allStores.filter((n) => n.startsWith("worlds_"));
   const playerStores = allStores.filter((n) => n.startsWith("playerPrefs_"));
@@ -88,8 +90,8 @@ console.log(JSON.stringify(report, null, 2));
 
 let fail = 0;
 const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`); if (!cond) fail++; };
-check("single void-zero database exists", report.dbList.includes("void-zero"));
-check("no leftover sibling DBs (void-zero-world / void-zero-playerPrefs)", !report.dbList.includes("void-zero-world") && !report.dbList.includes("void-zero-playerPrefs"));
+check("single beta-void database exists", report.dbList.includes("beta-void"));
+check("no leftover sibling DBs (beta-void-world / beta-void-playerPrefs)", !report.dbList.includes("beta-void-world") && !report.dbList.includes("beta-void-playerPrefs"));
 check("stores grouped by worlds_ prefix", report.worldStores.includes("worlds_resourceNodes") && report.worldStores.includes("worlds_buildings") && report.worldStores.includes("worlds_buildingStorages"));
 check("stores grouped by playerPrefs_ prefix", report.playerStores.includes("playerPrefs_storageLocations") && report.playerStores.includes("playerPrefs_quantityItems") && report.playerStores.includes("playerPrefs_characterProfiles") && report.playerStores.includes("playerPrefs_playerShip"));
 check("every store is prefixed (no ungrouped stores)", report.allStores.every((n) => n.startsWith("worlds_") || n.startsWith("playerPrefs_")));

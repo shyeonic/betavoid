@@ -4,7 +4,7 @@
 
 ## 1. 문서 목적
 
-Void Zero의 현재 구현 상태를 기준으로 완료된 시스템, 주요 의사결정, 구현상 제약, 후속 기획 후보를 기록한다. 본 문서는 개발 지시서가 아니라 현재 코드베이스를 바탕으로 한 상태 기록이며, 향후 기획/개발 판단 시 근거 문서로 사용한다.
+beta-void의 현재 구현 상태를 기준으로 완료된 시스템, 주요 의사결정, 구현상 제약, 후속 기획 후보를 기록한다. 본 문서는 개발 지시서가 아니라 현재 코드베이스를 바탕으로 한 상태 기록이며, 향후 기획/개발 판단 시 근거 문서로 사용한다.
 
 분량이 큰 영역은 `DesignDocuments/PBDD/PBDD_{name}.md` 별도 문서로 분리한다. 본 문서는 전체 개요와 각 하위 문서로의 진입점 역할을 한다.
 
@@ -42,7 +42,7 @@ Void Zero의 현재 구현 상태를 기준으로 완료된 시스템, 주요 �
 ### 3.4 WorldDataManager
 - 파일: `js/WorldDataManager.js`
 - 역할: IndexedDB 스키마, 월드 생성/저장/조회, 자원 스폰 사이클, 베타보이드 생명주기, 플레이어 상태/항법 로그.
-- DB 이름 `void-zero-world`, 버전 `6`. 스토어: `sectors`, `chunks`, `resourceNodes`, `buildings`, `betaVoids`, `meta`, `settings`, `navLogs`.
+- DB 이름 `beta-void`, 버전 `6`. 스토어: `sectors`, `chunks`, `resourceNodes`, `buildings`, `betaVoids`, `meta`, `settings`, `navLogs`.
 - 상세: `PBDD/PBDD_WorldData.md`
 
 ### 3.5 WorldMapManager
@@ -100,7 +100,7 @@ Void Zero의 현재 구현 상태를 기준으로 완료된 시스템, 주요 �
 
 ### 4.3 수동 비행 조작
 - 키보드 입력으로 pitch/yaw/roll/strafe/ascend/descend/throttle 조작.
-- 기본 키 바인딩은 설정 UI에서 변경 가능하며 `localStorage`의 `void-zero-key-bindings`에 저장된다.
+- 기본 키 바인딩은 설정 UI에서 변경 가능하며 `localStorage`의 `beta-void-key-bindings`에 저장된다.
 - 입력 충돌 시 중복 키를 정규화한다.
 - 상세: `PBDD/PBDD_InputCamera.md`
 
@@ -189,7 +189,7 @@ Void Zero의 현재 구현 상태를 기준으로 완료된 시스템, 주요 �
 ### 4.16 설정 및 데이터 관리
 - 시작 화면 설정 팝업: Key Binding / Data / Language 탭.
 - Data 탭: seed, 생성일, 섹터/청크/자원/건물 수, 현재 섹터/청크. 월드 재생성, DB 리로드, 전체 초기화.
-- 데이터 초기화는 `reset` URL 파라미터로 캐시·IndexedDB·`void-zero-` prefix 스토리지를 삭제 후 재진입.
+- 데이터 초기화는 `reset` URL 파라미터로 캐시·IndexedDB·`beta-void-` prefix 스토리지를 삭제 후 재진입.
 - 상세: `PBDD/PBDD_UI.md`, `PBDD/PBDD_WorldData.md`
 
 ### 4.17 사운드 시스템

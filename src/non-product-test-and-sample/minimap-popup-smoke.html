@@ -95,7 +95,7 @@ ${line}`;
       const gameData = await loadGameData();
       smokeLog("[smoke] gamedata loaded");
       const config = structuredClone(gameData.worldConfig || {});
-      config.dbName = "void-zero-minimap-smoke";
+      config.dbName = "beta-void-minimap-smoke";
       const worldDataManager = await new WorldDataManager({ gameData, config }).init();
       await worldDataManager.createNewWorld({ seed: 4242 });
       const i18n = createI18n({ messages: gameData.messages });

@@ -1,6 +1,6 @@
 # I18n Foundation Plan
 
-이 문서는 Void Zero의 i18n 기반을 도입하기 위한 개발 계획서다. 이번 단계의 목표는 전체 번역을 완성하는 것이 아니라, 앞으로 UI와 정의 카탈로그가 안전하게 다국어화될 수 있는 구조를 먼저 만드는 것이다.
+이 문서는 beta-void의 i18n 기반을 도입하기 위한 개발 계획서다. 이번 단계의 목표는 전체 번역을 완성하는 것이 아니라, 앞으로 UI와 정의 카탈로그가 안전하게 다국어화될 수 있는 구조를 먼저 만드는 것이다.
 
 ## 1. 목표
 
@@ -201,7 +201,7 @@ export const ko = {
 
 기본 locale 결정:
 
-1. `localStorage["void-zero-locale"]`
+1. `localStorage["beta-void-locale"]`
 2. `navigator.language`
 3. `en`
 
@@ -268,7 +268,7 @@ export const ko = {
 작업:
 
 - Settings에 Language 선택 컨트롤 추가
-- 선택값을 `localStorage["void-zero-locale"]`에 저장
+- 선택값을 `localStorage["beta-void-locale"]`에 저장
 - 변경 시 현재 화면 문자열을 다시 적용하거나 reload 유도 방식을 선택
 
 초기 구현 권장:

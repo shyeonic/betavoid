@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Galaxy Map Editor — Void Zero</title>
+  <title>Galaxy Map Editor — beta-void</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -205,7 +205,7 @@
   <!-- ═══ Sidebar ═══ -->
   <aside id="sidebar">
     <div class="sb-title">
-      <h1>VOID ZERO</h1>
+      <h1>beta-void</h1>
       <p>Galaxy Map Editor</p>
     </div>
 
@@ -567,7 +567,7 @@ class ChunkGrid {
     }
     const { count } = this.buildClusterMap();
     return {
-      format: 'void-zero-galaxy-map-v1',
+      format: 'beta-void-galaxy-map-v1',
       grid: { x: this.gx, y: this.gy, z: this.gz },
       inner: { x: this.innerGx, y: this.innerGy, z: this.innerGz, n: this.n },
       generated: new Date().toISOString().slice(0, 10),
@@ -577,7 +577,7 @@ class ChunkGrid {
   }
 
   fromJSON(data) {
-    if (data.format !== 'void-zero-galaxy-map-v1') throw new Error('Unknown format');
+    if (data.format !== 'beta-void-galaxy-map-v1') throw new Error('Unknown format');
     const borderN = data.inner?.n ?? 0;
     const igx = data.inner?.x ?? data.grid.x;
     const igy = data.inner?.y ?? data.grid.y;

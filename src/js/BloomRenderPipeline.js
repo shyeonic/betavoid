@@ -261,7 +261,7 @@ export class BloomRenderPipeline {
     return object.isMesh
       && object.geometry
       && object.visible
-      && !object.userData?.__voidZeroToonHelper
+      && !object.userData?.__betaVoidToonHelper
       && !!this.findStylizedRenderRoot(object);
   }
 

@@ -103,11 +103,12 @@ function resolveDefaultShipId(gameData, shipDefinitions) {
 }
 
 export class GameManager {
-  constructor({ root, gameData = null }) {
+  constructor({ root, gameData = null, identity = null }) {
     if (!gameData) throw new Error("GameManager requires loaded gameData.");
 
     this.root = root;
     this.gameData = gameData;
+    this.identity = identity;
     this.config = CONFIG;
     this.worldConfig = gameData.worldConfig || WORLD_CONFIG;
     this.buildingDefinitions = requireDefinitionMap(gameData, "buildingDefinitions");
@@ -123,11 +124,11 @@ export class GameManager {
     this.ownedEquipmentDefinitions = this.createInitialOwnedEquipmentDefinitions(
       gameData.ownedEquipmentDefinitions || gameData.playerOwnedEquipmentDefinitions
     );
-    this.characterId = DEFAULT_CHARACTER_ID;
+    this.characterId = identity?.characterId || DEFAULT_CHARACTER_ID;
     this.playerAssets = null;
     this.activeShipUid = null;
     this.shipCombatSummaries = this.buildShipCombatSummaries();
-    this.keyBindingStorageKey = "void-zero-key-bindings";
+    this.keyBindingStorageKey = "beta-void-key-bindings";
     this.keyBindings = this.loadKeyBindings();
     this.environmentMode = ENVIRONMENT_MODES.light;
     this.performanceSettings = { ...DEFAULT_PERFORMANCE_SETTINGS };
@@ -2111,7 +2112,7 @@ export class GameManager {
 
   async restorePlayerShipState() {
     const [playerShipState, navLogs] = await Promise.all([
-      this.worldDataManager.loadOrCreatePlayerShipState(),
+      this.worldDataManager.loadOrCreatePlayerShipState(this.characterId),
       this.worldDataManager.getNavLogs(10)
     ]);
 
@@ -4257,7 +4258,7 @@ export class GameManager {
     const position = this.worldMapManager.toDataVector(this.ship.position);
     return {
       ship_id: "PLAYER-SHIP-001",
-      player_id: "default",
+      player_id: this.characterId,
       position: { x: position.x, y: position.y, z: position.z },
       rotation: {
         x: this.ship.quaternion.x,
@@ -4356,7 +4357,7 @@ export class GameManager {
       return;
     }
 
-    const prefix = "void-zero-";
+    const prefix = "beta-void-";
     const names = new Set([this.worldDataManager.config.dbName]);
 
     if (typeof indexedDB.databases === "function") {
@@ -4405,7 +4406,7 @@ export class GameManager {
   }
 
   clearStorageNamespace(storage) {
-    const prefix = "void-zero-";
+    const prefix = "beta-void-";
     try {
       Object.keys(storage)
         .filter((key) => key.startsWith(prefix))
@@ -4948,7 +4949,7 @@ export class GameManager {
     const box = new THREE.Box3().makeEmpty();
     const meshBox = new THREE.Box3();
     this.ship.traverse((object) => {
-      if (!object.isMesh || object.userData?.__voidZeroToonHelper) return;
+      if (!object.isMesh || object.userData?.__betaVoidToonHelper) return;
       const geometry = object.geometry;
       if (!geometry?.attributes?.position) return;
       if (!geometry.boundingBox) geometry.computeBoundingBox();

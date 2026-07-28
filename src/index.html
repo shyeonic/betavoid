@@ -4,8 +4,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Void Zero</title>
+  <title>beta-void</title>
   <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./auth.css">
   <style>
     :root {
       color-scheme: light;
@@ -883,15 +884,10 @@
     }
 
     .start-title strong {
-      display: flex;
-      align-items: center;
-      width: 36vh;
-      height: 9vh;
-    }
-
-    .start-title strong .svg-icon {
-      width: 100%;
-      height: 100%;
+      color: var(--svg-default-color);
+      font-size: 4.6vh;
+      font-weight: 500;
+      line-height: 1;
     }
 
     .start-prompt {
@@ -1126,14 +1122,9 @@
       --svg-icon-source: url("./rss/svg/ui_main.svg");
     }
 
-    .svg-icon-logo-void {
+    .svg-icon-logo-beta-void {
       color: #fff;
-      --svg-icon-source: url("./rss/svg/logo_void.svg");
-    }
-
-    .svg-icon-logo-void-title {
-      color: #fff;
-      --svg-icon-source: url("./rss/svg/logo_void_title.svg");
+      --svg-icon-source: url("./rss/svg/logo_beta_void.svg");
     }
 
     .svg-icon-to-do {
@@ -4073,7 +4064,7 @@
   </style>
 </head>
 
-<body>
+<body data-auth-state="checking">
   <div id="app"></div>
 
   <div class="hud">
@@ -4659,10 +4650,9 @@
         <div class="start-gate-panel">
           <div class="start-title">
             <span class="start-logo" aria-hidden="true">
-              <span class="svg-icon svg-icon-logo-void"></span>
+              <span class="svg-icon svg-icon-logo-beta-void"></span>
             </span>
-            <strong id="startTitle" aria-label="Void Zero"><span class="svg-icon svg-icon-logo-void-title"
-                aria-hidden="true"></span></strong>
+            <strong id="startTitle">beta-void</strong>
           </div>
           <div class="start-prompt">Touch to Start</div>
           <div class="start-status">

@@ -3,7 +3,7 @@ import { ko } from "./locales/ko.js";
 
 export const DEFAULT_LOCALE = "en";
 export const FALLBACK_LOCALE = "en";
-export const LOCALE_STORAGE_KEY = "void-zero-locale";
+export const LOCALE_STORAGE_KEY = "beta-void-locale";
 
 export const MESSAGES = {
   en,

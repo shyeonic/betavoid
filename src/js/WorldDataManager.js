@@ -1,6 +1,6 @@
 import { WORLD_CONFIG } from "./worldDefinitions.js";
 
-// Single IndexedDB database `void-zero` (IndexedDB has no nested databases). Stores
+// Single IndexedDB database `beta-void` (IndexedDB has no nested databases). Stores
 // are grouped by name prefix into two clearly-separated namespaces:
 //   worlds_*      — universal world / authority-server SSoT
 //   playerPrefs_* — per-character private data
@@ -32,8 +32,16 @@ const WORLD_STORE_SET = new Set(WORLD_STORES);
 const ALL_STORES = [...WORLD_STORES, ...PLAYER_STORES];
 // Narrow scope: player-asset stores touched by snapshot/mutation transactions.
 const PLAYER_ASSET_STORES = ["characterProfiles", "storageLocations", "quantityItems", "uniqueItems", "slotAssignments"];
-// Legacy DB names cleaned up on reset (pre single-DB merge).
-const LEGACY_DB_NAMES = ["void-zero-world", "void-zero-playerPrefs", "playerPrefs"];
+const PREVIOUS_PROJECT_NAMESPACE = ["void", "zero"].join("-");
+// Legacy DB names cleaned up on reset (pre single-DB merge and project rename).
+const LEGACY_DB_NAMES = [
+  "beta-void-world",
+  "beta-void-playerPrefs",
+  PREVIOUS_PROJECT_NAMESPACE,
+  `${PREVIOUS_PROJECT_NAMESPACE}-world`,
+  `${PREVIOUS_PROJECT_NAMESPACE}-playerPrefs`,
+  "playerPrefs"
+];
 // TEMP test tuning: flat gather rate of 1 resource per 10 seconds, overriding
 // each node's design base_yield_per_sec. Set to null to restore design rates
 // (effective = node.base_yield_per_sec × gather_rate_mult).
@@ -89,7 +97,7 @@ export class WorldDataManager {
     return this;
   }
 
-  // Single `void-zero` database; stores are created with prefixed physical names.
+  // Single `beta-void` database; stores are created with prefixed physical names.
   openDatabase() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(this.config.dbName, this.config.dbVersion);
@@ -107,7 +115,7 @@ export class WorldDataManager {
         db.onversionchange = () => db.close();
         resolve(db);
       };
-      request.onerror = () => reject(request.error || new Error("IndexedDB open failed: void-zero."));
+      request.onerror = () => reject(request.error || new Error("IndexedDB open failed: beta-void."));
     });
   }
 
@@ -1335,7 +1343,11 @@ export class WorldDataManager {
     });
   }
 
-  createDefaultPlayerShipState(createdAt = Date.now(), sectors = this.snapshot?.sectors || []) {
+  createPlayerShipStateKey(characterId = DEFAULT_CHARACTER_ID) {
+    return characterId === DEFAULT_CHARACTER_ID ? "playerShip" : `playerShip:${characterId}`;
+  }
+
+  createDefaultPlayerShipState(createdAt = Date.now(), sectors = this.snapshot?.sectors || [], characterId = DEFAULT_CHARACTER_ID) {
     const firstSector = sectors[0] || null;
     const position = firstSector
       ? this.getBoundsCenter(firstSector.global_bounds)
@@ -1344,9 +1356,9 @@ export class WorldDataManager {
     const sector = firstSector || this.getSectorAtPosition(position.x, position.y, position.z, sectors);
 
     return {
-      key: "playerShip",
+      key: this.createPlayerShipStateKey(characterId),
       ship_id: "PLAYER-SHIP-001",
-      player_id: "default",
+      player_id: characterId,
       position,
       rotation: { x: 0, y: 0, z: 0, w: 1 },
       chunk_id: chunkData.chunk_id,
@@ -2189,10 +2201,11 @@ export class WorldDataManager {
     });
   }
 
-  async loadOrCreatePlayerShipState() {
-    let state = await this.getStoreValue("playerShip", "playerShip");
+  async loadOrCreatePlayerShipState(characterId = DEFAULT_CHARACTER_ID) {
+    const key = this.createPlayerShipStateKey(characterId);
+    let state = await this.getStoreValue("playerShip", key);
     if (!state) {
-      state = this.createDefaultPlayerShipState();
+      state = this.createDefaultPlayerShipState(Date.now(), this.snapshot?.sectors || [], characterId);
       await this.savePlayerShipState(state);
     }
 
@@ -2200,12 +2213,14 @@ export class WorldDataManager {
   }
 
   async savePlayerShipState(state) {
+    const characterId = state.player_id || DEFAULT_CHARACTER_ID;
     const position = this.normalizeVector(state.position);
     const chunkData = this.getChunkDataAtPosition(position);
     const sector = this.getSectorAtPosition(position.x, position.y, position.z);
     const nextState = {
       ...state,
-      key: "playerShip",
+      key: this.createPlayerShipStateKey(characterId),
+      player_id: characterId,
       position,
       rotation: this.normalizeQuaternion(state.rotation),
       chunk_id: chunkData.chunk_id,
@@ -2290,7 +2305,7 @@ export class WorldDataManager {
   }
 
   async getGameDatabaseNames() {
-    const prefix = "void-zero";
+    const prefix = "beta-void";
     const names = new Set([this.config.dbName, ...LEGACY_DB_NAMES]);
 
     if (typeof indexedDB.databases === "function") {
@@ -2686,7 +2701,7 @@ export class WorldDataManager {
   }
 
   // Single read-modify-write transaction across node + logs + inventory (all in
-  // the one `void-zero` DB, so this is atomic and serializes overlapping ops for
+  // the one `beta-void` DB, so this is atomic and serializes overlapping ops for
   // free). `mutate(state, nowMs)` runs AFTER settling existing miners to nowMs and
   // may add/remove a log; returning { ok: false } aborts without persisting.
   _commitNodeOp(nodeId, nowMs, mutate = null) {

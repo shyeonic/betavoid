@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import { installFirebaseAuthMock } from "./_pw-firebase-auth-mock.mjs";
 
 const URL = "http://localhost:8123/index.html";
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required", "--use-gl=angle", "--ignore-gpu-blocklist"] });
@@ -6,10 +7,11 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on("pageerror", (e) => console.log("[pageerror]", e.message));
 page.on("console", (m) => { const t = m.text(); if (/error|fail|exception/i.test(t)) console.log("[page]", t); });
 
+await installFirebaseAuthMock(page);
 await page.goto(URL, { waitUntil: "load", timeout: 60000 });
-await page.waitForFunction(() => !!window.__voidZeroGame, { timeout: 60000 });
+await page.waitForFunction(() => !!window.__betaVoidGame, { timeout: 60000 });
 const boot = await page.evaluate(async () => {
-  const g = window.__voidZeroGame;
+  const g = window.__betaVoidGame;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const waitPhase = async (p, ms = 45000) => { const t0 = performance.now(); while (g.state?.phase !== p) { if (performance.now() - t0 > ms) return false; await sleep(50); } return true; };
   try {
@@ -24,7 +26,7 @@ if (!boot.ok) { await browser.close(); process.exit(2); }
 
 // Dock at a station, then open the trade window via UIManager.
 const setup = await page.evaluate(async () => {
-  const g = window.__voidZeroGame;
+  const g = window.__betaVoidGame;
   const wdm = g.worldDataManager;
   const buildings = await wdm.getAll("buildings");
   const station = buildings.find((b) => b.building_id === "arc_station") || buildings[0];
@@ -50,7 +52,7 @@ console.log("dom0:", JSON.stringify(dom0));
 
 // Read station+cargo qty for first public item, click its LOAD button, re-read.
 const r = await page.evaluate(async () => {
-  const g = window.__voidZeroGame;
+  const g = window.__betaVoidGame;
   const out = {};
   const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
   const bid = (await g.worldDataManager.getAll("buildings")).find((b) => b.building_id === "arc_station").building_instance_id;

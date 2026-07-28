@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Void Zero Story Helper</title>
+  <title>beta-void Story Helper</title>
   <style>
     *, *::before, *::after {
       box-sizing: border-box;
@@ -578,7 +578,7 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <div class="brand-title">Void Zero Story Helper</div>
+        <div class="brand-title">beta-void Story Helper</div>
         <div class="brand-sub" id="projectSummary">세계관, 캐릭터 메모, 가사, 이미지 리소스 관리</div>
       </div>
       <div class="toolbar">
@@ -634,7 +634,7 @@
               <div class="two-col">
                 <label>
                   프로젝트 제목
-                  <input id="worldTitle" data-bind="world.title" placeholder="예: Void Zero">
+                  <input id="worldTitle" data-bind="world.title" placeholder="예: beta-void">
                 </label>
                 <label>
                   기준 톤
@@ -760,7 +760,7 @@
 
   <script>
     (() => {
-      const STORAGE_KEY = "void-zero-story-helper-state-v1";
+      const STORAGE_KEY = "beta-void-story-helper-state-v1";
       const LYRIC_LANGUAGES = [
         { key: "ko", label: "한국어", title: "한국어 가사", code: "KO", placeholder: "한국어 가사" },
         { key: "en", label: "English", title: "English Lyrics", code: "EN", placeholder: "English lyrics" },
@@ -824,11 +824,11 @@
       function createDefaultData() {
         const firstCharacterId = createId("char");
         return {
-          schema: "void-zero-story-helper",
+          schema: "beta-void-story-helper",
           version: 1,
           updatedAt: "",
           world: {
-            title: "Void Zero",
+            title: "beta-void",
             tone: "",
             premise: "",
             timeline: "",
@@ -870,7 +870,7 @@
         $("#saveButton").addEventListener("click", () => saveToStorage("저장됨"));
         $("#exportJsonButton").addEventListener("click", downloadJson);
         $("#importJsonButton").addEventListener("click", () => elements.jsonFileInput.click());
-        $("#downloadMarkdownButton").addEventListener("click", () => downloadText(buildMarkdown(), "void-zero-story-context.md", "text/markdown"));
+        $("#downloadMarkdownButton").addEventListener("click", () => downloadText(buildMarkdown(), "beta-void-story-context.md", "text/markdown"));
         $("#resetButton").addEventListener("click", resetData);
         $("#addCharacterButton").addEventListener("click", addCharacter);
         $("#deleteCharacterButton").addEventListener("click", deleteSelectedCharacter);

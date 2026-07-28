@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Void Zero - Deterministic Battle Test</title>
+  <title>beta-void - Deterministic Battle Test</title>
   <link rel="icon" href="data:,">
   <style>
     :root {
@@ -671,9 +671,9 @@
     <header class="topbar">
       <div>
         <div class="top-label">Deterministic Seed</div>
-        <div class="seed-readout" id="seed-readout">void-zero-battle-001</div>
+        <div class="seed-readout" id="seed-readout">beta-void-battle-001</div>
       </div>
-      <div class="top-title">VOID ZERO / BATTLE SCENE</div>
+      <div class="top-title">beta-void / BATTLE SCENE</div>
       <div class="hash-box">
         <div class="hash-label">Precomputed Plan</div>
         <div class="hash-readout" id="hash-readout">not generated</div>
@@ -736,7 +736,7 @@
     <section class="controls" aria-label="전투 조작">
       <label class="controls-field">
         <span class="controls-label">Battle Seed</span>
-        <input class="seed-input" id="seed-input" value="void-zero-battle-001" maxlength="64" autocomplete="off">
+        <input class="seed-input" id="seed-input" value="beta-void-battle-001" maxlength="64" autocomplete="off">
       </label>
       <button class="action-button" id="start-button" type="button" disabled>전투 개시</button>
       <button class="action-button escape" id="escape-button" type="button" disabled>전투 회피</button>
@@ -953,7 +953,7 @@
     }
 
     function createBattlePlan(seedText) {
-      const seed = String(seedText || "void-zero-battle-001");
+      const seed = String(seedText || "beta-void-battle-001");
       const random = createSeededRandom(seed);
       const ticks = [];
       let playerHp = FIGHTERS.player.maxHp;
@@ -1451,7 +1451,7 @@
       );
       scene.add(ambient, key, rim, hemisphere);
 
-      const starRandom = createSeededRandom("void-zero-main-starfield");
+      const starRandom = createSeededRandom("beta-void-main-starfield");
       ENVIRONMENT.starField.layers.forEach(function addLayer(layer) {
         createStars(scene, layer, starRandom);
       });
@@ -1888,8 +1888,8 @@
       ) {
         return null;
       }
-      const seed = String(forcedSeed || refs.seedInput.value || "void-zero-battle-001").trim()
-        || "void-zero-battle-001";
+      const seed = String(forcedSeed || refs.seedInput.value || "beta-void-battle-001").trim()
+        || "beta-void-battle-001";
       const plan = createBattlePlan(seed);
 
       runtime.phase = "encounter";

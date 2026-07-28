@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
+import { installFirebaseAuthMock } from "./_pw-firebase-auth-mock.mjs";
 
 const URL = "http://localhost:8123/index.html";
 const OUT = "non-product-test-and-sample/_pw-captures";
@@ -13,12 +14,13 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, dev
 page.on("console", (m) => { const t = m.text(); if (!t.includes("GL Driver Message")) console.log("[page]", t); });
 page.on("pageerror", (e) => console.log("[pageerror]", e.message));
 
+await installFirebaseAuthMock(page);
 await page.goto(URL, { waitUntil: "load", timeout: 60000 });
 
 // boot: wait for game handle + renderPipeline, drive standby -> ready -> running
-await page.waitForFunction(() => !!window.__voidZeroGame, { timeout: 60000 });
+await page.waitForFunction(() => !!window.__betaVoidGame, { timeout: 60000 });
 const boot = await page.evaluate(async () => {
-  const g = window.__voidZeroGame;
+  const g = window.__betaVoidGame;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const waitPhase = async (p, ms = 45000) => {
     const t0 = performance.now();
@@ -64,7 +66,7 @@ async function measure(frames = 150) {
 const results = {};
 for (const mode of ["off", "outline", "full"]) {
   await page.evaluate((m) => {
-    const g = window.__voidZeroGame;
+    const g = window.__betaVoidGame;
     if (typeof g.setPerformanceSetting === "function") g.setPerformanceSetting("stylizedRenderMode", m);
     else g.renderPipeline.setStylizedRenderMode(m);
   }, mode);

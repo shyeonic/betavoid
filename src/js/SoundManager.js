@@ -397,8 +397,8 @@ export class SoundManager {
       this.bgmInstance = instance;
       // 배타성 불변식: 어떤 경로로든 다른 BGM 인스턴스가 남아 있으면 모두 정리한다.
       this._enforceSingleBgm(instance);
-      window.__voidZeroActiveBgm = instance;
-      window.__voidZeroActiveBgmId = id;
+      window.__betaVoidActiveBgm = instance;
+      window.__betaVoidActiveBgmId = id;
       this.currentBgmId = id;
       this.state.playing = true;
       this.state.muted = false;
@@ -449,7 +449,7 @@ export class SoundManager {
   }
 
   stopActiveBgm() {
-    const active = window.__voidZeroActiveBgm;
+    const active = window.__betaVoidActiveBgm;
     if (!active || active === this.bgmInstance) return;
 
     if (typeof active.dispose === "function") {
@@ -459,7 +459,7 @@ export class SoundManager {
       active.currentTime = 0;
     }
 
-    window.__voidZeroActiveBgm = null;
+    window.__betaVoidActiveBgm = null;
   }
 
   releaseInstance(instance) {
@@ -469,9 +469,9 @@ export class SoundManager {
       this.currentBgmId = null;
       this.state.playing = false;
     }
-    if (window.__voidZeroActiveBgm === instance) {
-      window.__voidZeroActiveBgm = null;
-      window.__voidZeroActiveBgmId = null;
+    if (window.__betaVoidActiveBgm === instance) {
+      window.__betaVoidActiveBgm = null;
+      window.__betaVoidActiveBgmId = null;
     }
   }
 

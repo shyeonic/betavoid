@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Void Zero Flight Viewer</title>
+  <title>beta-void Flight Viewer</title>
   <style>
     :root {
       color-scheme: dark;
@@ -651,8 +651,8 @@
     };
 
     const SERVER_CONFIG = {
-      stateStorageKey: "void-zero-flight-authority-state-v1",
-      logStorageKey: "void-zero-flight-authority-log-v1",
+      stateStorageKey: "beta-void-flight-authority-state-v1",
+      logStorageKey: "beta-void-flight-authority-log-v1",
       minLatencyMs: 240,
       maxLatencyMs: 820,
       flightCommitDelayMs: 1500,
@@ -1785,7 +1785,7 @@
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `void-zero-server-log-${stamp}.jsonl`;
+        link.download = `beta-void-server-log-${stamp}.jsonl`;
         document.body.appendChild(link);
         link.click();
         link.remove();

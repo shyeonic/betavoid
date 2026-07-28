@@ -15,21 +15,21 @@ if not exist "%APP_ROOT%\index.html" (
 
 where node >nul 2>nul
 if errorlevel 1 (
-  echo Node.js is required to run Void Zero locally.
+  echo Node.js is required to run beta-void locally.
   echo Download Node.js from https://nodejs.org/
   echo.
   pause
   exit /b 1
 )
 
-echo Void Zero local server
+echo beta-void local server
 echo Root: %APP_ROOT%
 echo URL:  http://127.0.0.1:%PORT%/
 echo.
 echo Close this window or press Ctrl+C to stop the server.
 echo.
 
-set "SERVER_SCRIPT=%TEMP%\void-zero-local-server-%RANDOM%-%RANDOM%.js"
+set "SERVER_SCRIPT=%TEMP%\beta-void-local-server-%RANDOM%-%RANDOM%.js"
 
 > "%SERVER_SCRIPT%" (
   echo const http = require("http"^);
@@ -61,13 +61,13 @@ set "SERVER_SCRIPT=%TEMP%\void-zero-local-server-%RANDOM%-%RANDOM%.js"
   echo server.on("error", (error^) =^> {
   echo   if (error.code === "EADDRINUSE"^) {
   echo     console.error(`Port ${port} is already in use.`^);
-  echo     console.error("Run this file with another port, for example: Start-Void-Zero.bat 4180"^);
+  echo     console.error("Run this file with another port, for example: Start-beta-void.bat 4180"^);
   echo   } else {
   echo     console.error(error.message^);
   echo   }
   echo   process.exit(1^);
   echo }^);
-  echo server.listen(port, host, (^) =^> console.log(`Serving Void Zero at http://${host}:${port}/`^)^);
+  echo server.listen(port, host, (^) =^> console.log(`Serving beta-void at http://${host}:${port}/`^)^);
 )
 
 start "" "http://127.0.0.1:%PORT%/"

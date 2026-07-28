@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import { installFirebaseAuthMock } from "./_pw-firebase-auth-mock.mjs";
 
 const URL = "http://localhost:8123/index.html";
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required", "--use-gl=angle", "--ignore-gpu-blocklist"] });
@@ -6,10 +7,11 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on("pageerror", (e) => console.log("[pageerror]", e.message));
 page.on("console", (m) => { const t = m.text(); if (/error|fail|exception/i.test(t)) console.log("[page]", t); });
 
+await installFirebaseAuthMock(page);
 await page.goto(URL, { waitUntil: "load", timeout: 60000 });
-await page.waitForFunction(() => !!window.__voidZeroGame, { timeout: 60000 });
+await page.waitForFunction(() => !!window.__betaVoidGame, { timeout: 60000 });
 const boot = await page.evaluate(async () => {
-  const g = window.__voidZeroGame;
+  const g = window.__betaVoidGame;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const waitPhase = async (p, ms = 45000) => { const t0 = performance.now(); while (g.state?.phase !== p) { if (performance.now() - t0 > ms) return false; await sleep(50); } return true; };
   try {
@@ -23,7 +25,7 @@ console.log("boot:", JSON.stringify(boot));
 if (!boot.ok) { await browser.close(); process.exit(2); }
 
 const r = await page.evaluate(async () => {
-  const g = window.__voidZeroGame;
+  const g = window.__betaVoidGame;
   const wdm = g.worldDataManager;
   const out = {};
   try {
