@@ -19,6 +19,16 @@
       --svg-default-color: #6975A0;
       --ui_color: #6975A0;
       --ui_target_color: #6975A0;
+      /* Dark-mode icon recolor applied ONLY to icons inside .bottom-nav-stack.open
+         (handled by JS SVG tinting in UIManager). Declared globally for easy editing. */
+      --bottom-nav-stack-icon-color: #ffffff; /* replaces #6975A0 */
+      --bottom-nav-stack-icon-bg: #000000;    /* replaces #fff */
+      /* Key color that replaces #6975A0 in every .bottom-nav SVG (bottom row + burger
+         stack). Scoped to the bottom nav so --ui_color elsewhere is untouched.
+         Light: #333333, Dark: #ffffff (handled by JS SVG tinting in UIManager). */
+      --bottom-nav-icon-color: #333333;
+      /* Drop-shadow color for .bottom-nav icons: white in light, black in dark */
+      --bottom-nav-icon-shadow-color: #ffffff66;
       --bg: #f3fbff;
       --speed-gauge-bg: rgba(255, 255, 255, 0.8);
       --speed-gauge-border: rgba(43, 98, 140, 0.6);
@@ -94,6 +104,8 @@
       --btn-active-bg: rgba(15, 42, 72, 0.80);
       --selection-active-bg: rgba(8, 26, 50, 0.98);
       --list-inner: rgba(0, 255, 102, 0.75);
+      --bottom-nav-icon-color: #ffffff;
+      --bottom-nav-icon-shadow-color: #00000066;
     }
 
     /* start-scene / settings-backdrop 는 다크 모드에서도 라이트 테마 유지 */
@@ -1129,6 +1141,11 @@
       --svg-icon-source: url("./rss/svg/ui_to_do.svg");
     }
 
+    .svg-icon-message {
+      color: var(--svg-default-color);
+      --svg-icon-source: url("./rss/svg/ui_message.svg");
+    }
+
     .svg-icon-scan {
       color: var(--svg-default-color);
       --svg-icon-source: url("./rss/svg/ui_scan.svg");
@@ -1299,6 +1316,34 @@
       background: transparent;
     }
 
+    #bottomNavMessageButton {
+      position: relative;
+    }
+
+    .bottom-nav-badge {
+      position: absolute;
+      top: 0.5vh;
+      right: 0.5vh;
+      min-width: 1.9vh;
+      height: 1.9vh;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 0.5vh;
+      border-radius: 0.95vh;
+      background: var(--danger);
+      color: #fff;
+      font-size: 1.1vh;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    .bottom-nav-badge[hidden] {
+      display: none;
+    }
+
     .bottom-nav-icon {
       display: block;
       width: 3.2vh;
@@ -1313,6 +1358,12 @@
       mask: none;
       pointer-events: none;
       transition: transform 160ms ease;
+    }
+
+    /* Only the always-visible bottom row (menu toggle, main toggle, to-do) — buttons
+       that are direct children of a slot. Excludes icons inside .bottom-nav-stack. */
+    .bottom-nav-slot > .bottom-nav-button .svg-icon {
+      filter: drop-shadow(0 0 0.2vh var(--bottom-nav-icon-shadow-color));
     }
 
     #bottomNavMenuButton[aria-expanded="true"] .bottom-nav-icon {
@@ -3482,6 +3533,543 @@
       height: 4vh;
       display: block;
     }
+
+    /* ===== Message inbox ===== */
+    .message-popup-panel {
+      width: min(46vh, 100%);
+    }
+
+    .message-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.8vh;
+    }
+
+    .message-empty {
+      padding: 2.4vh 0;
+      color: var(--muted);
+      font-size: 1.4vh;
+      text-align: center;
+    }
+
+    .message-row {
+      display: grid;
+      grid-template-columns: 4.6vh minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 1.2vh;
+      width: 100%;
+      padding: 1vh 1.2vh;
+      border: 0.12vh solid var(--line);
+      border-radius: 1vh;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      text-align: left;
+      text-transform: none;
+      cursor: pointer;
+      transition: border-color 140ms ease, background 140ms ease;
+    }
+
+    .message-row:hover {
+      border-color: var(--accent);
+      background: var(--btn-active-bg);
+    }
+
+    .message-row.is-unread {
+      border-color: var(--accent);
+    }
+
+    .message-portrait {
+      width: 4.6vh;
+      height: 4.6vh;
+      object-fit: cover;
+      border: 0.12vh solid var(--line);
+      border-radius: 0.7vh;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .message-body {
+      min-width: 0;
+      display: grid;
+      gap: 0.3vh;
+    }
+
+    .message-sender {
+      color: var(--muted);
+      font-size: 1vh;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .message-title {
+      overflow: hidden;
+      color: var(--text);
+      font-size: 1.5vh;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .message-row.is-unread .message-title {
+      font-weight: 800;
+    }
+
+    .message-unread-dot {
+      width: 1vh;
+      height: 1vh;
+      border-radius: 50%;
+      background: var(--danger);
+    }
+
+    .message-row:not(.is-unread) .message-unread-dot {
+      visibility: hidden;
+    }
+
+    /* ===== In-game dialogue UI (visual spec: non-product-test-and-sample/hud-textbox.html) ===== */
+    .dialog-ui {
+      --font-ui: "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+      --u: .43vh;
+      --name-font-size: calc(4.1 * var(--u));
+      --dialogue-font-size: calc(4.15 * var(--u));
+      position: fixed;
+      z-index: 13;
+      left: 50%;
+      bottom: 2.2vh;
+      width: calc(182 * var(--u));
+      height: calc(43 * var(--u));
+      opacity: 0;
+      visibility: hidden;
+      transform: translateX(-50%) translateY(calc(3 * var(--u))) scale(.985);
+      filter: blur(calc(.45 * var(--u))) contrast(1.2);
+      pointer-events: none;
+      user-select: none;
+      font-family: var(--font-ui);
+      color: #eef5ff;
+      text-shadow: 0 calc(.37 * var(--u)) 0 rgba(0, 0, 0, .9);
+      will-change: opacity, transform, filter, clip-path;
+    }
+
+    .dialog-ui--active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%);
+      filter: none;
+    }
+
+    /* Full-viewport dimmer behind the dialogue box. It blocks pointer events from
+       reaching the game/UI underneath (so an outside click only dismisses the
+       dialogue and never interacts with what's below). Sits just below .dialog-ui
+       (z 13) so the nav buttons inside it stay clickable. The gradient stays clear
+       up to 85% of the height, then eases to 20% black toward the bottom. */
+    .dialog-ui-dimmer {
+      position: fixed;
+      inset: 0;
+      z-index: 12;
+      background: linear-gradient(to bottom, transparent 85%, rgba(0, 0, 0, 0.2) 100%);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity .2s ease, visibility .2s ease;
+    }
+
+    .dialog-ui-dimmer--active {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .dialog-ui--glitch {
+      animation: dialogUiBaseGlitch .72s steps(1, end) both;
+    }
+
+    .dialog-ui__glitch-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      overflow: visible;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .dialog-ui--glitch > .dialog-ui__glitch-layer {
+      opacity: 1;
+    }
+
+    .dialog-ui__glitch-slice {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      opacity: 0;
+      clip-path: inset(
+        var(--slice-top)
+        0
+        calc(100% - var(--slice-top) - var(--slice-height))
+        0
+      );
+      animation: dialogUiSliceJitter .72s steps(1, end) both;
+      animation-delay: var(--slice-delay);
+      transform: translateX(0);
+      will-change: opacity, transform, filter;
+    }
+
+    .dialog-ui__glitch-slice-inner {
+      position: absolute;
+      inset: 0;
+      opacity: .94;
+      filter:
+        drop-shadow(var(--channel-shift) 0 0 var(--channel-color))
+        contrast(1.2)
+        brightness(1.08);
+    }
+
+    .dialog-ui .character-card,
+    .dialog-ui .character-profile,
+    .dialog-ui .character-name,
+    .dialog-ui .dialogue-text {
+      position: absolute;
+    }
+
+    .dialog-ui .character-card {
+      z-index: 1;
+      isolation: isolate;
+      left: 0;
+      top: 0;
+      width: calc(48 * var(--u));
+      height: calc(43 * var(--u));
+    }
+
+    .dialog-ui .character-profile {
+      z-index: 1;
+      left: calc(6 * var(--u));
+      top: 0;
+      width: calc(36 * var(--u));
+      height: calc(36 * var(--u));
+    }
+
+    .dialog-ui .character-profile__frame,
+    .dialog-ui .character-profile__image-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .dialog-ui .character-profile__frame--back {
+      z-index: 0;
+    }
+
+    .dialog-ui .character-profile__image-svg {
+      z-index: 1;
+    }
+
+    .dialog-ui .character-profile__frame--front {
+      z-index: 2;
+    }
+
+    .dialog-ui .character-name {
+      z-index: 2;
+      left: 0;
+      top: calc(27 * var(--u));
+      width: calc(48 * var(--u));
+      height: calc(16 * var(--u));
+    }
+
+    .dialog-ui .character-name__frame {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .dialog-ui .character-name__text {
+      position: absolute;
+      z-index: 1;
+      left: calc(10 * var(--u));
+      top: calc(6 * var(--u));
+      width: calc(30 * var(--u));
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-weight: 800;
+      letter-spacing: calc(.09 * var(--u));
+      font-size: var(--name-font-size);
+      line-height: 1;
+      text-align: center;
+    }
+
+    .dialog-ui .dialogue-text {
+      z-index: 0;
+      left: calc(50 * var(--u));
+      top: calc(.2 * var(--u));
+      width: calc(132 * var(--u));
+      height: calc(40 * var(--u));
+    }
+
+    .dialog-ui .dialogue-text__frame {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .dialog-ui .dialogue-text__body {
+      position: absolute;
+      z-index: 1;
+      left: calc(11 * var(--u));
+      top: calc(12.8 * var(--u));
+      width: calc(109 * var(--u));
+      margin: 0;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      font-weight: 700;
+      line-height: 1.35;
+      letter-spacing: calc(.07 * var(--u));
+      overflow-wrap: anywhere;
+      word-break: normal;
+      /* pre-line: honor explicit "\n" in the source text as a hard line break while
+         still collapsing other whitespace and wrapping long lines. The measurer
+         inherits this, so pagination accounts for forced breaks too. */
+      white-space: pre-line;
+      font-size: var(--dialogue-font-size);
+    }
+
+    .dialog-ui .dialogue-text__body--measure {
+      visibility: hidden;
+      pointer-events: none;
+      display: block;
+      -webkit-line-clamp: unset;
+      height: auto;
+      overflow: visible;
+    }
+
+    .dialog-ui .dialogue-nav {
+      position: absolute;
+      z-index: 3;
+      bottom: calc(-1 * var(--u));
+      height: calc(18 * var(--u));
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      pointer-events: auto;
+      transform-origin: center center;
+      transition: transform .08s ease, opacity .08s ease;
+    }
+
+    .dialog-ui .dialogue-nav svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .dialog-ui .dialogue-nav:active {
+      transform: translateY(calc(.25 * var(--u))) scale(.96);
+      background: transparent;
+    }
+
+    .dialog-ui .dialogue-nav[hidden] {
+      display: none;
+    }
+
+    .dialog-ui .dialogue-prev {
+      right: calc(25 * var(--u));
+      width: calc(21 * var(--u));
+    }
+
+    .dialog-ui .dialogue-next {
+      right: calc(0 * var(--u));
+      width: calc(27 * var(--u));
+    }
+
+    /* The next button shows the "end/confirm" icon on the final page (where pressing it
+       finishes the dialogue), and the "advance" icon otherwise. */
+    .dialog-ui .dialogue-next .dialogue-next-icon--end {
+      display: none;
+    }
+
+    .dialog-ui .dialogue-next.is-final .dialogue-next-icon--more {
+      display: none;
+    }
+
+    .dialog-ui .dialogue-next.is-final .dialogue-next-icon--end {
+      display: block;
+    }
+
+    @keyframes dialogUiBaseGlitch {
+      0% {
+        opacity: 0;
+        visibility: visible;
+        transform: translateX(-50%) translateY(calc(3 * var(--u))) scale(.985);
+        clip-path: inset(0 0 0 0);
+        filter:
+          blur(calc(.75 * var(--u)))
+          brightness(1.55)
+          contrast(1.65)
+          drop-shadow(calc(-1.1 * var(--u)) 0 0 rgba(0, 246, 255, .55))
+          drop-shadow(calc(1.1 * var(--u)) 0 0 rgba(255, 47, 146, .48));
+      }
+
+      7% {
+        opacity: .28;
+        transform:
+          translateX(-50%)
+          translateX(calc(-.75 * var(--u)))
+          translateY(calc(1.4 * var(--u)))
+          scale(.995);
+        clip-path: inset(8% 0 68% 0);
+      }
+
+      13% {
+        opacity: .75;
+        transform:
+          translateX(-50%)
+          translateX(calc(.55 * var(--u)))
+          translateY(calc(.35 * var(--u)))
+          scale(1.006);
+        clip-path: inset(0 0 0 0);
+      }
+
+      22% {
+        opacity: .44;
+        transform:
+          translateX(-50%)
+          translateX(calc(-.35 * var(--u)))
+          translateY(0)
+          scale(1.002);
+        clip-path: inset(62% 0 14% 0);
+      }
+
+      28% {
+        opacity: .96;
+        transform:
+          translateX(-50%)
+          translateX(calc(.22 * var(--u)))
+          translateY(0)
+          scale(1);
+        clip-path: inset(0 0 0 0);
+      }
+
+      42% {
+        opacity: .68;
+        transform:
+          translateX(-50%)
+          translateX(calc(.45 * var(--u)))
+          translateY(calc(-.12 * var(--u)))
+          scale(1.004);
+        filter:
+          brightness(1.28)
+          contrast(1.42)
+          drop-shadow(calc(.65 * var(--u)) 0 0 rgba(0, 246, 255, .42))
+          drop-shadow(calc(-.65 * var(--u)) 0 0 rgba(255, 47, 146, .36));
+      }
+
+      58% {
+        opacity: .88;
+        transform:
+          translateX(-50%)
+          translateX(calc(-.18 * var(--u)))
+          translateY(0)
+          scale(1);
+        clip-path: inset(0 0 0 0);
+        filter:
+          brightness(1.12)
+          contrast(1.18)
+          drop-shadow(calc(-.25 * var(--u)) 0 0 rgba(0, 246, 255, .24))
+          drop-shadow(calc(.25 * var(--u)) 0 0 rgba(255, 47, 146, .2));
+      }
+
+      100% {
+        opacity: 1;
+        visibility: visible;
+        transform: translateX(-50%);
+        clip-path: inset(0 0 0 0);
+        filter: none;
+      }
+    }
+
+    @keyframes dialogUiSliceJitter {
+      0% {
+        opacity: 0;
+        transform: translateX(0);
+      }
+
+      7% {
+        opacity: .96;
+        transform: translateX(var(--x1));
+      }
+
+      14% {
+        opacity: .62;
+        transform: translateX(var(--x2));
+      }
+
+      23% {
+        opacity: 1;
+        transform: translateX(var(--x3));
+      }
+
+      34% {
+        opacity: .7;
+        transform: translateX(var(--x4));
+      }
+
+      46% {
+        opacity: .94;
+        transform: translateX(var(--x5));
+      }
+
+      61% {
+        opacity: .38;
+        transform: translateX(var(--x6));
+      }
+
+      78% {
+        opacity: .14;
+        transform: translateX(0);
+      }
+
+      100% {
+        opacity: 0;
+        transform: translateX(0);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .dialog-ui--glitch,
+      .dialog-ui__glitch-slice {
+        animation: none;
+      }
+
+      .dialog-ui__glitch-layer {
+        display: none;
+      }
+    }
+
+    @media (max-aspect-ratio: 1/1) {
+      .dialog-ui {
+        --u: min(.43vh, .74vw);
+        bottom: 3.2vh;
+        width: calc(132 * var(--u));
+        height: calc(90 * var(--u));
+      }
+
+      .dialog-ui .character-card {
+        top: calc(16 * var(--u));
+      }
+
+      .dialog-ui .dialogue-text {
+        left: 0;
+        top: calc(46 * var(--u));
+        max-width: 98vw;
+      }
+    }
   </style>
 </head>
 
@@ -3593,6 +4181,11 @@
           <button class="bottom-nav-button" id="bottomNavPlayerButton" type="button" aria-label="Pilot" title="Pilot">
             <span class="svg-icon svg-icon-player bottom-nav-icon" aria-hidden="true"></span>
           </button>
+          <button class="bottom-nav-button" id="bottomNavMessageButton" type="button" aria-label="Messages"
+            title="Messages" data-i18n-aria-label="ui.messages.title" data-i18n-title="ui.messages.title">
+            <span class="svg-icon svg-icon-message bottom-nav-icon" aria-hidden="true"></span>
+            <span class="bottom-nav-badge" id="bottomNavMessageBadge" aria-hidden="true" hidden>0</span>
+          </button>
         </div>
         <button class="bottom-nav-button" id="bottomNavMenuButton" type="button" aria-label="Open menu"
           aria-expanded="false" aria-controls="bottomNavMenuStack" title="Menu">
@@ -3674,6 +4267,21 @@
       </section>
     </div>
 
+    <div class="player-popup-backdrop" id="messagePopup" aria-hidden="true" hidden inert>
+      <section class="player-popup-panel message-popup-panel" role="dialog" aria-modal="true"
+        aria-labelledby="messagePopupTitle">
+        <header class="player-popup-header">
+          <h2 class="player-popup-title" id="messagePopupTitle" data-i18n="ui.messages.title">Messages</h2>
+          <button class="object-list-close" id="messagePopupCloseButton" type="button" aria-label="Close" title="Close">
+            <span class="svg-icon svg-icon-close" aria-hidden="true"></span>
+          </button>
+        </header>
+        <div class="player-popup-body">
+          <div class="message-list" id="messageList"></div>
+        </div>
+      </section>
+    </div>
+
     <div class="minimap-backdrop" id="minimapPopup" aria-hidden="true" hidden inert>
       <section class="minimap-panel" role="dialog" aria-modal="true" aria-labelledby="minimapTitle">
         <header class="minimap-header">
@@ -3708,6 +4316,99 @@
         </div>
       </section>
     </div>
+
+    <div class="dialog-ui-dimmer" id="dialogUiDimmer" aria-hidden="true"></div>
+    <section class="dialog-ui" id="dialogUi" aria-hidden="true">
+      <div class="character-card">
+        <div class="character-profile">
+
+          <svg class="character-profile__frame character-profile__frame--back" viewBox="0 0 36 36"
+            preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 8.5L4 9.5L6 34L33.5 33.5L34 29L32.5 28.5L33.5 4L6 5.5V8.5Z" fill="black" />
+          </svg>
+
+          <svg class="character-profile__image-svg" viewBox="0 0 36 36" preserveAspectRatio="none" fill="none"
+            xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <clipPath id="profileboxClip" clipPathUnits="userSpaceOnUse">
+                <path d="M4 6.5L2 7.5L4 32L31.5 31.5L32 27L30.5 26.5L31.5 2L4 3.5V6.5Z" />
+              </clipPath>
+            </defs>
+
+            <image data-profile-image href="" x="-1.44" y="-1.44" width="38.88" height="38.88"
+              preserveAspectRatio="xMidYMid slice" clip-path="url(#profileboxClip)" />
+          </svg>
+
+          <svg class="character-profile__frame character-profile__frame--front" viewBox="0 0 36 36"
+            preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M32 2.02051L31.0146 26.1436L32.1582 26.5254L32.542 26.6533L32.4971 27.0557L31.9971 31.5557L31.9482 31.9922L31.5088 32L4.00879 32.5L3.54004 32.5088L3.50195 32.041L1.50195 7.54102L1.47461 7.2041L1.77637 7.05273L3.5 6.19043V3.02637L3.97266 3.00098L31.4727 1.50098L32.0225 1.4707L32 2.02051Z"
+              stroke="black" />
+            <path
+              d="M30 26.4795L29.9854 26.8555L30.3418 26.9746L31.458 27.3467L31.0508 31.0078L4.45898 31.4912L2.52539 7.7959L4.22363 6.94727L4.5 6.80859V3.97266L30.9775 2.52832L30 26.4795Z"
+              stroke="white" />
+          </svg>
+
+        </div>
+
+        <div class="character-name">
+          <svg class="character-name__frame" viewBox="0 0 48 16" preserveAspectRatio="none" fill="none"
+            xmlns="http://www.w3.org/2000/svg">
+            <path d="M9.5 11L8 5.5L41.0004 5L41.5004 6L44 6.5L43.5 15H9.5L8 12L9.5 11Z" fill="black" />
+            <path
+              d="M39.8379 3.55762L42.0977 4.00977L42.5244 4.09473L42.499 4.5293L41.999 13.0293L41.9717 13.5H7.19141L7.05273 13.2236L5.35547 9.8291L5.72266 9.58398L6.92188 8.7832L5.51758 3.63184L5.34766 3.00977L5.99219 3L38.9932 2.5L39.3066 2.49512L39.8379 3.55762Z"
+              fill="black" stroke="black" />
+            <path
+              d="M39.0537 4.22363L39.1621 4.44238L39.4023 4.49023L41.4746 4.9043L41.0283 12.5H7.80859L6.64453 10.1709L7.77734 9.41602L8.07715 9.21582L7.98242 8.86816L6.65137 3.99023L38.6934 3.50391L39.0537 4.22363Z"
+              fill="black" stroke="white" />
+          </svg>
+
+          <span class="character-name__text"></span>
+        </div>
+      </div>
+
+      <div class="dialogue-text">
+        <svg class="dialogue-text__frame" viewBox="0 0 132 40" preserveAspectRatio="none" fill="none"
+          xmlns="http://www.w3.org/2000/svg">
+          <path d="M10 11L8 16L5 17.5L7 26.5L5.5 27L7 30.5L12 30L14 32.5L125.498 34L129 8L10 11Z" fill="black" />
+          <path
+            d="M127.495 6.06641L123.993 32.0664L123.935 32.5059L123.491 32.5L11.9932 31L11.7568 30.9971L11.6094 30.8125L9.77832 28.5234L5.0498 28.9971L4.68457 29.0342L4.54004 28.6973L3.04004 25.1973L2.82617 24.6973L3.3418 24.5254L4.41309 24.168L2.51172 15.6084L2.42676 15.2275L2.77637 15.0527L5.60645 13.6367L7.53613 8.81445L7.6582 8.50879L7.9873 8.5L126.987 5.5L127.574 5.48535L127.495 6.06641Z"
+            fill="black" stroke="black" />
+          <path
+            d="M123.061 31.4932L12.2432 30.0029L10.3906 27.6875L10.2207 27.4756L9.9502 27.5029L5.31543 27.9658L4.17383 25.3018L5.1582 24.9746L5.58594 24.832L5.48828 24.3916L3.57227 15.7725L6.22363 14.4473L6.39355 14.3623L6.46387 14.1855L8.34082 9.49121L126.426 6.51465L123.061 31.4932Z"
+            fill="black" stroke="white" />
+        </svg>
+
+        <p class="dialogue-text__body"></p>
+
+        <button class="dialogue-nav dialogue-prev" type="button">
+          <svg width="84" height="72" viewBox="0 0 84 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M79 65L31.4771 64L15 49L29 24L77 23L82 49L79 65Z" fill="black"/>
+            <path d="M70.9639 14.6221L75.9639 40.6221L76.0361 40.9951L75.9658 41.3682L72.9658 57.3682L72.6533 59.0352L70.958 59L23.4346 58L22.6855 57.9834L22.1309 57.4785L5.65332 42.4785L4.47852 41.4092L5.25488 40.0225L19.2549 15.0225L19.8145 14.0244L20.958 14L70.6455 12.9648L70.9639 14.6221Z" fill="black" stroke="black" stroke-width="4"/>
+            <path d="M71.9639 41.0039L69.3467 54.9639L24.2676 54.0156L9.52148 40.5908L22.1855 17.9756L67.3545 17.0342L71.9639 41.0039Z" fill="black" stroke="#C7C7C7" stroke-width="4"/>
+            <path d="M41 27L34 29L27 36L34 43L41 45L35 36L41 27Z" fill="#C7C7C7"/>
+            <path d="M55 25L48 27L41 36L48 45L55 47L49 36L55 25Z" fill="#C7C7C7"/>
+          </svg>
+        </button>
+
+        <button class="dialogue-nav dialogue-next" type="button">
+          <svg class="dialogue-next-icon dialogue-next-icon--more" width="108" height="72" viewBox="0 0 108 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M100 57L19.4771 64L21 50L17 22L98 24L107 36.5L100 57Z" fill="black"/>
+            <path d="M9.0498 12.001L90.0498 14.001L91.043 14.0254L100.623 27.3311L101.227 28.1689L100.893 29.1465L93.8926 49.6465L93.4717 50.8799L92.1729 50.9922L11.6504 57.9922L9.22559 58.2031L9.48926 55.7842L10.9844 42.0322L7.02051 14.2832L6.68555 11.9424L9.0498 12.001Z" fill="black" stroke="black" stroke-width="4"/>
+            <path d="M88.9561 17.9736L96.7734 28.8301L90.5283 47.1201L13.7285 53.7969L14.9883 42.2158L15.0156 41.9658L14.9795 41.7168L11.3135 16.0566L88.9561 17.9736Z" fill="black" stroke="white" stroke-width="4"/>
+            <path d="M54 25L61 27L68 34L61 41L54 43L60 34L54 25Z" fill="white"/>
+            <path d="M40 23L47 25L54 34L47 43L40 45L46 34L40 23Z" fill="white"/>
+          </svg>
+          <svg class="dialogue-next-icon dialogue-next-icon--end" width="108" height="72" viewBox="0 0 108 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M100 57L19.4771 64L21 50L17 22L98 24L107 36.5L100 57Z" fill="black"/>
+            <path d="M9.0498 12.001L90.0498 14.001L91.043 14.0254L100.623 27.3311L101.227 28.1689L100.893 29.1465L93.8926 49.6465L93.4717 50.8799L92.1729 50.9922L11.6504 57.9922L9.22559 58.2031L9.48926 55.7842L10.9844 42.0322L7.02051 14.2832L6.68555 11.9424L9.0498 12.001Z" fill="black" stroke="black" stroke-width="4"/>
+            <path d="M88.9561 17.9736L96.7734 28.8301L90.5283 47.1201L13.7285 53.7969L14.9883 42.2158L15.0156 41.9658L14.9795 41.7168L11.3135 16.0566L88.9561 17.9736Z" fill="black" stroke="white" stroke-width="4"/>
+            <path d="M44 25L51 27L58 34L51 41L44 43L50 34L44 25Z" fill="white"/>
+            <path d="M64 43L57 41L50 34L57 27L64 25L58 34L64 43Z" fill="white"/>
+          </svg>
+        </button>
+      </div>
+    </section>
 
     <div class="toast" id="toast"></div>
     <button class="error-toast" id="errorToast" type="button" hidden></button>

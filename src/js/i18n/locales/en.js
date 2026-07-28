@@ -67,6 +67,10 @@ export const en = {
       title: "Pilot",
       shipSection: "Ship"
     },
+    messages: {
+      title: "Messages",
+      empty: "No messages"
+    },
     scanner: {
       categories: {
         buildings: "Buildings",
@@ -79,6 +83,19 @@ export const en = {
       autoNavigate: "Auto Navigate",
       objectDetail: "Object detail",
       closeDetail: "Close detail",
+      openTrade: "Trade (Load/Unload)",
+      tradeTitle: "Trade",
+      tradeAmount: "Amount",
+      publicStock: "Public Stock (Tradable)",
+      cargo: "Cargo",
+      loadToShip: "Load →",
+      unloadToStation: "← Unload",
+      tradeDockFirst: "Dock first to trade",
+      tradeNoShip: "No ship",
+      tradeNoStock: "Insufficient stock",
+      tradeCargoFull: "Cargo full",
+      tradeNoCargo: "Not in cargo",
+      tradeStationFull: "Station stock full",
       fields: {
         amount: "Amount",
         category: "Category",

@@ -48,13 +48,13 @@
           {
             "id": "vfx_light_engine_001",
             "kind": "engine",
-            "label": "EmissivePlate_ship_01.001",
+            "label": "Engine",
             "effectId": "engine_light_default",
             "target": {
-              "objectMatches": [
-                "EmissivePlate_ship_01.001"
-              ],
-              "materialMatches": []
+              "objectMatches": [],
+              "materialMatches": [
+                "emissiveMTL_engine"
+              ]
             },
             "engineOutput": true,
             "defaultLight": false,
@@ -65,79 +65,28 @@
           {
             "id": "vfx_light_head_001",
             "kind": "head_light",
-            "label": "EmissivePlate_ship_01.002",
+            "label": "Head Light",
             "effectId": "head_light_default",
             "target": {
-              "objectMatches": [
-                "EmissivePlate_ship_01.002"
-              ],
-              "materialMatches": []
+              "objectMatches": [],
+              "materialMatches": [
+                "emissiveMTL_headlight"
+              ]
             },
             "engineOutput": false,
             "defaultLight": true,
             "overrides": {}
           },
           {
-            "id": "vfx_light_aux_003",
+            "id": "vfx_light_aux_001",
             "kind": "emissive_light",
-            "label": "EmissivePlate_ship_01.003",
+            "label": "Aux",
             "effectId": "aux_light_default",
             "target": {
-              "objectMatches": [
-                "EmissivePlate_ship_01.003"
-              ],
-              "materialMatches": []
-            },
-            "engineOutput": false,
-            "defaultLight": false,
-            "overrides": {
-              "color": "#9b9bff"
-            }
-          },
-          {
-            "id": "vfx_light_aux_004",
-            "kind": "emissive_light",
-            "label": "EmissivePlate_ship_01.004",
-            "effectId": "aux_light_default",
-            "target": {
-              "objectMatches": [
-                "EmissivePlate_ship_01.004"
-              ],
-              "materialMatches": []
-            },
-            "engineOutput": false,
-            "defaultLight": false,
-            "overrides": {
-              "color": "#9b9bff"
-            }
-          },
-          {
-            "id": "vfx_light_aux_005",
-            "kind": "emissive_light",
-            "label": "EmissivePlate_ship_01.005",
-            "effectId": "aux_light_default",
-            "target": {
-              "objectMatches": [
-                "EmissivePlate_ship_01.005"
-              ],
-              "materialMatches": []
-            },
-            "engineOutput": false,
-            "defaultLight": false,
-            "overrides": {
-              "color": "#9b9bff"
-            }
-          },
-          {
-            "id": "vfx_light_aux_006",
-            "kind": "emissive_light",
-            "label": "EmissivePlate_ship_01.006",
-            "effectId": "aux_light_default",
-            "target": {
-              "objectMatches": [
-                "EmissivePlate_ship_01.006"
-              ],
-              "materialMatches": []
+              "objectMatches": [],
+              "materialMatches": [
+                "emissiveMTL_light"
+              ]
             },
             "engineOutput": false,
             "defaultLight": false,
@@ -263,13 +212,13 @@
           {
             "id": "vfx_light_02_engine_001",
             "kind": "engine",
-            "label": "EmissivePlate_ship_02.001",
+            "label": "Engine",
             "effectId": "engine_light_default",
             "target": {
-              "objectMatches": [
-                "EmissivePlate_ship_02.001"
-              ],
-              "materialMatches": []
+              "objectMatches": [],
+              "materialMatches": [
+                "emissiveMTL_engine"
+              ]
             },
             "engineOutput": true,
             "defaultLight": false,
@@ -278,100 +227,15 @@
             }
           },
           {
-            "id": "vfx_light_02_aux_002",
+            "id": "vfx_light_02_aux_001",
             "kind": "emissive_light",
-            "label": "EmissivePlate_ship_02.002",
+            "label": "Aux",
             "effectId": "aux_light_default",
             "target": {
-              "objectMatches": [
-                "EmissivePlate_ship_02.002"
-              ],
-              "materialMatches": []
-            },
-            "engineOutput": false,
-            "defaultLight": false,
-            "overrides": {
-              "color": "#9b9bff"
-            }
-          },
-          {
-            "id": "vfx_light_02_aux_003",
-            "kind": "emissive_light",
-            "label": "EmissivePlate_ship_02.003",
-            "effectId": "aux_light_default",
-            "target": {
-              "objectMatches": [
-                "EmissivePlate_ship_02.003"
-              ],
-              "materialMatches": []
-            },
-            "engineOutput": false,
-            "defaultLight": false,
-            "overrides": {
-              "color": "#9b9bff"
-            }
-          },
-          {
-            "id": "vfx_light_02_aux_004",
-            "kind": "emissive_light",
-            "label": "EmissivePlate_ship_02.004",
-            "effectId": "aux_light_default",
-            "target": {
-              "objectMatches": [
-                "EmissivePlate_ship_02.004"
-              ],
-              "materialMatches": []
-            },
-            "engineOutput": false,
-            "defaultLight": false,
-            "overrides": {
-              "color": "#9b9bff"
-            }
-          },
-          {
-            "id": "vfx_light_02_aux_005",
-            "kind": "emissive_light",
-            "label": "EmissivePlate_ship_02.005",
-            "effectId": "aux_light_default",
-            "target": {
-              "objectMatches": [
-                "EmissivePlate_ship_02.005"
-              ],
-              "materialMatches": []
-            },
-            "engineOutput": false,
-            "defaultLight": false,
-            "overrides": {
-              "color": "#9b9bff"
-            }
-          },
-          {
-            "id": "vfx_light_02_aux_006",
-            "kind": "emissive_light",
-            "label": "EmissivePlate_ship_02.006",
-            "effectId": "aux_light_default",
-            "target": {
-              "objectMatches": [
-                "EmissivePlate_ship_02.006"
-              ],
-              "materialMatches": []
-            },
-            "engineOutput": false,
-            "defaultLight": false,
-            "overrides": {
-              "color": "#9b9bff"
-            }
-          },
-          {
-            "id": "vfx_light_02_aux_007",
-            "kind": "emissive_light",
-            "label": "EmissivePlate_ship_02.007",
-            "effectId": "aux_light_default",
-            "target": {
-              "objectMatches": [
-                "EmissivePlate_ship_02.007"
-              ],
-              "materialMatches": []
+              "objectMatches": [],
+              "materialMatches": [
+                "emissiveMTL_light"
+              ]
             },
             "engineOutput": false,
             "defaultLight": false,

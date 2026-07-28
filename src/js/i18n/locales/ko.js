@@ -67,6 +67,10 @@ export const ko = {
       title: "파일럿",
       shipSection: "함선"
     },
+    messages: {
+      title: "메시지",
+      empty: "메시지가 없습니다"
+    },
     scanner: {
       categories: {
         buildings: "건물",
@@ -79,6 +83,19 @@ export const ko = {
       autoNavigate: "자동 항법",
       objectDetail: "객체 상세",
       closeDetail: "상세 닫기",
+      openTrade: "무역 (적재/적하)",
+      tradeTitle: "무역",
+      tradeAmount: "수량",
+      publicStock: "공공 재고 (거래 가능)",
+      cargo: "카고",
+      loadToShip: "적재 →",
+      unloadToStation: "← 적하",
+      tradeDockFirst: "정박 후 이용 가능",
+      tradeNoShip: "함선 없음",
+      tradeNoStock: "재고 부족",
+      tradeCargoFull: "카고 가득 참",
+      tradeNoCargo: "카고에 없음",
+      tradeStationFull: "스테이션 재고 가득 참",
       fields: {
         amount: "수량",
         category: "분류",

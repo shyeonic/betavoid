@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "speakers": {
+    "garden_keeper": {
+      "name_id": "dialogue.speaker.garden_keeper",
+      "portrait": "rss/profile/portrait_01.png"
+    }
+  },
+  "dialogues": {
+    "tutorial_intro": {
+      "lines": [
+        { "speaker": "garden_keeper", "text_id": "dialogue.tutorial_intro.001" }
+      ]
+    }
+  }
+}

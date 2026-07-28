@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "messages": {
+    "msg_welcome": {
+      "title_id": "message.welcome.title",
+      "sender": "garden_keeper",
+      "dialogue_id": "tutorial_intro"
+    }
+  }
+}

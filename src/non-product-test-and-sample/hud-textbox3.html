@@ -1,0 +1,1085 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SVG Dialogue UI - Final (3: dim + close + newline)</title>
+  <!--
+    hud-textbox3.html
+    hud-textbox2.html 에서 출발해 메인 코드(js/DialogueManager.js + index.html)의 동작을
+    역으로 가져온 샘플입니다. 추가/변경된 것:
+      1) 백그라운드 dim   : 전체 화면 dimmer가 클릭을 가로채(통과 차단) 대화를 닫음.
+                            상단 85% 지점부터 100% 지점까지 20% 검은색 그라데이션.
+      2) 네임박스 중앙정렬 : .character-name__text { text-align: center }
+      3) 닫기버튼 로직     : 마지막 페이지에서 next 버튼이 "확인/닫기"(is-final) 아이콘으로
+                            바뀌고, 누르면 대화가 닫힘.
+      4) \n / \n\n 규칙   : 본문 white-space: pre-line + normalizeText가 개행을 보존.
+                            "\n" = 1회 줄바꿈, "\n\n" = 빈 줄(2회 줄바꿈).
+  -->
+  <style>
+    :root {
+      --font-ui: "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: var(--font-ui);
+      color: #eef5ff;
+      background: #03070f;
+    }
+
+    .stage {
+      position: relative;
+      width: 100%;
+      height: 100vh;
+      overflow: hidden;
+      background: #ababab;
+    }
+
+    /* dim 통과 차단 검증용 더미 버튼: dim이 떠 있을 때 이게 눌리면 안 됨. */
+    .passthrough-probe {
+      position: absolute;
+      z-index: 1;
+      left: 4vh;
+      top: 4vh;
+      padding: 1em 1.4em;
+      border: 2px solid rgba(0, 0, 0, .5);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .7);
+      color: #111;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .dialogue-start-button {
+      position: fixed;
+      z-index: 10;
+      left: 50%;
+      bottom: 8vh;
+      transform: translateX(-50%);
+      padding: 1.05em 1.7em;
+      border: 2px solid rgba(255, 255, 255, .85);
+      border-radius: 999px;
+      background: rgba(0, 0, 0, .78);
+      color: #fff;
+      font-family: inherit;
+      font-size: clamp(14px, 1.8vh, 18px);
+      font-weight: 900;
+      letter-spacing: .04em;
+      cursor: pointer;
+      box-shadow:
+        0 1.4vh 4vh rgba(0, 0, 0, .28),
+        inset 0 0 0 1px rgba(255, 255, 255, .12);
+      transition: transform .12s ease, opacity .12s ease;
+    }
+
+    .dialogue-start-button:hover {
+      transform: translateX(-50%) translateY(-2px);
+    }
+
+    .dialogue-start-button:active {
+      transform: translateX(-50%) translateY(0) scale(.97);
+    }
+
+    .dialogue-start-button[hidden] {
+      display: none;
+    }
+
+    /* (1) 백그라운드 dim: 대화 박스(z 5) 바로 아래(z 4)에서 전체 화면을 덮어
+       클릭이 아래 UI로 통과하는 것을 막고, 클릭 시 대화를 닫는다.
+       그라데이션은 85%까지 투명, 100%로 갈수록 20% 검은색으로 어두워진다. */
+    .dialog-ui-dimmer {
+      position: fixed;
+      inset: 0;
+      z-index: 4;
+      background: linear-gradient(to bottom, transparent 85%, rgba(0, 0, 0, 0.2) 100%);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity .2s ease, visibility .2s ease;
+    }
+
+    .dialog-ui-dimmer--active {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .dialog-ui {
+      --u: .43vh;
+      --name-font-size: calc(4.1 * var(--u));
+      --dialogue-font-size: calc(4.15 * var(--u));
+      position: fixed;
+      z-index: 5;
+      left: 50%;
+      bottom: 5.2vh;
+      width: calc(182 * var(--u));
+      height: calc(43 * var(--u));
+      opacity: 0;
+      visibility: hidden;
+      transform: translateX(-50%) translateY(calc(3 * var(--u))) scale(.985);
+      filter: blur(calc(.45 * var(--u))) contrast(1.2);
+      pointer-events: none;
+      user-select: none;
+      text-shadow: 0 calc(.37 * var(--u)) 0 rgba(0, 0, 0, .9);
+      will-change: opacity, transform, filter, clip-path;
+    }
+
+    .dialog-ui--active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%);
+      filter: none;
+    }
+
+    .dialog-ui--glitch {
+      animation: dialogUiBaseGlitch .72s steps(1, end) both;
+    }
+
+    .dialog-ui__glitch-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      overflow: visible;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .dialog-ui--glitch > .dialog-ui__glitch-layer {
+      opacity: 1;
+    }
+
+    .dialog-ui__glitch-slice {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      opacity: 0;
+      clip-path: inset(
+        var(--slice-top)
+        0
+        calc(100% - var(--slice-top) - var(--slice-height))
+        0
+      );
+      animation: dialogUiSliceJitter .72s steps(1, end) both;
+      animation-delay: var(--slice-delay);
+      transform: translateX(0);
+      will-change: opacity, transform, filter;
+    }
+
+    .dialog-ui__glitch-slice-inner {
+      position: absolute;
+      inset: 0;
+      opacity: .94;
+      filter:
+        drop-shadow(var(--channel-shift) 0 0 var(--channel-color))
+        contrast(1.2)
+        brightness(1.08);
+    }
+
+
+    .character-card,
+    .character-profile,
+    .character-name,
+    .dialogue-text {
+      position: absolute;
+    }
+
+    .character-card {
+      z-index: 1;
+      isolation: isolate;
+      left: 0;
+      top: 0;
+      width: calc(48 * var(--u));
+      height: calc(43 * var(--u));
+    }
+
+    .character-profile {
+      z-index: 1;
+      left: calc(6 * var(--u));
+      top: 0;
+      width: calc(36 * var(--u));
+      height: calc(36 * var(--u));
+    }
+
+    .character-profile__frame,
+    .character-profile__image-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .character-profile__frame--back {
+      z-index: 0;
+    }
+
+    .character-profile__image-svg {
+      z-index: 1;
+    }
+
+    .character-profile__frame--front {
+      z-index: 2;
+    }
+
+    .character-name {
+      z-index: 2;
+      left: 0;
+      top: calc(27 * var(--u));
+      width: calc(48 * var(--u));
+      height: calc(16 * var(--u));
+    }
+
+    .character-name__frame {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .character-name__text {
+      position: absolute;
+      z-index: 1;
+      left: calc(10 * var(--u));
+      top: calc(6 * var(--u));
+      width: calc(30 * var(--u));
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-weight: 800;
+      letter-spacing: calc(.09 * var(--u));
+      font-size: var(--name-font-size);
+      line-height: 1;
+      /* (2) 네임박스 텍스트 중앙 정렬 */
+      text-align: center;
+    }
+
+    .dialogue-text {
+      z-index: 0;
+      left: calc(50 * var(--u));
+      top: calc(.2 * var(--u));
+      width: calc(132 * var(--u));
+      height: calc(40 * var(--u));
+      isolation: isolate;
+    }
+
+    .dialogue-text__frame {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .dialogue-text__body {
+      position: absolute;
+      z-index: 1;
+      left: calc(11 * var(--u));
+      top: calc(12.8 * var(--u));
+      width: calc(109 * var(--u));
+      margin: 0;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      font-weight: 700;
+      line-height: 1.35;
+      letter-spacing: calc(.07 * var(--u));
+      overflow-wrap: anywhere;
+      word-break: normal;
+      /* (4) pre-line: 원본 텍스트의 "\n"을 강제 줄바꿈으로 살리고, 그 외 공백은
+         합치며 긴 줄은 자동 줄바꿈. measurer도 이 스타일을 상속하므로 페이지네이션이
+         강제 줄바꿈/빈 줄까지 계산한다. */
+      white-space: pre-line;
+      font-size: var(--dialogue-font-size);
+    }
+
+    .dialogue-text__body--measure {
+      visibility: hidden;
+      pointer-events: none;
+      display: block;
+      -webkit-line-clamp: unset;
+      height: auto;
+      overflow: visible;
+    }
+
+    .dialogue-nav {
+      position: absolute;
+      z-index: 3;
+      bottom: calc(-1 * var(--u));
+      height: calc(18 * var(--u));
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      pointer-events: auto;
+      transform-origin: center center;
+      transition: transform .08s ease, opacity .08s ease;
+    }
+
+    .dialogue-nav svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .dialogue-nav:active {
+      transform: translateY(calc(.25 * var(--u))) scale(.96);
+    }
+
+    .dialogue-nav[hidden] {
+      display: none;
+    }
+
+    .dialogue-prev {
+      right: calc(25 * var(--u));
+      width: calc(21 * var(--u));
+    }
+
+    .dialogue-next {
+      right: calc(0 * var(--u));
+      width: calc(27 * var(--u));
+    }
+
+    /* (3) 닫기버튼 로직: 마지막 페이지(더 넘길 곳이 없음)에서는 next 버튼이
+       "이어보기" 대신 "확인/닫기" 아이콘으로 바뀐다. */
+    .dialogue-next .dialogue-next-icon--end {
+      display: none;
+    }
+
+    .dialogue-next.is-final .dialogue-next-icon--more {
+      display: none;
+    }
+
+    .dialogue-next.is-final .dialogue-next-icon--end {
+      display: block;
+    }
+
+    @keyframes dialogUiBaseGlitch {
+      0% {
+        opacity: 0;
+        visibility: visible;
+        transform: translateX(-50%) translateY(calc(3 * var(--u))) scale(.985);
+        clip-path: inset(0 0 0 0);
+        filter:
+          blur(calc(.75 * var(--u)))
+          brightness(1.55)
+          contrast(1.65)
+          drop-shadow(calc(-1.1 * var(--u)) 0 0 rgba(0, 246, 255, .55))
+          drop-shadow(calc(1.1 * var(--u)) 0 0 rgba(255, 47, 146, .48));
+      }
+
+      7% {
+        opacity: .28;
+        transform:
+          translateX(-50%)
+          translateX(calc(-.75 * var(--u)))
+          translateY(calc(1.4 * var(--u)))
+          scale(.995);
+        clip-path: inset(8% 0 68% 0);
+      }
+
+      13% {
+        opacity: .75;
+        transform:
+          translateX(-50%)
+          translateX(calc(.55 * var(--u)))
+          translateY(calc(.35 * var(--u)))
+          scale(1.006);
+        clip-path: inset(0 0 0 0);
+      }
+
+      22% {
+        opacity: .44;
+        transform:
+          translateX(-50%)
+          translateX(calc(-.35 * var(--u)))
+          translateY(0)
+          scale(1.002);
+        clip-path: inset(62% 0 14% 0);
+      }
+
+      28% {
+        opacity: .96;
+        transform:
+          translateX(-50%)
+          translateX(calc(.22 * var(--u)))
+          translateY(0)
+          scale(1);
+        clip-path: inset(0 0 0 0);
+      }
+
+      42% {
+        opacity: .68;
+        transform:
+          translateX(-50%)
+          translateX(calc(.45 * var(--u)))
+          translateY(calc(-.12 * var(--u)))
+          scale(1.004);
+        filter:
+          brightness(1.28)
+          contrast(1.42)
+          drop-shadow(calc(.65 * var(--u)) 0 0 rgba(0, 246, 255, .42))
+          drop-shadow(calc(-.65 * var(--u)) 0 0 rgba(255, 47, 146, .36));
+      }
+
+      58% {
+        opacity: .88;
+        transform:
+          translateX(-50%)
+          translateX(calc(-.18 * var(--u)))
+          translateY(0)
+          scale(1);
+        clip-path: inset(0 0 0 0);
+        filter:
+          brightness(1.12)
+          contrast(1.18)
+          drop-shadow(calc(-.25 * var(--u)) 0 0 rgba(0, 246, 255, .24))
+          drop-shadow(calc(.25 * var(--u)) 0 0 rgba(255, 47, 146, .2));
+      }
+
+      100% {
+        opacity: 1;
+        visibility: visible;
+        transform: translateX(-50%);
+        clip-path: inset(0 0 0 0);
+        filter: none;
+      }
+    }
+
+    @keyframes dialogUiSliceJitter {
+      0% {
+        opacity: 0;
+        transform: translateX(0);
+      }
+
+      7% {
+        opacity: .96;
+        transform: translateX(var(--x1));
+      }
+
+      14% {
+        opacity: .62;
+        transform: translateX(var(--x2));
+      }
+
+      23% {
+        opacity: 1;
+        transform: translateX(var(--x3));
+      }
+
+      34% {
+        opacity: .7;
+        transform: translateX(var(--x4));
+      }
+
+      46% {
+        opacity: .94;
+        transform: translateX(var(--x5));
+      }
+
+      61% {
+        opacity: .38;
+        transform: translateX(var(--x6));
+      }
+
+      78% {
+        opacity: .14;
+        transform: translateX(0);
+      }
+
+      100% {
+        opacity: 0;
+        transform: translateX(0);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .dialog-ui--glitch,
+      .dialog-ui__glitch-slice {
+        animation: none;
+      }
+
+      .dialog-ui__glitch-layer {
+        display: none;
+      }
+    }
+
+    @media (max-aspect-ratio: 1/1) {
+      .dialog-ui {
+        --u: min(.43vh, .74vw);
+        bottom: 5.6vh;
+        width: calc(132 * var(--u));
+        height: calc(90 * var(--u));
+      }
+
+      .character-card {
+        top: calc(16 * var(--u));
+      }
+
+      .dialogue-text {
+        left: 0;
+        top: calc(46 * var(--u));
+        max-width: 98vw;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="stage">
+    <button class="passthrough-probe" type="button">통과 차단 테스트 버튼</button>
+
+    <button class="dialogue-start-button" type="button">대화 시작</button>
+
+    <!-- (1) 백그라운드 dim -->
+    <div class="dialog-ui-dimmer" aria-hidden="true"></div>
+
+    <section class="dialog-ui" aria-hidden="true">
+
+      <div class="character-card">
+        <div class="character-profile">
+
+          <svg class="character-profile__frame character-profile__frame--back" viewBox="0 0 36 36"
+            preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 8.5L4 9.5L6 34L33.5 33.5L34 29L32.5 28.5L33.5 4L6 5.5V8.5Z" fill="black" />
+          </svg>
+
+          <svg class="character-profile__image-svg" viewBox="0 0 36 36" preserveAspectRatio="none" fill="none"
+            xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <clipPath id="profileboxClip" clipPathUnits="userSpaceOnUse">
+                <path d="M4 6.5L2 7.5L4 32L31.5 31.5L32 27L30.5 26.5L31.5 2L4 3.5V6.5Z" />
+              </clipPath>
+            </defs>
+
+            <image data-profile-image href="" x="-1.44" y="-1.44" width="38.88" height="38.88"
+              preserveAspectRatio="xMidYMid slice" clip-path="url(#profileboxClip)" />
+          </svg>
+
+          <svg class="character-profile__frame character-profile__frame--front" viewBox="0 0 36 36"
+            preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M32 2.02051L31.0146 26.1436L32.1582 26.5254L32.542 26.6533L32.4971 27.0557L31.9971 31.5557L31.9482 31.9922L31.5088 32L4.00879 32.5L3.54004 32.5088L3.50195 32.041L1.50195 7.54102L1.47461 7.2041L1.77637 7.05273L3.5 6.19043V3.02637L3.97266 3.00098L31.4727 1.50098L32.0225 1.4707L32 2.02051Z"
+              stroke="black" />
+            <path
+              d="M30 26.4795L29.9854 26.8555L30.3418 26.9746L31.458 27.3467L31.0508 31.0078L4.45898 31.4912L2.52539 7.7959L4.22363 6.94727L4.5 6.80859V3.97266L30.9775 2.52832L30 26.4795Z"
+              stroke="white" />
+          </svg>
+
+        </div>
+
+        <div class="character-name">
+          <svg class="character-name__frame" viewBox="0 0 48 16" preserveAspectRatio="none" fill="none"
+            xmlns="http://www.w3.org/2000/svg">
+            <path d="M9.5 11L8 5.5L41.0004 5L41.5004 6L44 6.5L43.5 15H9.5L8 12L9.5 11Z" fill="black" />
+            <path
+              d="M39.8379 3.55762L42.0977 4.00977L42.5244 4.09473L42.499 4.5293L41.999 13.0293L41.9717 13.5H7.19141L7.05273 13.2236L5.35547 9.8291L5.72266 9.58398L6.92188 8.7832L5.51758 3.63184L5.34766 3.00977L5.99219 3L38.9932 2.5L39.3066 2.49512L39.8379 3.55762Z"
+              fill="black" stroke="black" />
+            <path
+              d="M39.0537 4.22363L39.1621 4.44238L39.4023 4.49023L41.4746 4.9043L41.0283 12.5H7.80859L6.64453 10.1709L7.77734 9.41602L8.07715 9.21582L7.98242 8.86816L6.65137 3.99023L38.6934 3.50391L39.0537 4.22363Z"
+              fill="black" stroke="white" />
+          </svg>
+
+          <span class="character-name__text"></span>
+        </div>
+      </div>
+
+      <div class="dialogue-text">
+        <svg class="dialogue-text__frame" viewBox="0 0 132 40" preserveAspectRatio="none" fill="none"
+          xmlns="http://www.w3.org/2000/svg">
+          <path d="M10 11L8 16L5 17.5L7 26.5L5.5 27L7 30.5L12 30L14 32.5L125.498 34L129 8L10 11Z" fill="black" />
+          <path
+            d="M127.495 6.06641L123.993 32.0664L123.935 32.5059L123.491 32.5L11.9932 31L11.7568 30.9971L11.6094 30.8125L9.77832 28.5234L5.0498 28.9971L4.68457 29.0342L4.54004 28.6973L3.04004 25.1973L2.82617 24.6973L3.3418 24.5254L4.41309 24.168L2.51172 15.6084L2.42676 15.2275L2.77637 15.0527L5.60645 13.6367L7.53613 8.81445L7.6582 8.50879L7.9873 8.5L126.987 5.5L127.574 5.48535L127.495 6.06641Z"
+            fill="black" stroke="black" />
+          <path
+            d="M123.061 31.4932L12.2432 30.0029L10.3906 27.6875L10.2207 27.4756L9.9502 27.5029L5.31543 27.9658L4.17383 25.3018L5.1582 24.9746L5.58594 24.832L5.48828 24.3916L3.57227 15.7725L6.22363 14.4473L6.39355 14.3623L6.46387 14.1855L8.34082 9.49121L126.426 6.51465L123.061 31.4932Z"
+            fill="black" stroke="white" />
+        </svg>
+
+        <p class="dialogue-text__body"></p>
+
+        <button class="dialogue-nav dialogue-prev" type="button">
+          <svg width="84" height="72" viewBox="0 0 84 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M79 65L31.4771 64L15 49L29 24L77 23L82 49L79 65Z" fill="black"/>
+            <path d="M70.9639 14.6221L75.9639 40.6221L76.0361 40.9951L75.9658 41.3682L72.9658 57.3682L72.6533 59.0352L70.958 59L23.4346 58L22.6855 57.9834L22.1309 57.4785L5.65332 42.4785L4.47852 41.4092L5.25488 40.0225L19.2549 15.0225L19.8145 14.0244L20.958 14L70.6455 12.9648L70.9639 14.6221Z" fill="black" stroke="black" stroke-width="4"/>
+            <path d="M71.9639 41.0039L69.3467 54.9639L24.2676 54.0156L9.52148 40.5908L22.1855 17.9756L67.3545 17.0342L71.9639 41.0039Z" fill="black" stroke="#C7C7C7" stroke-width="4"/>
+            <path d="M41 27L34 29L27 36L34 43L41 45L35 36L41 27Z" fill="#C7C7C7"/>
+            <path d="M55 25L48 27L41 36L48 45L55 47L49 36L55 25Z" fill="#C7C7C7"/>
+          </svg>
+        </button>
+
+        <button class="dialogue-nav dialogue-next" type="button">
+          <!-- 더 넘길 페이지가 있을 때: "이어보기" 아이콘 -->
+          <svg class="dialogue-next-icon dialogue-next-icon--more" width="108" height="72" viewBox="0 0 108 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M100 57L19.4771 64L21 50L17 22L98 24L107 36.5L100 57Z" fill="black"/>
+            <path d="M9.0498 12.001L90.0498 14.001L91.043 14.0254L100.623 27.3311L101.227 28.1689L100.893 29.1465L93.8926 49.6465L93.4717 50.8799L92.1729 50.9922L11.6504 57.9922L9.22559 58.2031L9.48926 55.7842L10.9844 42.0322L7.02051 14.2832L6.68555 11.9424L9.0498 12.001Z" fill="black" stroke="black" stroke-width="4"/>
+            <path d="M88.9561 17.9736L96.7734 28.8301L90.5283 47.1201L13.7285 53.7969L14.9883 42.2158L15.0156 41.9658L14.9795 41.7168L11.3135 16.0566L88.9561 17.9736Z" fill="black" stroke="white" stroke-width="4"/>
+            <path d="M54 25L61 27L68 34L61 41L54 43L60 34L54 25Z" fill="white"/>
+            <path d="M40 23L47 25L54 34L47 43L40 45L46 34L40 23Z" fill="white"/>
+          </svg>
+          <!-- 마지막 페이지: "확인/닫기" 아이콘 -->
+          <svg class="dialogue-next-icon dialogue-next-icon--end" width="108" height="72" viewBox="0 0 108 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M100 57L19.4771 64L21 50L17 22L98 24L107 36.5L100 57Z" fill="black"/>
+            <path d="M9.0498 12.001L90.0498 14.001L91.043 14.0254L100.623 27.3311L101.227 28.1689L100.893 29.1465L93.8926 49.6465L93.4717 50.8799L92.1729 50.9922L11.6504 57.9922L9.22559 58.2031L9.48926 55.7842L10.9844 42.0322L7.02051 14.2832L6.68555 11.9424L9.0498 12.001Z" fill="black" stroke="black" stroke-width="4"/>
+            <path d="M88.9561 17.9736L96.7734 28.8301L90.5283 47.1201L13.7285 53.7969L14.9883 42.2158L15.0156 41.9658L14.9795 41.7168L11.3135 16.0566L88.9561 17.9736Z" fill="black" stroke="white" stroke-width="4"/>
+            <path d="M44 25L51 27L58 34L51 41L44 43L50 34L44 25Z" fill="white"/>
+            <path d="M64 43L57 41L50 34L57 27L64 25L58 34L64 43Z" fill="white"/>
+          </svg>
+        </button>
+      </div>
+
+    </section>
+  </main>
+
+  <script>
+    const dialogueData = [
+  {
+    name: "검은 정원 관리자",
+    image: "https://i.imgur.com/hn65mKn.png",
+    text: "SVG 박스를 배경 프레임으로 사용한 대화 UI입니다. 데스크톱과 모바일 모두 같은 규격을 유지하고, 배치만 달라집니다. 이 문장은 일부러 길게 작성되어 있습니다. 대화 박스에 한 번에 표시할 수 있는 분량을 넘어서면, 초과된 내용은 자동으로 다음 페이지로 넘어갑니다. 사용자는 오른쪽 아래 버튼을 눌러서 이어지는 내용을 감상할 수 있습니다."
+  },
+  {
+    name: "검은 정원 관리자",
+    image: "https://i.imgur.com/hn65mKn.png",
+    // "\n" = 1회 줄바꿈 데모
+    text: "첫 번째 줄입니다.\n두 번째 줄입니다. 강제 줄바꿈(\\n)이 그대로 적용됩니다."
+  },
+  {
+    name: "검은 정원 관리자",
+    image: "https://i.imgur.com/hn65mKn.png",
+    // "\n\n" = 빈 줄(2회 줄바꿈) 데모
+    text: "윗 줄입니다.\n\n빈 줄을 하나 사이에 둔 아랫 줄입니다."
+  },
+  {
+    name: "검은 정원 관리자",
+    image: "https://i.imgur.com/hn65mKn.png",
+    text: "마지막 대사입니다. 이 페이지에서 next 버튼은 '확인/닫기' 아이콘으로 바뀌며, 누르면 대화가 닫힙니다. 또는 박스 바깥의 어두운 영역(dim)을 클릭해도 닫힙니다."
+  }
+];
+
+const startBtn = document.querySelector(".dialogue-start-button");
+const dimmer = document.querySelector(".dialog-ui-dimmer");
+const dialogUi = document.querySelector(".dialog-ui");
+const nameEl = document.querySelector(".character-name__text");
+const profileImageEl = document.querySelector("[data-profile-image]");
+const bodyEl = document.querySelector(".dialogue-text__body");
+const prevBtn = document.querySelector(".dialogue-prev");
+const nextBtn = document.querySelector(".dialogue-next");
+const dialogueBox = document.querySelector(".dialogue-text");
+const probeBtn = document.querySelector(".passthrough-probe");
+
+const glitchSlices = [
+  { top: 0, height: 7, shift: 3.4 },
+  { top: 8, height: 6, shift: -5.2 },
+  { top: 15, height: 9, shift: 4.7 },
+  { top: 25, height: 6, shift: -3.1 },
+  { top: 33, height: 8, shift: 6.3 },
+  { top: 44, height: 7, shift: -4.4 },
+  { top: 55, height: 10, shift: 3.6 },
+  { top: 68, height: 7, shift: -6.1 },
+  { top: 79, height: 9, shift: 5.1 },
+  { top: 90, height: 6, shift: -3.8 }
+];
+
+let glitchTimer = null;
+
+let dialogueIndex = 0;
+let pageIndex = 0;
+let currentPages = [];
+
+// (4) \n / \n\n 규칙: 메인 코드(DialogueManager.normalizeText)와 동일.
+// 부수적 공백은 합치되 명시적 개행은 보존한다. "\n\n" 같은 연속 개행도 유지(빈 줄).
+function normalizeText(text) {
+  return String(text)
+    .replace(/\r\n?/g, "\n")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ ?\n ?/g, "\n")
+    .trim();
+}
+
+function createMeasurer() {
+  const measurer = bodyEl.cloneNode(false);
+  measurer.classList.add("dialogue-text__body--measure");
+
+  const bodyRect = bodyEl.getBoundingClientRect();
+  measurer.style.width = `${bodyRect.width}px`;
+
+  dialogueBox.appendChild(measurer);
+  return measurer;
+}
+
+function getTwoLineHeight() {
+  const style = getComputedStyle(bodyEl);
+  const fontSize = parseFloat(style.fontSize);
+  const lineHeight = parseFloat(style.lineHeight);
+
+  if (Number.isFinite(lineHeight)) {
+    return lineHeight * 2 + 1;
+  }
+
+  return fontSize * 1.35 * 2 + 1;
+}
+
+function findNaturalBreakIndex(text) {
+  const breakMarks = [
+    "。",
+    ".",
+    "!",
+    "?",
+    "…",
+    ",",
+    "，",
+    "、",
+    " "
+  ];
+
+  let best = -1;
+
+  for (const mark of breakMarks) {
+    const index = text.lastIndexOf(mark);
+    if (index > best) {
+      best = index;
+    }
+  }
+
+  return best;
+}
+
+function splitTextIntoPages(rawText) {
+  const text = normalizeText(rawText);
+
+  if (!text) {
+    return [""];
+  }
+
+  const measurer = createMeasurer();
+  const maxHeight = getTwoLineHeight();
+  const pages = [];
+
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    let low = 1;
+    let high = remaining.length;
+    let best = 0;
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      measurer.textContent = remaining.slice(0, mid);
+
+      if (measurer.scrollHeight <= maxHeight) {
+        best = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    if (best <= 0) {
+      best = 1;
+    }
+
+    let cutIndex = best;
+
+    if (best < remaining.length) {
+      const candidate = remaining.slice(0, best);
+      const naturalBreakIndex = findNaturalBreakIndex(candidate);
+
+      if (naturalBreakIndex > candidate.length * 0.55) {
+        cutIndex = naturalBreakIndex + 1;
+      }
+    }
+
+    let pageText = remaining.slice(0, cutIndex).trimEnd();
+
+    if (!pageText) {
+      pageText = remaining.slice(0, best);
+      cutIndex = best;
+    }
+
+    pages.push(pageText);
+    remaining = remaining.slice(cutIndex).trimStart();
+  }
+
+  measurer.remove();
+
+  return pages;
+}
+
+function setProfileImage(url) {
+  profileImageEl.setAttribute("href", url);
+  profileImageEl.setAttributeNS("http://www.w3.org/1999/xlink", "href", url);
+}
+
+function renderDialogue(index = dialogueIndex, pageMode = "first") {
+  dialogueIndex = index;
+
+  const dialogue = dialogueData[dialogueIndex];
+
+  nameEl.textContent = dialogue.name;
+  setProfileImage(dialogue.image);
+
+  const previousPageIndex = pageIndex;
+
+  currentPages = splitTextIntoPages(dialogue.text);
+
+  if (pageMode === "last") {
+    pageIndex = currentPages.length - 1;
+  } else if (pageMode === "preserve") {
+    pageIndex = Math.min(previousPageIndex, currentPages.length - 1);
+  } else {
+    pageIndex = 0;
+  }
+
+  renderPage();
+}
+
+function getGlitchLayer() {
+  let layer = dialogUi.querySelector(".dialog-ui__glitch-layer");
+
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.className = "dialog-ui__glitch-layer";
+    layer.setAttribute("aria-hidden", "true");
+
+    dialogUi.appendChild(layer);
+  }
+
+  return layer;
+}
+
+function createShiftValue(value) {
+  return `calc(${value} * var(--u))`;
+}
+
+function buildDialogUiGlitchSlices() {
+  if (!dialogUi) {
+    return null;
+  }
+
+  const layer = getGlitchLayer();
+  const sourceNodes = Array
+    .from(dialogUi.children)
+    .filter((node) => !node.classList.contains("dialog-ui__glitch-layer"));
+
+  layer.textContent = "";
+
+  glitchSlices.forEach((sliceData, index) => {
+    const slice = document.createElement("div");
+    const inner = document.createElement("div");
+
+    const direction = index % 2 === 0 ? 1 : -1;
+    const channelColor = direction > 0
+      ? "rgba(0, 246, 255, .95)"
+      : "rgba(255, 47, 146, .88)";
+
+    slice.className = "dialog-ui__glitch-slice";
+    inner.className = "dialog-ui__glitch-slice-inner";
+
+    slice.style.setProperty("--slice-top", `${sliceData.top}%`);
+    slice.style.setProperty("--slice-height", `${sliceData.height}%`);
+    slice.style.setProperty("--slice-delay", `${index * 9}ms`);
+    slice.style.setProperty("--channel-color", channelColor);
+    slice.style.setProperty("--channel-shift", createShiftValue(direction * .85));
+
+    slice.style.setProperty("--x1", createShiftValue(sliceData.shift));
+    slice.style.setProperty("--x2", createShiftValue(sliceData.shift * -0.75));
+    slice.style.setProperty("--x3", createShiftValue(sliceData.shift * 1.2));
+    slice.style.setProperty("--x4", createShiftValue(sliceData.shift * -1.05));
+    slice.style.setProperty("--x5", createShiftValue(sliceData.shift * 0.62));
+    slice.style.setProperty("--x6", createShiftValue(sliceData.shift * -0.28));
+
+    sourceNodes.forEach((node) => {
+      inner.appendChild(node.cloneNode(true));
+    });
+
+    slice.appendChild(inner);
+    layer.appendChild(slice);
+  });
+
+  return layer;
+}
+
+function resetDialogUiGlitch() {
+  clearTimeout(glitchTimer);
+
+  dialogUi.classList.remove("dialog-ui--glitch");
+
+  const layer = dialogUi.querySelector(".dialog-ui__glitch-layer");
+
+  if (layer) {
+    layer.textContent = "";
+  }
+}
+
+function playDialogUiGlitch() {
+  resetDialogUiGlitch();
+
+  const layer = buildDialogUiGlitchSlices();
+
+  if (!layer) {
+    return;
+  }
+
+  void dialogUi.getBoundingClientRect().width;
+  dialogUi.classList.add("dialog-ui--glitch");
+
+  glitchTimer = setTimeout(() => {
+    dialogUi.classList.remove("dialog-ui--glitch");
+    layer.textContent = "";
+  }, 900);
+}
+
+function showDialogUi() {
+  if (dialogUi.classList.contains("dialog-ui--active")) {
+    return;
+  }
+
+  dialogUi.classList.add("dialog-ui--active");
+  dialogUi.setAttribute("aria-hidden", "false");
+
+  // (1) dim 켜기: 클릭 통과 차단 + 클릭 시 닫기
+  dimmer.classList.add("dialog-ui-dimmer--active");
+  dimmer.setAttribute("aria-hidden", "false");
+
+  startBtn.hidden = true;
+
+  playDialogUiGlitch();
+}
+
+function hideDialogUi() {
+  if (!dialogUi.classList.contains("dialog-ui--active")) {
+    return;
+  }
+
+  resetDialogUiGlitch();
+
+  dialogUi.classList.remove("dialog-ui--active");
+  dialogUi.setAttribute("aria-hidden", "true");
+
+  dimmer.classList.remove("dialog-ui-dimmer--active");
+  dimmer.setAttribute("aria-hidden", "true");
+
+  startBtn.hidden = false;
+}
+
+function isPointInsideDialogUi(event) {
+  const rect = dialogUi.getBoundingClientRect();
+
+  return (
+    event.clientX >= rect.left &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom
+  );
+}
+
+// (1) dim 클릭 처리: nav 버튼은 dim보다 위(z)라 자체 클릭을 처리하므로
+// dim까지 도달한 클릭은 바깥 클릭이다. 다만 박스의 빈 영역(포인터 미수신부)을
+// 클릭한 경우엔 닫지 않도록 박스 사각형은 가드한다. (메인 코드와 동일한 로직)
+function handleDimmerPointerDown(event) {
+  if (!dialogUi.classList.contains("dialog-ui--active")) {
+    return;
+  }
+
+  if (isPointInsideDialogUi(event)) {
+    return;
+  }
+
+  hideDialogUi();
+}
+
+function renderPage() {
+  bodyEl.textContent = currentPages[pageIndex] ?? "";
+
+  const hasPrevPage = pageIndex > 0;
+  const hasPrevDialogue = dialogueIndex > 0;
+
+  const hasNextPage = pageIndex < currentPages.length - 1;
+  const hasNextDialogue = dialogueIndex < dialogueData.length - 1;
+
+  prevBtn.hidden = !(hasPrevPage || hasPrevDialogue);
+
+  // (3) next 버튼은 항상 보이며, 마지막 페이지에서는 "확인/닫기"(is-final)로 전환된다.
+  nextBtn.hidden = false;
+  nextBtn.classList.toggle("is-final", !(hasNextPage || hasNextDialogue));
+}
+
+function goPrev() {
+  const hasPrevPage = pageIndex > 0;
+
+  if (hasPrevPage) {
+    pageIndex -= 1;
+    renderPage();
+    return;
+  }
+
+  const hasPrevDialogue = dialogueIndex > 0;
+
+  if (hasPrevDialogue) {
+    renderDialogue(dialogueIndex - 1, "last");
+  }
+}
+
+function goNext() {
+  const hasNextPage = pageIndex < currentPages.length - 1;
+
+  if (hasNextPage) {
+    pageIndex += 1;
+    renderPage();
+    return;
+  }
+
+  const hasNextDialogue = dialogueIndex < dialogueData.length - 1;
+
+  if (hasNextDialogue) {
+    renderDialogue(dialogueIndex + 1, "first");
+    return;
+  }
+
+  // (3) 마지막 페이지에서 next(=확인/닫기)를 누르면 대화 종료.
+  hideDialogUi();
+}
+
+probeBtn.addEventListener("click", () => {
+  // dim이 동작하면 대화 중에는 이 핸들러가 호출되지 않아야 한다.
+  console.log("[probe] 통과 차단 테스트 버튼이 클릭됨 (대화 중이라면 dim이 새는 것)");
+});
+
+startBtn.addEventListener("click", showDialogUi);
+prevBtn.addEventListener("click", goPrev);
+nextBtn.addEventListener("click", goNext);
+dimmer.addEventListener("pointerdown", handleDimmerPointerDown);
+
+let resizeTimer = null;
+
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+
+  resizeTimer = setTimeout(() => {
+    renderDialogue(dialogueIndex, "preserve");
+  }, 100);
+});
+
+renderDialogue(0, "first");
+
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => {
+    renderDialogue(dialogueIndex, "preserve");
+  });
+}
+  </script>
+</body>
+
+</html>

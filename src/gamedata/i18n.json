@@ -267,6 +267,19 @@
           "name": "함선 II",
           "description": ""
         }
+      },
+      "dialogue": {
+        "speaker": {
+          "garden_keeper": "리안"
+        },
+        "tutorial_intro": {
+          "001": "방금 막 잡힌 신호인데, 딱 봐도 냄새가 나는것 같지?\n아마 시간 낭비는 아닐 거야.\n다만, 신호 상태가 영 불안정해서 함선 시스템이 제대로 정비되어 있지 않으면 뭔가 문제가 생길지도 몰라.\n출발하기 전에 정비하는것 잊지 마.\n\n가서 괜히 고철 덩어리 되지 말라고."
+        }
+      },
+      "message": {
+        "welcome": {
+          "title": "신규 신호 수신"
+        }
       }
     },
     "en": {
@@ -1106,6 +1119,19 @@
         "ship_02": {
           "name": "Ship II",
           "description": ""
+        }
+      },
+      "dialogue": {
+        "speaker": {
+          "garden_keeper": "Lian"
+        },
+        "tutorial_intro": {
+          "001": "Signal just came in, and it already smells fishy, doesn’t it? Still, I doubt it’ll be a waste of time.\nThing is, the signal’s pretty unstable. If your ship systems aren’t properly tuned up, you might run into trouble out there.\n\nDon’t forget to run maintenance before you head out.\n\nWouldn’t want you coming back as a heap of scrap."
+        }
+      },
+      "message": {
+        "welcome": {
+          "title": "New Signal Detected"
         }
       }
     }

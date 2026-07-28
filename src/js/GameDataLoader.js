@@ -3,7 +3,15 @@ import { WORLD_CONFIG } from "./worldDefinitions.js";
 
 const DEFAULT_GAME_DATA_BASE_URL = new URL("../gamedata/", import.meta.url);
 const DEFAULT_GMAP_FILE_NAME = "galaxyMapData.gmap";
-const RUNTIME_DATA_SCHEMA_VERSION = 9;
+const RUNTIME_DATA_SCHEMA_VERSION = 12;
+// Every building has an item inventory (a universal structure). Its capacity is a
+// first-class field; whether the inventory is *used* (production/trade) is a
+// separate trigger, not a condition of its existence. `storage.capacity` in
+// building_defs overrides this default per building.
+const DEFAULT_BUILDING_STORAGE_CAPACITY = 10000;
+// Production cadence lives in each building's definition (per-building, overridable):
+// one output unit per interval. Default = 1 unit / hour.
+const DEFAULT_PRODUCTION_INTERVAL_MS = 3600000;
 
 const DEFAULT_SHIP_ID = "ship_01";
 const COMBAT_SLOT_TYPES = ["weapon", "shield", "equipment"];
@@ -51,7 +59,9 @@ export async function loadGameData({ baseUrl = DEFAULT_GAME_DATA_BASE_URL, gmapF
     i18n,
     chunkMap,
     assetRegistry,
-    vfxDefs
+    vfxDefs,
+    dialogueDefs,
+    messageDefs
   ] = await Promise.all([
     loadJson(base, "item_defs.json"),
     loadJson(base, "resource_defs.json"),
@@ -65,7 +75,9 @@ export async function loadGameData({ baseUrl = DEFAULT_GAME_DATA_BASE_URL, gmapF
     loadJson(base, "i18n.json"),
     loadJson(base, "chunk_map.gmapdata"),
     loadJson(base, "asset_registry.json"),
-    loadJson(base, "vfx_defs.json")
+    loadJson(base, "vfx_defs.json"),
+    loadJson(base, "dialogue_defs.json"),
+    loadJson(base, "message_defs.json")
   ]);
 
   const gmapData = await loadGmap(new URL(gmapFileName, base));
@@ -86,6 +98,8 @@ export async function loadGameData({ baseUrl = DEFAULT_GAME_DATA_BASE_URL, gmapF
     equipment: equipmentDefinitions
   });
   const defaultShipId = resolveDefaultShipId(shipDefs, shipDefinitions);
+  const dialogueDefinitions = normalizeDialogueDefinitions(dialogueDefs);
+  const messageDefinitions = normalizeMessageDefinitions(messageDefs);
   const messages = createMessages(i18n);
 
   return {
@@ -112,6 +126,8 @@ export async function loadGameData({ baseUrl = DEFAULT_GAME_DATA_BASE_URL, gmapF
     equipmentIds: Object.keys(equipmentDefinitions),
     combatCompatibilityDefinitions,
     vfxDefinitions,
+    dialogueDefinitions,
+    messageDefinitions,
     defaultShipId,
     initialResourceTypes: Object.keys(resourceDefinitions),
     assetRegistry,
@@ -135,7 +151,12 @@ export async function loadGameData({ baseUrl = DEFAULT_GAME_DATA_BASE_URL, gmapF
       shieldDefs,
       equipmentDefs,
       combatCompatibilityDefs,
-      vfxDefs
+      vfxDefs,
+      dialogueDefs,
+      // Dialogue text is display-only and not baked into world generation, so editing
+      // it must not invalidate saves — intentionally excluded from the data source key.
+      messageDefs,
+      messageText: createMessageTextSignature(i18n)
     })
   };
 }
@@ -424,6 +445,15 @@ function normalizeBuildingDefinitions(raw = {}) {
       production_profile: productionProfile,
       docking: normalizeDocking(value.docking),
       trade: value.trade || { enabled: false, handling_speed: 0, cargo_capacity: 0, min_reputation: 0 },
+      storage: {
+        // storage.capacity wins if set (even 0 = explicit). Else fall back to
+        // trade.cargo_capacity when > 0, else the default. (cargo_capacity 0 means
+        // "no trade capacity set", not "zero storage".)
+        capacity: Number(
+          value.storage?.capacity
+          ?? (Number(value.trade?.cargo_capacity) > 0 ? value.trade.cargo_capacity : DEFAULT_BUILDING_STORAGE_CAPACITY)
+        )
+      },
       initial_inventory: value.initialInventory || {},
       visual: normalizeVisual(value.visual, "hq_01")
     };
@@ -470,6 +500,47 @@ function normalizeVfxDefinitions(raw = {}) {
     };
   }
   return { version: raw.version || 1, effects };
+}
+
+function normalizeDialogueDefinitions(raw = {}) {
+  const speakers = {};
+  for (const [key, value] of Object.entries(raw.speakers || {})) {
+    const id = value.id || key;
+    speakers[id] = {
+      id,
+      name_id: value.name_id || `dialogue.speaker.${id}`,
+      portrait: value.portrait || ""
+    };
+  }
+
+  const dialogues = {};
+  for (const [key, value] of Object.entries(raw.dialogues || {})) {
+    const id = value.id || key;
+    const lines = Array.isArray(value.lines) ? value.lines : [];
+    dialogues[id] = {
+      id,
+      lines: lines.map((line, index) => ({
+        speaker: line.speaker || null,
+        text_id: line.text_id || `dialogue.${id}.${String(index + 1).padStart(3, "0")}`
+      }))
+    };
+  }
+
+  return { version: raw.version || 1, speakers, dialogues };
+}
+
+function normalizeMessageDefinitions(raw = {}) {
+  const messages = {};
+  for (const [key, value] of Object.entries(raw.messages || {})) {
+    const id = value.id || key;
+    messages[id] = {
+      id,
+      title_id: value.title_id || `message.${id}.title`,
+      sender: value.sender || null,
+      dialogue_id: value.dialogue_id || null
+    };
+  }
+  return { version: raw.version || 1, messages };
 }
 
 function normalizeShipDefinitions(raw = {}, vfxDefinitions = { effects: {} }, itemDefinitions = {}) {
@@ -707,7 +778,10 @@ function normalizeProductionProfile(raw = {}) {
   const profile = {
     kind,
     output_sink: raw.outputSink || "building_inventory",
-    outputs: normalizeProductionOutputs(raw.outputs || [])
+    outputs: normalizeProductionOutputs(raw.outputs || []),
+    // Per-building production cadence: one output unit per interval_ms (overridable).
+    interval_ms: Number(raw.intervalMs ?? raw.interval_ms ?? DEFAULT_PRODUCTION_INTERVAL_MS),
+    amount_per_interval: Number(raw.amountPerInterval ?? raw.amount_per_interval ?? 1)
   };
 
   if (raw.recipeId) profile.recipe_id = raw.recipeId;
@@ -908,6 +982,13 @@ function createSectorTextSignature(raw = {}) {
   return {
     en: raw.content?.en?.sector || {},
     ko: raw.content?.ko?.sector || {}
+  };
+}
+
+function createMessageTextSignature(raw = {}) {
+  return {
+    en: raw.content?.en?.message || {},
+    ko: raw.content?.ko?.message || {}
   };
 }
 

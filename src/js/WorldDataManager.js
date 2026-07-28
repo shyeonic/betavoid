@@ -1,8 +1,43 @@
 import { WORLD_CONFIG } from "./worldDefinitions.js";
 
-const WORLD_STORE_NAMES = ["sectors", "chunks", "resourceNodes", "buildings", "betaVoids", "meta", "settings"];
-const PLAYER_STORE_NAMES = ["characterProfiles", "storageLocations", "quantityItems", "uniqueItems", "slotAssignments"];
-const STORE_NAMES = [...WORLD_STORE_NAMES, ...PLAYER_STORE_NAMES];
+// Single IndexedDB database `void-zero` (IndexedDB has no nested databases). Stores
+// are grouped by name prefix into two clearly-separated namespaces:
+//   worlds_*      — universal world / authority-server SSoT
+//   playerPrefs_* — per-character private data
+// One DB keeps cross-domain transactions (mining settle, dock migration) atomic.
+// Code uses LOGICAL store names; storeName() translates to the physical prefixed name.
+const WORLD_STORE_KEYPATHS = {
+  sectors: "sector_id",
+  chunks: "chunk_id",
+  resourceNodes: "resource_instance_id",
+  buildings: "building_instance_id",
+  betaVoids: "id",
+  meta: "key",
+  navLogs: "id",
+  gatheringLogs: "id",
+  buildingStorages: "storage_id"
+};
+const PLAYER_STORE_KEYPATHS = {
+  characterProfiles: "character_id",
+  storageLocations: "storage_id",
+  quantityItems: "entry_id",
+  uniqueItems: "item_uid",
+  slotAssignments: "assignment_id",
+  settings: "key",
+  playerShip: "key"
+};
+const WORLD_STORES = Object.keys(WORLD_STORE_KEYPATHS);
+const PLAYER_STORES = Object.keys(PLAYER_STORE_KEYPATHS);
+const WORLD_STORE_SET = new Set(WORLD_STORES);
+const ALL_STORES = [...WORLD_STORES, ...PLAYER_STORES];
+// Narrow scope: player-asset stores touched by snapshot/mutation transactions.
+const PLAYER_ASSET_STORES = ["characterProfiles", "storageLocations", "quantityItems", "uniqueItems", "slotAssignments"];
+// Legacy DB names cleaned up on reset (pre single-DB merge).
+const LEGACY_DB_NAMES = ["void-zero-world", "void-zero-playerPrefs", "playerPrefs"];
+// TEMP test tuning: flat gather rate of 1 resource per 10 seconds, overriding
+// each node's design base_yield_per_sec. Set to null to restore design rates
+// (effective = node.base_yield_per_sec × gather_rate_mult).
+const GATHER_TEST_RATE_PER_SEC = 0.1;
 const DEFAULT_CHARACTER_ID = "default";
 const COMBAT_SLOT_TYPES = ["weapon", "shield", "equipment"];
 const BETA_VOID_ENEMY_TYPES = ["pirate_squad", "raider_group", "hostile_fleet"];
@@ -54,33 +89,25 @@ export class WorldDataManager {
     return this;
   }
 
+  // Single `void-zero` database; stores are created with prefixed physical names.
   openDatabase() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(this.config.dbName, this.config.dbVersion);
-
       request.onupgradeneeded = () => {
         const db = request.result;
-        this.ensureStore(db, "sectors", "sector_id");
-        this.ensureStore(db, "chunks", "chunk_id");
-        this.ensureStore(db, "resourceNodes", "resource_instance_id");
-        this.ensureStore(db, "buildings", "building_instance_id");
-        this.ensureStore(db, "betaVoids", "id");
-        this.ensureStore(db, "meta", "key");
-        this.ensureStore(db, "settings", "key");
-        this.ensureStore(db, "navLogs", "id");
-        this.ensureStore(db, "characterProfiles", "character_id");
-        this.ensureStore(db, "storageLocations", "storage_id");
-        this.ensureStore(db, "quantityItems", "entry_id");
-        this.ensureStore(db, "uniqueItems", "item_uid");
-        this.ensureStore(db, "slotAssignments", "assignment_id");
+        for (const [logical, keyPath] of Object.entries(WORLD_STORE_KEYPATHS)) {
+          this.ensureStore(db, `worlds_${logical}`, keyPath);
+        }
+        for (const [logical, keyPath] of Object.entries(PLAYER_STORE_KEYPATHS)) {
+          this.ensureStore(db, `playerPrefs_${logical}`, keyPath);
+        }
       };
-
       request.onsuccess = () => {
         const db = request.result;
         db.onversionchange = () => db.close();
         resolve(db);
       };
-      request.onerror = () => reject(request.error || new Error("IndexedDB open failed."));
+      request.onerror = () => reject(request.error || new Error("IndexedDB open failed: void-zero."));
     });
   }
 
@@ -88,6 +115,19 @@ export class WorldDataManager {
     if (!db.objectStoreNames.contains(name)) {
       db.createObjectStore(name, { keyPath });
     }
+  }
+
+  // Translate a LOGICAL store name to its physical (prefixed) name in the single DB.
+  storeName(logical) {
+    return WORLD_STORE_SET.has(logical) ? `worlds_${logical}` : `playerPrefs_${logical}`;
+  }
+
+  // Open a transaction over LOGICAL store names; returns the tx + stores keyed by
+  // logical name (so call sites keep using stores.sectors, stores.quantityItems, …).
+  openTx(logicalNames, mode = "readonly") {
+    const transaction = this.db.transaction(logicalNames.map((n) => this.storeName(n)), mode);
+    const stores = Object.fromEntries(logicalNames.map((n) => [n, transaction.objectStore(this.storeName(n))]));
+    return { transaction, stores };
   }
 
   async loadOrCreateWorld() {
@@ -143,8 +183,9 @@ export class WorldDataManager {
     };
     const playerShip = this.createDefaultPlayerShipState(now, sectors);
     const playerAssets = this.createDefaultPlayerAssets({ createdAt: now });
+    const stationInventories = this.createInitialStationInventories(buildings, now);
 
-    await this.replaceWorldData({ sectors, chunks, resourceNodes, buildings, betaVoids, meta, playerShip, resourceManager, playerAssets });
+    await this.replaceWorldData({ sectors, chunks, resourceNodes, buildings, betaVoids, meta, playerShip, resourceManager, playerAssets, stationInventories });
     this.snapshot = await this.getWorldSnapshot();
     return this.snapshot;
   }
@@ -956,9 +997,8 @@ export class WorldDataManager {
     }
 
     if (changed) {
-      const transaction = this.db.transaction(["betaVoids"], "readwrite");
-      const store = transaction.objectStore("betaVoids");
-      betaVoids.forEach((betaVoid) => store.put(betaVoid));
+      const { transaction, stores } = this.openTx(["betaVoids"], "readwrite");
+      betaVoids.forEach((betaVoid) => stores.betaVoids.put(betaVoid));
       await transactionDone(transaction);
     }
 
@@ -1414,6 +1454,557 @@ export class WorldDataManager {
     };
   }
 
+  // ── Station inventory (item storage foundation, F1) ─────────────────────────
+  // A building's tradeable/produced stock lives in a location-anchored storage
+  // (storage_type "station_inventory", world_object_id = building, owner = null:
+  // shared world SSoT). It reuses storageLocations + quantityItems — no new store.
+  // Membership is the anchor (storage_id -> world_object_id), never a building-side
+  // list, so destruction resolves field-locally. See ItemStorageSystemPlan.
+
+  stationInventoryStorageId(buildingInstanceId) {
+    return `station-inventory-${buildingInstanceId}`;
+  }
+
+  // Every building has an inventory; capacity is its first-class `storage.capacity`
+  // (normalized for all buildings in GameDataLoader, overridable per building_def).
+  getStationInventoryCapacity(buildingId) {
+    return Math.max(0, Number(this.buildingDefinitions[buildingId]?.storage?.capacity) || 0);
+  }
+
+  // A building's storage is ONE record (world SSoT, location-anchored) with TWO
+  // independent zones:
+  //   - public_inventory: the station's own tradeable stock ({ item_id: quantity }).
+  //   - docked_ships:     private docked-ship assets, per owner (ship_uid keyed).
+  // Both live server-side anchored to world_object_id; trade touches only the public
+  // zone, destruction resolves both. The docked zone is filled by the dock migration.
+  buildStationInventoryStorage({ buildingInstanceId, buildingId = null, capacity = null, publicInventory = null, createdAt = Date.now() }) {
+    const resolvedCapacity = capacity != null ? capacity : this.getStationInventoryCapacity(buildingId);
+    return {
+      storage_id: this.stationInventoryStorageId(buildingInstanceId),
+      storage_type: "station_inventory",
+      world_object_id: buildingInstanceId,   // anchor = destruction-resolution index
+      capacity: resolvedCapacity,            // ZONE 1 (public) mass capacity
+      docking_capacity: this.getStationDockingCapacity(buildingId), // ZONE 2 (private) slot capacity
+      public_inventory: publicInventory || this.buildInitialInventoryMap(buildingId), // ZONE 1
+      docked_ships: {},                      // ZONE 2 — { [ship_uid]: { ship_id, owner_character_id, cargo, fittings, dock_slot, ... } }
+      created_at: createdAt,
+      updated_at: createdAt
+    };
+  }
+
+  getStationDockingCapacity(buildingId) {
+    const cap = Number(this.buildingDefinitions[buildingId]?.docking?.capacity);
+    return Number.isFinite(cap) ? Math.max(0, cap) : 0;
+  }
+
+  buildInitialInventoryMap(buildingId) {
+    const inventory = this.buildingDefinitions[buildingId]?.initial_inventory || {};
+    const map = {};
+    for (const [itemId, quantity] of Object.entries(inventory)) {
+      const q = Math.max(0, Number(quantity) || 0);
+      if (q > 0) map[itemId] = q;
+    }
+    return map;
+  }
+
+  // Convert a building inventory's { item_id: quantity } map to display rows.
+  stationInventoryRows(itemsMap = {}) {
+    return Object.entries(itemsMap)
+      .filter(([, quantity]) => (Number(quantity) || 0) > 0)
+      .map(([item_id, quantity]) => ({
+        item_id,
+        quantity: Number(quantity) || 0,
+        kind: this.itemDefinitions[item_id]?.kind || "item"
+      }));
+  }
+
+  itemUnitMass(itemId) {
+    return Math.max(0, Number(this.itemDefinitions[itemId]?.mass) || 0);
+  }
+
+  storageUsedMass(items = []) {
+    return items.reduce((total, entry) => total + this.itemUnitMass(entry.item_id) * (Number(entry.quantity) || 0), 0);
+  }
+
+  // Integer units of `itemId` that still fit under `capacity` by mass.
+  maxAddableUnits(items, capacity, itemId) {
+    const unit = this.itemUnitMass(itemId);
+    if (unit <= 0) return Number.MAX_SAFE_INTEGER; // mass-free item: no mass limit
+    const free = Math.max(0, (Number(capacity) || 0) - this.storageUsedMass(items));
+    return Math.floor(free / unit + 1e-9);
+  }
+
+  currentItemQuantity(items = [], itemId) {
+    const entry = items.find((candidate) => candidate.item_id === itemId);
+    return entry ? Number(entry.quantity) || 0 : 0;
+  }
+
+  // Pure: clamp a signed quantity delta for one item in a mass-capacity storage.
+  // Generic across any quantityItems storage (station inventory or ship cargo).
+  // Add clamps to free capacity; remove clamps to current stock. Returns the
+  // applicable change as a put/delete plan plus the actually-applied amount.
+  planStorageQuantityDelta({ items = [], storageId, itemId, requestedDelta, capacity = Infinity, createdAt = Date.now() }) {
+    const currentQty = this.currentItemQuantity(items, itemId);
+    const requested = Number(requestedDelta) || 0;
+    let applied;
+    let reason = null;
+    if (requested >= 0) {
+      const addable = this.maxAddableUnits(items, capacity, itemId);
+      applied = Math.min(requested, addable);
+      if (applied < requested) reason = "capacity";
+    } else {
+      applied = -Math.min(-requested, currentQty);
+      if (-applied < -requested) reason = "insufficient";
+    }
+    const newQuantity = currentQty + applied;
+    const entryId = `qty-${storageId}-${itemId}`;
+    if (newQuantity <= 0) {
+      return { applied, newQuantity: 0, entryToPut: null, entryIdToDelete: entryId, reason };
+    }
+    const existing = items.find((candidate) => candidate.item_id === itemId);
+    const entryToPut = {
+      ...this.createQuantityItemEntry({ storageId, itemId, quantity: newQuantity, createdAt }),
+      created_at: existing?.created_at ?? createdAt,
+      updated_at: createdAt
+    };
+    return { applied, newQuantity, entryToPut, entryIdToDelete: null, reason };
+  }
+
+  // ── Dock / undock custody migration (data core) ─────────────────────────────
+  // Docking moves the active flying ship's whole subtree (ship + cargo + fittings)
+  // from the player namespace into the station's `docked_ships` zone (world side),
+  // so a station blowing up resolves it field-locally. Undock reverses it. These
+  // pure builders do the data transform; the transactional move applies it.
+
+  // Player-asset subtree (ship + its cargo + fittings) → one docked_ships entry.
+  buildDockedShipEntry(assets, shipUid, { dockSlot = 0, dockedAt = Date.now() } = {}) {
+    const ship = (assets.uniqueItems || []).find((item) => item.item_uid === shipUid);
+    if (!ship) return null;
+    const cargoStorageId = (assets.storageLocations || [])
+      .find((s) => s.storage_type === "ship_cargo" && s.parent_item_uid === shipUid)?.storage_id || null;
+    const cargo = {};
+    for (const entry of assets.quantityItems || []) {
+      if (entry.storage_id !== cargoStorageId) continue;
+      const q = Math.max(0, Number(entry.quantity) || 0);
+      if (q > 0) cargo[entry.item_id] = (cargo[entry.item_id] || 0) + q;
+    }
+    const cargoUnique = (assets.uniqueItems || [])
+      .filter((e) => e.storage_id === cargoStorageId)
+      .map((e) => ({ item_uid: e.item_uid, item_id: e.item_id, kind: e.kind, seed: e.seed ?? null, fixed_options: e.fixed_options || {} }));
+    const fittings = (assets.slotAssignments || [])
+      .filter((a) => a.owner_item_uid === shipUid)
+      .map((a) => ({ slot_type: a.slot_type, slot_id: a.slot_id, item_id: a.item_id, item_uid: a.item_uid, kind: a.kind, item_identity: a.item_identity, quantity: a.quantity }));
+    return {
+      ship_uid: shipUid,
+      ship_id: ship.item_id,
+      kind: "ship",
+      owner_character_id: ship.owner_character_id,
+      seed: ship.seed ?? null,
+      fixed_options: ship.fixed_options || {},
+      dock_slot: dockSlot,
+      docked_at: dockedAt,
+      cargo,                 // { item_id: quantity }
+      cargo_unique: cargoUnique,
+      fittings
+    };
+  }
+
+  // One docked_ships entry → player-asset records (inverse of buildDockedShipEntry).
+  restoreDockedShipRecords(entry, { activeShipStorageId, cargoStorageId, characterId, createdAt = Date.now() }) {
+    const uniqueItemsToPut = [{
+      item_uid: entry.ship_uid,
+      item_id: entry.ship_id,
+      kind: "ship",
+      owner_character_id: characterId,
+      storage_id: activeShipStorageId,
+      seed: entry.seed ?? null,
+      fixed_options: entry.fixed_options || {},
+      created_at: createdAt,
+      updated_at: createdAt
+    }];
+    const storageLocationsToPut = [{
+      storage_id: cargoStorageId,
+      storage_type: "ship_cargo",
+      owner_character_id: characterId,
+      world_object_id: null,
+      parent_item_uid: entry.ship_uid,
+      capacity: this.getShipBaseCargoCapacity(entry.ship_id),
+      created_at: createdAt,
+      updated_at: createdAt
+    }];
+    const quantityItemsToPut = Object.entries(entry.cargo || {})
+      .filter(([, q]) => (Number(q) || 0) > 0)
+      .map(([itemId, quantity]) => this.createQuantityItemEntry({ storageId: cargoStorageId, itemId, quantity, createdAt }));
+    for (const u of entry.cargo_unique || []) {
+      uniqueItemsToPut.push({
+        item_uid: u.item_uid,
+        item_id: u.item_id,
+        kind: u.kind,
+        owner_character_id: characterId,
+        storage_id: cargoStorageId,
+        seed: u.seed ?? null,
+        fixed_options: u.fixed_options || {},
+        created_at: createdAt,
+        updated_at: createdAt
+      });
+    }
+    const slotAssignmentsToPut = (entry.fittings || []).map((f) => ({
+      assignment_id: `${entry.ship_uid}:${f.slot_type}:${f.slot_id}`,
+      owner_item_uid: entry.ship_uid,
+      slot_type: f.slot_type,
+      slot_id: f.slot_id,
+      item_id: f.item_id,
+      item_uid: f.item_uid ?? null,
+      kind: f.kind,
+      item_identity: f.item_identity,
+      quantity: f.quantity ?? 1,
+      location_type: "ship_slot",
+      created_at: createdAt,
+      updated_at: createdAt
+    }));
+    return { uniqueItemsToPut, storageLocationsToPut, quantityItemsToPut, slotAssignmentsToPut };
+  }
+
+  // Transactional custody migration (single DB → one atomic transaction). Docking
+  // is a one-moment data move; there is no "docked" state stored. "Docked" is
+  // DERIVED from the ship's location (which docked_ships zone it lives in).
+  // DOCK: move the active ship subtree out of the player namespace into the
+  // station's docked_ships zone.
+  dockActiveShipToStation(characterId, buildingInstanceId, { dockSlot = 0, nowMs = Date.now() } = {}) {
+    return new Promise((resolve, reject) => {
+      const { transaction, stores } = this.openTx(
+        ["buildingStorages", "characterProfiles", "storageLocations", "quantityItems", "uniqueItems", "slotAssignments"],
+        "readwrite"
+      );
+      const reads = {};
+      let pending = 0;
+      let settled = false;
+      const fail = (e) => { if (settled) return; settled = true; try { transaction.abort(); } catch { /* noop */ } reject(e instanceof Error ? e : new Error("Dock migration failed.")); };
+      const resolveAbort = (val) => { settled = true; try { transaction.abort(); } catch { /* noop */ } resolve(val); };
+
+      const onAllRead = () => {
+        const storageId = this.stationInventoryStorageId(buildingInstanceId);
+        const storage = (reads.buildingStorages || []).find((s) => s.storage_id === storageId);
+        const profile = reads.characterProfiles;
+        if (!storage || !profile) return resolveAbort({ ok: false, reason: "missing-storage-or-profile" });
+        const shipUid = profile.active_ship_uid;
+        const assets = {
+          uniqueItems: reads.uniqueItems || [],
+          storageLocations: reads.storageLocations || [],
+          quantityItems: reads.quantityItems || [],
+          slotAssignments: reads.slotAssignments || []
+        };
+        const entry = this.buildDockedShipEntry(assets, shipUid, { dockSlot, dockedAt: nowMs });
+        if (!entry) return resolveAbort({ ok: false, reason: "no-active-ship" });
+
+        const cargoStorageId = assets.storageLocations.find((s) => s.storage_type === "ship_cargo" && s.parent_item_uid === shipUid)?.storage_id || null;
+        const activeStorageId = assets.uniqueItems.find((u) => u.item_uid === shipUid)?.storage_id || null;
+
+        // ZONE 2: park the ship subtree in the station (server custody).
+        stores.buildingStorages.put({ ...storage, docked_ships: { ...(storage.docked_ships || {}), [shipUid]: entry }, updated_at: nowMs });
+        // Remove the subtree from the player namespace.
+        stores.uniqueItems.delete(shipUid);
+        assets.uniqueItems.filter((u) => u.storage_id === cargoStorageId).forEach((u) => stores.uniqueItems.delete(u.item_uid));
+        assets.quantityItems.filter((e) => e.storage_id === cargoStorageId).forEach((e) => stores.quantityItems.delete(e.entry_id));
+        assets.slotAssignments.filter((a) => a.owner_item_uid === shipUid).forEach((a) => stores.slotAssignments.delete(a.assignment_id));
+        if (cargoStorageId) stores.storageLocations.delete(cargoStorageId);
+        if (activeStorageId) stores.storageLocations.delete(activeStorageId);
+        // No "docked" flag: dock is a one-moment data move. "Docked" is DERIVED from
+        // the ship's location (it now lives in this station's docked_ships zone).
+
+        transaction.oncomplete = () => { if (settled) return; settled = true; resolve({ committed: true, station_id: buildingInstanceId, ship_uid: shipUid, dock_slot: dockSlot }); };
+      };
+
+      const issue = (key, request) => { pending += 1; request.onsuccess = () => { reads[key] = request.result; pending -= 1; if (pending === 0 && !settled) onAllRead(); }; };
+      transaction.onerror = () => fail(transaction.error || new Error("IndexedDB transaction failed."));
+      transaction.onabort = () => { if (!settled) fail(transaction.error || new Error("IndexedDB transaction aborted.")); };
+      issue("buildingStorages", stores.buildingStorages.getAll());
+      issue("characterProfiles", stores.characterProfiles.get(characterId));
+      issue("storageLocations", stores.storageLocations.getAll());
+      issue("quantityItems", stores.quantityItems.getAll());
+      issue("uniqueItems", stores.uniqueItems.getAll());
+      issue("slotAssignments", stores.slotAssignments.getAll());
+    });
+  }
+
+  // UNDOCK: move the ship subtree back from docked_ships into the player namespace.
+  undockShipFromStation(characterId, buildingInstanceId, { nowMs = Date.now() } = {}) {
+    return new Promise((resolve, reject) => {
+      const { transaction, stores } = this.openTx(
+        ["buildingStorages", "characterProfiles", "storageLocations", "quantityItems", "uniqueItems", "slotAssignments"],
+        "readwrite"
+      );
+      const reads = {};
+      let pending = 0;
+      let settled = false;
+      const fail = (e) => { if (settled) return; settled = true; try { transaction.abort(); } catch { /* noop */ } reject(e instanceof Error ? e : new Error("Undock migration failed.")); };
+      const resolveAbort = (val) => { settled = true; try { transaction.abort(); } catch { /* noop */ } resolve(val); };
+
+      const onAllRead = () => {
+        const storageId = this.stationInventoryStorageId(buildingInstanceId);
+        const storage = (reads.buildingStorages || []).find((s) => s.storage_id === storageId);
+        const profile = reads.characterProfiles;
+        if (!storage || !profile) return resolveAbort({ ok: false, reason: "missing-storage-or-profile" });
+        const shipUid = profile.active_ship_uid;
+        const entry = storage.docked_ships?.[shipUid];
+        if (!entry) return resolveAbort({ ok: false, reason: "ship-not-docked" });
+
+        const activeShipStorageId = `storage-${shipUid}-active`;
+        const cargoStorageId = `storage-${shipUid}-cargo`;
+        const restored = this.restoreDockedShipRecords(entry, { activeShipStorageId, cargoStorageId, characterId, createdAt: nowMs });
+
+        // Re-create the active_ship storage + restored subtree in the player namespace.
+        stores.storageLocations.put({
+          storage_id: activeShipStorageId, storage_type: "active_ship", owner_character_id: characterId,
+          world_object_id: null, parent_item_uid: null, capacity: null, created_at: nowMs, updated_at: nowMs
+        });
+        restored.storageLocationsToPut.forEach((s) => stores.storageLocations.put(s));
+        restored.uniqueItemsToPut.forEach((u) => stores.uniqueItems.put(u));
+        restored.quantityItemsToPut.forEach((e) => stores.quantityItems.put(e));
+        restored.slotAssignmentsToPut.forEach((a) => stores.slotAssignments.put(a));
+
+        // Remove from station docked zone. No flag to clear — the ship leaving the
+        // docked_ships zone (back into the player namespace) IS the state change.
+        const nextDocked = { ...(storage.docked_ships || {}) };
+        delete nextDocked[shipUid];
+        stores.buildingStorages.put({ ...storage, docked_ships: nextDocked, updated_at: nowMs });
+
+        transaction.oncomplete = () => { if (settled) return; settled = true; resolve({ committed: true, ship_uid: shipUid }); };
+      };
+
+      const issue = (key, request) => { pending += 1; request.onsuccess = () => { reads[key] = request.result; pending -= 1; if (pending === 0 && !settled) onAllRead(); }; };
+      transaction.onerror = () => fail(transaction.error || new Error("IndexedDB transaction failed."));
+      transaction.onabort = () => { if (!settled) fail(transaction.error || new Error("IndexedDB transaction aborted.")); };
+      issue("buildingStorages", stores.buildingStorages.getAll());
+      issue("characterProfiles", stores.characterProfiles.get(characterId));
+    });
+  }
+
+  // Location truth: find which station's docked_ships zone holds a ship (or null).
+  // This is how "docked" is determined — by where the ship is, not a stored flag.
+  async findDockedShip(shipUid) {
+    if (!shipUid) return null;
+    const all = await this.getAll("buildingStorages");
+    for (const storage of all) {
+      const entry = storage.docked_ships?.[shipUid];
+      if (entry) return { station_id: storage.world_object_id, entry };
+    }
+    return null;
+  }
+
+  // ── Production (timestamp-derived, global world data) ────────────────────────
+  // A producing facility yields 1 output unit per interval. State = an anchor
+  // (last_production_at) on the building INSTANCE; cadence = interval_ms on the
+  // building DEFINITION (per-building). No per-tick storage — the produced amount
+  // is derived from anchor + now and materialized at access boundaries (settle).
+  // Pure: how many units accrued and the new anchor, capped by free mass capacity.
+  // Caps at full and does NOT bank time while full (anchor jumps to now when capped).
+  planProduction({ anchorMs, nowMs, intervalMs, amountPerInterval = 1, currentQty = 0, usedMass = 0, capacity = 0, unitMass = 0 }) {
+    const interval = Number(intervalMs) || 0;
+    if (interval <= 0) return { producedUnits: 0, applied: 0, newAnchorMs: anchorMs, newQty: currentQty };
+    const cycles = Math.max(0, Math.floor((nowMs - anchorMs) / interval));
+    const producedUnits = cycles * (Number(amountPerInterval) || 1);
+    if (producedUnits <= 0) return { producedUnits: 0, applied: 0, newAnchorMs: anchorMs, newQty: currentQty };
+    const freeUnits = unitMass > 0 ? Math.max(0, Math.floor((capacity - usedMass) / unitMass + 1e-9)) : producedUnits;
+    const applied = Math.min(producedUnits, freeUnits);
+    // Not capped → advance anchor by the consumed cycles (keep sub-interval remainder).
+    // Capped (inventory full) → discard banked time so it doesn't burst later.
+    const newAnchorMs = applied < producedUnits ? nowMs : anchorMs + cycles * interval;
+    return { producedUnits, applied, newAnchorMs, newQty: currentQty + applied };
+  }
+
+  // Settle a facility's production to `nowMs` (single transaction: building anchor +
+  // its station inventory). Producing = building has produces_item_id and its def
+  // production_profile sinks to building_inventory. No-op when nothing is due.
+  settleBuildingProduction(buildingInstanceId, nowMs = Date.now()) {
+    return new Promise((resolve, reject) => {
+      const { transaction, stores } = this.openTx(["buildings", "buildingStorages"], "readwrite");
+      const storageId = this.stationInventoryStorageId(buildingInstanceId);
+      const reads = {};
+      let pending = 2;
+      let settled = false;
+      const fail = (e) => { if (settled) return; settled = true; try { transaction.abort(); } catch { /* noop */ } reject(e instanceof Error ? e : new Error("Production settle failed.")); };
+      const done = (val) => { if (settled) return; settled = true; resolve(val); };
+
+      const onAllRead = () => {
+        const building = reads.building;
+        if (!building) return done({ produced: 0 });
+        const profile = this.buildingDefinitions[building.building_id]?.production_profile;
+        const itemId = building.produces_item_id;
+        if (!itemId || !profile || profile.output_sink !== "building_inventory" || !(profile.interval_ms > 0)) return done({ produced: 0 });
+        const storage = reads.storage;
+        if (!storage) return done({ produced: 0 });
+
+        const anchor = Number.isFinite(Number(building.last_production_at)) ? Number(building.last_production_at) : (Number(building.created_at) || nowMs);
+        const usedMass = this.storageUsedMass(this.stationInventoryRows(storage.public_inventory));
+        const plan = this.planProduction({
+          anchorMs: anchor,
+          nowMs,
+          intervalMs: profile.interval_ms,
+          amountPerInterval: profile.amount_per_interval,
+          currentQty: Number(storage.public_inventory?.[itemId]) || 0,
+          usedMass,
+          capacity: Number(storage.capacity) || 0,
+          unitMass: this.itemUnitMass(itemId)
+        });
+        if (plan.producedUnits <= 0) return done({ produced: 0 });
+        // Always advance the anchor (prevents banking time while full).
+        stores.buildings.put({ ...building, last_production_at: plan.newAnchorMs });
+        if (plan.applied > 0) {
+          const nextInventory = { ...(storage.public_inventory || {}) };
+          nextInventory[itemId] = (Number(nextInventory[itemId]) || 0) + plan.applied;
+          stores.buildingStorages.put({ ...storage, public_inventory: nextInventory, updated_at: nowMs });
+        }
+        transaction.oncomplete = () => { if (settled) return; settled = true; resolve({ produced: plan.applied, item_id: itemId, full: plan.applied < plan.producedUnits }); };
+      };
+
+      const issue = (key, request) => { request.onsuccess = () => { reads[key] = request.result; pending -= 1; if (pending === 0 && !settled) onAllRead(); }; };
+      transaction.onerror = () => fail(transaction.error || new Error("IndexedDB transaction failed."));
+      transaction.onabort = () => { if (!settled) fail(transaction.error || new Error("IndexedDB transaction aborted.")); };
+      issue("building", stores.buildings.get(buildingInstanceId));
+      issue("storage", stores.buildingStorages.get(storageId));
+    });
+  }
+
+  // ── Trade: load/unload between a docked ship's cargo and the station's public stock ──
+  // While docked, BOTH the ship's cargo (docked_ships[ship].cargo) and the station's
+  // public_inventory live in the same buildingStorages record, so a transfer is one
+  // record mutation (server-authoritative). Pure planner clamps by stock + mass capacity.
+  //   direction "out" = station public stock → ship cargo (withdraw / load)
+  //   direction "in"  = ship cargo → station public stock (deposit / unload)
+  planStationTrade({ direction, itemId, amount, publicInventory = {}, cargo = {}, stationCapacity = 0, cargoCapacity = 0, unitMass = 0 }) {
+    const want = Math.max(0, Math.floor(Number(amount) || 0));
+    const pub = { ...publicInventory };
+    const car = { ...cargo };
+    const pubUsed = this.storageUsedMass(this.stationInventoryRows(pub));
+    const carUsed = this.storageUsedMass(this.stationInventoryRows(car));
+    const freeUnits = (capacity, used) => (unitMass > 0 ? Math.max(0, Math.floor((capacity - used) / unitMass + 1e-9)) : want);
+    let applied = 0;
+    let reason = null;
+    if (direction === "out") {
+      const stock = Number(pub[itemId]) || 0;
+      applied = Math.min(want, stock, freeUnits(cargoCapacity, carUsed));
+      if (applied < want) reason = stock <= applied ? "insufficient-stock" : "cargo-full";
+      if (applied > 0) {
+        pub[itemId] = stock - applied; if (pub[itemId] <= 0) delete pub[itemId];
+        car[itemId] = (Number(car[itemId]) || 0) + applied;
+      }
+    } else if (direction === "in") {
+      const stock = Number(car[itemId]) || 0;
+      applied = Math.min(want, stock, freeUnits(stationCapacity, pubUsed));
+      if (applied < want) reason = stock <= applied ? "insufficient-cargo" : "station-full";
+      if (applied > 0) {
+        car[itemId] = stock - applied; if (car[itemId] <= 0) delete car[itemId];
+        pub[itemId] = (Number(pub[itemId]) || 0) + applied;
+      }
+    } else {
+      return { applied: 0, reason: "bad-direction", nextPublic: publicInventory, nextCargo: cargo };
+    }
+    return { applied, reason, nextPublic: pub, nextCargo: car };
+  }
+
+  // Transactional load/unload at a docked station (one buildingStorages record).
+  runStationTrade(buildingInstanceId, shipUid, { itemId, direction, amount, nowMs = Date.now() } = {}) {
+    return new Promise((resolve, reject) => {
+      const { transaction, stores } = this.openTx(["buildingStorages"], "readwrite");
+      const storageId = this.stationInventoryStorageId(buildingInstanceId);
+      let settled = false;
+      const fail = (e) => { if (settled) return; settled = true; try { transaction.abort(); } catch { /* noop */ } reject(e instanceof Error ? e : new Error("Trade failed.")); };
+      const resolveAbort = (val) => { if (settled) return; settled = true; try { transaction.abort(); } catch { /* noop */ } resolve(val); };
+      transaction.onerror = () => fail(transaction.error || new Error("IndexedDB transaction failed."));
+      transaction.onabort = () => { if (!settled) fail(transaction.error || new Error("IndexedDB transaction aborted.")); };
+      const request = stores.buildingStorages.get(storageId);
+      request.onsuccess = () => {
+        const storage = request.result;
+        if (!storage) return resolveAbort({ ok: false, reason: "no-station-storage" });
+        const entry = storage.docked_ships?.[shipUid];
+        if (!entry) return resolveAbort({ ok: false, reason: "ship-not-docked" });
+        const plan = this.planStationTrade({
+          direction, itemId, amount,
+          publicInventory: storage.public_inventory, cargo: entry.cargo,
+          stationCapacity: Number(storage.capacity) || 0,
+          cargoCapacity: this.getShipBaseCargoCapacity(entry.ship_id),
+          unitMass: this.itemUnitMass(itemId)
+        });
+        if (plan.applied <= 0) return resolveAbort({ ok: false, applied: 0, reason: plan.reason });
+        const nextEntry = { ...entry, cargo: plan.nextCargo };
+        stores.buildingStorages.put({
+          ...storage,
+          public_inventory: plan.nextPublic,
+          docked_ships: { ...storage.docked_ships, [shipUid]: nextEntry },
+          updated_at: nowMs
+        });
+        transaction.oncomplete = () => { if (settled) return; settled = true; resolve({ committed: true, applied: plan.applied, direction, item_id: itemId, reason: plan.reason }); };
+      };
+    });
+  }
+
+  // Read-only, AUTHORITATIVE: a building's station inventory from the persisted
+  // store. Canonical stock is seeded into the store at world generation
+  // (createInitialStationInventories), so there is no definition-derived fallback —
+  // empty result means the building genuinely holds nothing.
+  async getStationInventorySnapshot(buildingInstanceId) {
+    const building = await this.getStoreValue("buildings", buildingInstanceId);
+    if (!building) return null;
+    const storageId = this.stationInventoryStorageId(buildingInstanceId);
+    const storage = await this.getStoreValue("buildingStorages", storageId);
+    const capacity = storage
+      ? Math.max(0, Number(storage.capacity) || 0)
+      : this.getStationInventoryCapacity(building.building_id);
+    const items = storage ? this.stationInventoryRows(storage.public_inventory) : [];
+    const usedMass = this.storageUsedMass(items);
+    return {
+      building_instance_id: buildingInstanceId,
+      building_id: building.building_id,
+      storage_id: storageId,
+      persisted: Boolean(storage),
+      capacity,
+      used_mass: usedMass,
+      free_mass: Math.max(0, capacity - usedMass),
+      items,                                                  // ZONE 1 (public) display rows
+      docking_capacity: storage ? (Number(storage.docking_capacity) || 0) : this.getStationDockingCapacity(building.building_id),
+      docked_ships: storage ? Object.values(storage.docked_ships || {}) : [] // ZONE 2 (private)
+    };
+  }
+
+  // Lazy create + seed the station inventory storage (idempotent). Run before the
+  // first mutation so initial_inventory is persisted exactly once.
+  async ensureStationInventoryStorage(buildingInstanceId, { createdAt = Date.now() } = {}) {
+    const storageId = this.stationInventoryStorageId(buildingInstanceId);
+    const existing = await this.getStoreValue("buildingStorages", storageId);
+    if (existing) return existing;
+    const building = await this.getStoreValue("buildings", buildingInstanceId);
+    if (!building) throw new Error(`Cannot create station inventory: no building instance ${buildingInstanceId}.`);
+    const storage = this.buildStationInventoryStorage({ buildingInstanceId, buildingId: building.building_id, createdAt });
+    await this.putStoreValue("buildingStorages", storage);
+    return storage;
+  }
+
+  // World-generation seeding (pure): build a station_inventory storage for EVERY
+  // building (universal structure) + seed quantityItems from initial_inventory
+  // where present. Whether an inventory is filled/used (production/trade) is a
+  // separate trigger, not a condition here. Returned arrays are written to the
+  // authoritative store by replaceWorldData.
+  createInitialStationInventories(buildings = [], createdAt = Date.now()) {
+    const buildingStorages = buildings.map((building) => {
+      const publicInventory = this.buildInitialInventoryMap(building.building_id);
+      // Producing facilities (mines etc.) start with 1 unit of their produced item.
+      // The item is per-instance (inherited from the resource node), so seed it here.
+      const profile = this.buildingDefinitions[building.building_id]?.production_profile;
+      if (building.produces_item_id && profile?.output_sink === "building_inventory") {
+        publicInventory[building.produces_item_id] = (Number(publicInventory[building.produces_item_id]) || 0) + 1;
+      }
+      return this.buildStationInventoryStorage({
+        buildingInstanceId: building.building_instance_id,
+        buildingId: building.building_id,
+        capacity: this.getStationInventoryCapacity(building.building_id),
+        publicInventory,
+        createdAt
+      });
+    });
+    return { buildingStorages };
+  }
+
   createSlotAssignment({ ownerItemUid, slotType, slotId, itemId, itemUid = null, createdAt = Date.now() }) {
     const item = this.itemDefinitions[itemId] || {};
     return {
@@ -1468,8 +2059,7 @@ export class WorldDataManager {
   }
 
   async insertPlayerAssets(playerAssets) {
-    const transaction = this.db.transaction(PLAYER_STORE_NAMES, "readwrite");
-    const stores = Object.fromEntries(PLAYER_STORE_NAMES.map((storeName) => [storeName, transaction.objectStore(storeName)]));
+    const { transaction, stores } = this.openTx(PLAYER_ASSET_STORES, "readwrite");
     if (playerAssets.profile) stores.characterProfiles.put(playerAssets.profile);
     (playerAssets.storageLocations || []).forEach((storage) => stores.storageLocations.put(storage));
     (playerAssets.quantityItems || []).forEach((item) => stores.quantityItems.put(item));
@@ -1513,9 +2103,8 @@ export class WorldDataManager {
 
   async putUniqueItems(items = []) {
     if (!items.length) return;
-    const transaction = this.db.transaction("uniqueItems", "readwrite");
-    const store = transaction.objectStore("uniqueItems");
-    items.forEach((item) => store.put(item));
+    const { transaction, stores } = this.openTx(["uniqueItems"], "readwrite");
+    items.forEach((item) => stores.uniqueItems.put(item));
     await transactionDone(transaction);
   }
 
@@ -1528,8 +2117,7 @@ export class WorldDataManager {
   // work or issue its own IndexedDB requests, or the transaction will close.
   runPlayerAssetMutation(characterId = DEFAULT_CHARACTER_ID, computeMutation = () => null) {
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction(PLAYER_STORE_NAMES, "readwrite");
-      const stores = Object.fromEntries(PLAYER_STORE_NAMES.map((name) => [name, transaction.objectStore(name)]));
+      const { transaction, stores } = this.openTx(PLAYER_ASSET_STORES, "readwrite");
       const reads = {};
       let pending = 0;
       let settled = false;
@@ -1602,7 +2190,7 @@ export class WorldDataManager {
   }
 
   async loadOrCreatePlayerShipState() {
-    let state = await this.getStoreValue("meta", "playerShip");
+    let state = await this.getStoreValue("playerShip", "playerShip");
     if (!state) {
       state = this.createDefaultPlayerShipState();
       await this.savePlayerShipState(state);
@@ -1628,23 +2216,25 @@ export class WorldDataManager {
       updated_at: Date.now()
     };
 
-    await this.putStoreValue("meta", nextState);
+    await this.putStoreValue("playerShip", nextState);
     return nextState;
   }
 
-  async replaceWorldData({ sectors, chunks, resourceNodes, buildings, betaVoids = [], meta, playerShip, resourceManager, playerAssets = null }) {
-    const transaction = this.db.transaction(STORE_NAMES, "readwrite");
-
-    const stores = Object.fromEntries(STORE_NAMES.map((storeName) => [storeName, transaction.objectStore(storeName)]));
-    STORE_NAMES.forEach((storeName) => stores[storeName].clear());
+  async replaceWorldData({ sectors, chunks, resourceNodes, buildings, betaVoids = [], meta, playerShip, resourceManager, playerAssets = null, stationInventories = null }) {
+    // Single DB → world + player reset/write in one atomic transaction.
+    const { transaction, stores } = this.openTx(ALL_STORES, "readwrite");
+    ALL_STORES.forEach((name) => stores[name].clear());
+    // worlds_*
     sectors.forEach((sector) => stores.sectors.put(sector));
     chunks.forEach((chunk) => stores.chunks.put(chunk));
     resourceNodes.forEach((node) => stores.resourceNodes.put(node));
     buildings.forEach((building) => stores.buildings.put(building));
     betaVoids.forEach((betaVoid) => stores.betaVoids.put(betaVoid));
     stores.meta.put(meta);
-    if (playerShip) stores.meta.put(playerShip);
     if (resourceManager) stores.meta.put(resourceManager);
+    (stationInventories?.buildingStorages || []).forEach((storage) => stores.buildingStorages.put(storage));
+    // playerPrefs_*
+    if (playerShip) stores.playerShip.put(playerShip);
     if (playerAssets?.profile) stores.characterProfiles.put(playerAssets.profile);
     (playerAssets?.storageLocations || []).forEach((storage) => stores.storageLocations.put(storage));
     (playerAssets?.quantityItems || []).forEach((item) => stores.quantityItems.put(item));
@@ -1662,54 +2252,46 @@ export class WorldDataManager {
   }
 
   async replaceResourceLifecycleData({ chunks, resourceNodes, resourceManager }) {
-    const transaction = this.db.transaction(["chunks", "resourceNodes", "meta"], "readwrite");
-    const chunksStore = transaction.objectStore("chunks");
-    const resourceNodesStore = transaction.objectStore("resourceNodes");
-    const metaStore = transaction.objectStore("meta");
-
-    resourceNodesStore.clear();
-    chunks.forEach((chunk) => chunksStore.put(chunk));
-    resourceNodes.forEach((node) => resourceNodesStore.put(node));
-    metaStore.put({
+    const { transaction, stores } = this.openTx(["chunks", "resourceNodes", "meta"], "readwrite");
+    stores.resourceNodes.clear();
+    chunks.forEach((chunk) => stores.chunks.put(chunk));
+    resourceNodes.forEach((node) => stores.resourceNodes.put(node));
+    stores.meta.put({
       ...resourceManager,
       key: "resourceManager",
       manager_id: "GLOBAL"
     });
-
     await transactionDone(transaction);
   }
 
   async clearWorld() {
-    const transaction = this.db.transaction(STORE_NAMES, "readwrite");
-    STORE_NAMES.forEach((storeName) => transaction.objectStore(storeName).clear());
-    await transactionDone(transaction);
+    await this.clearStores(ALL_STORES);
     this.snapshot = await this.getWorldSnapshot();
     return this.snapshot;
   }
 
-  async clearAllData() {
-    const allStores = [...STORE_NAMES, "navLogs"];
-    const transaction = this.db.transaction(allStores, "readwrite");
-    allStores.forEach((storeName) => transaction.objectStore(storeName).clear());
+  async clearStores(logicalNames) {
+    const { transaction, stores } = this.openTx(logicalNames, "readwrite");
+    logicalNames.forEach((name) => stores[name].clear());
     await transactionDone(transaction);
+  }
+
+  async clearAllData() {
+    await this.clearStores(ALL_STORES);
     this.snapshot = await this.getWorldSnapshot();
     return this.snapshot;
   }
 
   async deleteDatabase() {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
-    }
-
+    if (this.db) { this.db.close(); this.db = null; }
     this.snapshot = null;
     const names = await this.getGameDatabaseNames();
     await Promise.all(names.map((name) => deleteIndexedDbByName(name)));
   }
 
   async getGameDatabaseNames() {
-    const prefix = "void-zero-";
-    const names = new Set([this.config.dbName]);
+    const prefix = "void-zero";
+    const names = new Set([this.config.dbName, ...LEGACY_DB_NAMES]);
 
     if (typeof indexedDB.databases === "function") {
       try {
@@ -1843,16 +2425,19 @@ export class WorldDataManager {
     };
   }
 
-  async getAll(storeName) {
-    return requestToPromise(this.db.transaction(storeName, "readonly").objectStore(storeName).getAll());
+  async getAll(logical) {
+    const name = this.storeName(logical);
+    return requestToPromise(this.db.transaction(name, "readonly").objectStore(name).getAll());
   }
 
-  async getStoreValue(storeName, key) {
-    return requestToPromise(this.db.transaction(storeName, "readonly").objectStore(storeName).get(key));
+  async getStoreValue(logical, key) {
+    const name = this.storeName(logical);
+    return requestToPromise(this.db.transaction(name, "readonly").objectStore(name).get(key));
   }
 
-  async putStoreValue(storeName, value) {
-    return requestToPromise(this.db.transaction(storeName, "readwrite").objectStore(storeName).put(value));
+  async putStoreValue(logical, value) {
+    const name = this.storeName(logical);
+    return requestToPromise(this.db.transaction(name, "readwrite").objectStore(name).put(value));
   }
 
   createId(prefix, type, seed, index, rng) {
@@ -1898,6 +2483,392 @@ export class WorldDataManager {
   async getNavLogs(limit = 50) {
     const all = await this.getAll("navLogs");
     return all.sort((a, b) => b.issued_at - a.issued_at).slice(0, limit);
+  }
+
+  // =========================================================================
+  // Mining Action System (Phase 1 — settlement core)
+  // See DesignDocuments/DefinitionCatalog/MiningActionSystemPlan.md
+  //
+  // Resource nodes are a shared SSoT. Mining yield is DERIVED from each
+  // gatheringLog's start timestamp + frozen rate snapshot, and only COMMITTED
+  // at deterministic boundaries (manual stop, cargo full, node exhaust, expiry,
+  // or an explicit settle). settled_yield makes settlement idempotent, so
+  // re-deriving the same `now` never double-counts. Node draining and inventory
+  // crediting happen in ONE transaction so they can never desync.
+  // =========================================================================
+
+  _gatheringRate(log) {
+    return Math.max(0, Number(log?.yield_snapshot?.effective_yield_per_sec) || 0);
+  }
+
+  _activeGatherLogs(state) {
+    return [...state.logs.values()].filter((log) => log.status === "active");
+  }
+
+  // Remaining cargo room for `itemId` in `storageId`, expressed in item units
+  // (mass-based capacity). Returns Infinity when the storage is uncapped or the
+  // item is massless.
+  _cargoFreeUnits(state, storageId, itemId) {
+    const itemMass = Number(this.itemDefinitions[itemId]?.mass);
+    if (!(itemMass > 0)) return Infinity;
+    const storage = state.storageById.get(storageId);
+    const capacity = storage ? storage.capacity : null;
+    if (capacity == null) return Infinity;
+
+    let usedMass = 0;
+    for (const entry of state.qtyMap.values()) {
+      if (entry.storage_id !== storageId) continue;
+      const mass = Number(this.itemDefinitions[entry.item_id]?.mass) || 0;
+      usedMass += (Number(entry.quantity) || 0) * mass;
+    }
+    return Math.max(0, Math.floor((capacity - usedMass) / itemMass));
+  }
+
+  _creditInventory(state, log, amount, nowMs) {
+    if (!(amount > 0)) return;
+    const key = `qty-${log.target_storage_id}-${log.produces_item_id}`;
+    let entry = state.qtyMap.get(key);
+    if (!entry) {
+      entry = this.createQuantityItemEntry({
+        storageId: log.target_storage_id,
+        itemId: log.produces_item_id,
+        quantity: 0,
+        createdAt: nowMs
+      });
+      state.qtyMap.set(key, entry);
+    }
+    entry.quantity = (Number(entry.quantity) || 0) + amount;
+    entry.updated_at = nowMs;
+    state.qtyChanged.add(key);
+  }
+
+  _finishGatherLog(log, status, atMs) {
+    log.status = status;
+    log.planned_end_at = atMs;
+    log.planned_yield = Number(log.settled_yield) || 0;
+    if (status === "completed") log.completed_at = atMs;
+    else if (status === "cancelled") log.cancelled_at = atMs;
+  }
+
+  // Advance the node deterministically from its current epoch anchor up to
+  // targetMs, settling every active miner through each predictable sub-boundary
+  // (cargo full / node exhaust / node expiry). Mutates state in place.
+  _simulateGathering(state, targetMs) {
+    const node = state.node;
+    let active = this._activeGatherLogs(state);
+
+    if (!active.length) {
+      node.epoch_start_at = null;
+      node.amount_at_epoch_start = Math.max(0, Number(node.current_amount) || 0);
+      node.active_gather_ids = [];
+      return;
+    }
+
+    // Resumed/legacy logs may lack the float accumulator; seed it from credited.
+    for (const log of active) {
+      if (!Number.isFinite(Number(log.accumulated))) log.accumulated = Number(log.settled_yield) || 0;
+    }
+
+    let cursor = Number.isFinite(node.epoch_start_at) ? node.epoch_start_at : targetMs;
+    let remaining = Math.max(0, Number(node.current_amount) || 0);
+    let guard = 0;
+
+    while (cursor < targetMs && active.length && guard < 256) {
+      guard += 1;
+      const totalRate = active.reduce((sum, log) => sum + this._gatheringRate(log), 0);
+      if (totalRate <= 0) break;
+
+      let segEnd = targetMs;
+      let cause = "target";
+      let cargoLog = null;
+
+      const exhaustMs = cursor + (remaining / totalRate) * 1000;
+      if (exhaustMs < segEnd) { segEnd = exhaustMs; cause = "exhaust"; }
+      if (Number.isFinite(node.expiry_time) && node.expiry_time < segEnd) { segEnd = node.expiry_time; cause = "expiry"; cargoLog = null; }
+      for (const log of active) {
+        const rate = this._gatheringRate(log);
+        if (rate <= 0) continue;
+        const freeUnits = this._cargoFreeUnits(state, log.target_storage_id, log.produces_item_id);
+        if (!Number.isFinite(freeUnits)) continue;
+        const fullMs = cursor + (freeUnits / rate) * 1000;
+        if (fullMs < segEnd) { segEnd = fullMs; cause = "cargo"; cargoLog = log; }
+      }
+
+      const dtSec = Math.max(0, (segEnd - cursor) / 1000);
+      // Resources are extracted in WHOLE UNITS only. Each miner accrues a
+      // fractional "potential" (rate × time); only the floored integer part is
+      // credited and removed from the node. Sub-unit progress stays un-mined in
+      // the node — so stopping at 28s of a 30s/unit dig yields 0. Scarce final
+      // units are allocated in a stable id order for deterministic conservation.
+      const ordered = active.slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      for (const log of ordered) {
+        const rate = this._gatheringRate(log);
+        if (rate <= 0) continue;
+        log.accumulated = (Number(log.accumulated) || 0) + rate * dtSec;
+        const targetCredit = Math.floor((Number(log.accumulated) || 0) + 1e-9);
+        let delta = targetCredit - (Number(log.settled_yield) || 0);
+        if (delta > remaining) delta = remaining; // node cannot yield more than it holds
+        if (delta > 0) {
+          this._creditInventory(state, log, delta, targetMs);
+          log.settled_yield = (Number(log.settled_yield) || 0) + delta;
+          remaining -= delta;
+        }
+        log.epoch_settled_anchor = segEnd;
+      }
+      cursor = segEnd;
+
+      // Completion fires on the ACTUAL integer emptying of the node, not merely
+      // at the float exhaust estimate — flooring can leave a final sub-unit
+      // segment that the next loop iteration resolves.
+      if (remaining <= 0) {
+        ordered.forEach((log) => this._finishGatherLog(log, "completed", cursor));
+        active = [];
+        remaining = 0;
+        state.nodeDeleted = true; // depleted node is removed (removeEmptyResourceNodes parity)
+        break;
+      }
+      if (cause === "expiry") {
+        ordered.forEach((log) => this._finishGatherLog(log, "completed", cursor));
+        active = [];
+        remaining = 0;
+        state.nodeDeleted = true;
+        break;
+      }
+      if (cause === "cargo" && cargoLog) {
+        this._finishGatherLog(cargoLog, "completed", cursor);
+        active = active.filter((log) => log !== cargoLog);
+      }
+    }
+
+    node.current_amount = remaining;
+    const stillActive = this._activeGatherLogs(state);
+    node.active_gather_ids = stillActive.map((log) => log.id);
+    node.amount_at_epoch_start = remaining;
+    node.epoch_start_at = stillActive.length ? cursor : null;
+  }
+
+  // Recompute provisional planned_end_at / planned_yield for the new epoch.
+  _replanGathering(state) {
+    const node = state.node;
+    const active = this._activeGatherLogs(state);
+    if (!active.length) return;
+
+    const epochStart = Number.isFinite(node.epoch_start_at) ? node.epoch_start_at : Date.now();
+    const remaining = Math.max(0, Number(node.amount_at_epoch_start) || 0);
+    const totalRate = active.reduce((sum, log) => sum + this._gatheringRate(log), 0);
+    const exhaustMs = totalRate > 0 ? epochStart + (remaining / totalRate) * 1000 : Infinity;
+
+    for (const log of active) {
+      const rate = this._gatheringRate(log);
+      const freeUnits = this._cargoFreeUnits(state, log.target_storage_id, log.produces_item_id);
+      const cargoMs = rate > 0 && Number.isFinite(freeUnits) ? epochStart + (freeUnits / rate) * 1000 : Infinity;
+      let endMs = Math.min(exhaustMs, cargoMs);
+      if (Number.isFinite(node.expiry_time)) endMs = Math.min(endMs, node.expiry_time);
+
+      log.epoch_settled_anchor = epochStart;
+      log.planned_end_at = Number.isFinite(endMs) ? Math.round(endMs) : null;
+      const projected = (Number(log.accumulated) || 0)
+        + (Number.isFinite(endMs) ? rate * (endMs - epochStart) / 1000 : 0);
+      log.planned_yield = Math.floor(projected + 1e-9); // whole units only
+    }
+  }
+
+  _buildNodeState(node, allLogs, allQuantityItems, allStorages, nodeId) {
+    const logs = new Map();
+    for (const log of allLogs) {
+      if (log.target_node_id === nodeId && log.status === "active") logs.set(log.id, log);
+    }
+    const qtyMap = new Map();
+    for (const entry of allQuantityItems) qtyMap.set(entry.entry_id, entry);
+    const storageById = new Map();
+    for (const storage of allStorages) storageById.set(storage.storage_id, storage);
+    return { node, logs, qtyMap, qtyChanged: new Set(), storageById, nodeDeleted: false };
+  }
+
+  // Single read-modify-write transaction across node + logs + inventory (all in
+  // the one `void-zero` DB, so this is atomic and serializes overlapping ops for
+  // free). `mutate(state, nowMs)` runs AFTER settling existing miners to nowMs and
+  // may add/remove a log; returning { ok: false } aborts without persisting.
+  _commitNodeOp(nodeId, nowMs, mutate = null) {
+    return new Promise((resolve, reject) => {
+      const { transaction, stores } = this.openTx(["resourceNodes", "gatheringLogs", "quantityItems", "storageLocations"], "readwrite");
+      const reads = {};
+      let pending = 0;
+      let settled = false;
+      let result = { ok: true };
+
+      const fail = (error) => {
+        if (settled) return;
+        settled = true;
+        try { transaction.abort(); } catch { /* already inactive */ }
+        reject(error instanceof Error ? error : new Error("Gathering settlement failed."));
+      };
+
+      const onAllRead = () => {
+        const node = reads.node;
+        if (!node) {
+          settled = true;
+          try { transaction.abort(); } catch { /* noop */ }
+          resolve({ ok: false, reason: "missing-node" });
+          return;
+        }
+        const state = this._buildNodeState(node, reads.gatheringLogs || [], reads.quantityItems || [], reads.storageLocations || [], nodeId);
+        try {
+          this._simulateGathering(state, nowMs);
+          if (mutate) {
+            result = mutate(state, nowMs) || { ok: true };
+            if (result.ok === false) {
+              settled = true;
+              try { transaction.abort(); } catch { /* noop */ }
+              resolve(result);
+              return;
+            }
+          }
+          this._replanGathering(state);
+        } catch (error) {
+          fail(error);
+          return;
+        }
+        if (state.nodeDeleted) {
+          stores.resourceNodes.delete(nodeId);
+        } else {
+          const { _settledAt, ...cleanNode } = state.node;
+          stores.resourceNodes.put(cleanNode);
+        }
+        state.logs.forEach((log) => stores.gatheringLogs.put(log));
+        state.qtyChanged.forEach((key) => stores.quantityItems.put(state.qtyMap.get(key)));
+        transaction.oncomplete = () => {
+          if (settled) return;
+          settled = true;
+          resolve({ committed: true, node: state.nodeDeleted ? null : state.node, ...result });
+        };
+      };
+
+      const issue = (key, request) => {
+        pending += 1;
+        request.onsuccess = () => { reads[key] = request.result; pending -= 1; if (pending === 0 && !settled) onAllRead(); };
+      };
+
+      transaction.onerror = () => fail(transaction.error || new Error("IndexedDB transaction failed."));
+      transaction.onabort = () => { if (!settled) fail(transaction.error || new Error("IndexedDB transaction aborted.")); };
+
+      issue("node", stores.resourceNodes.get(nodeId));
+      issue("gatheringLogs", stores.gatheringLogs.getAll());
+      issue("quantityItems", stores.quantityItems.getAll());
+      issue("storageLocations", stores.storageLocations.getAll());
+    });
+  }
+
+  // Begin a mining action: settle existing miners to now, then add this actor's
+  // log and re-plan the node's new contention epoch.
+  async startGathering({ nodeId, storageId, actorId = DEFAULT_CHARACTER_ID, gatherRateMult = 1.0, nowMs = Date.now() } = {}) {
+    return this._commitNodeOp(nodeId, nowMs, (state) => {
+      const node = state.node;
+      if (state.nodeDeleted) return { ok: false, reason: "node-depleted" };
+      if (this._activeGatherLogs(state).some((log) => log.actor_id === actorId)) {
+        return { ok: false, reason: "already-gathering" };
+      }
+      const baseYield = Number(node.base_yield_per_sec) || 0;
+      const designRate = baseYield * (Number(gatherRateMult) || 0);
+      // Test override takes precedence when set; otherwise use the design rate.
+      const effectiveRate = GATHER_TEST_RATE_PER_SEC == null ? designRate : GATHER_TEST_RATE_PER_SEC;
+      const effectiveMult = baseYield > 0 ? effectiveRate / baseYield : (Number(gatherRateMult) || 0);
+      if (!(effectiveRate > 0)) return { ok: false, reason: "zero-yield" };
+
+      const id = `GATHER-${nowMs}-${Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0")}`;
+      const log = {
+        id,
+        actor_id: actorId,
+        type: "gathering",
+        status: "active",
+        target_node_id: nodeId,
+        produces_item_id: node.produces_item_id,
+        target_storage_id: storageId,
+        issued_at: nowMs,
+        start_at: nowMs,
+        epoch_settled_anchor: nowMs,
+        yield_snapshot: {
+          base_yield_per_sec: baseYield,
+          gather_rate_mult: effectiveMult,
+          effective_yield_per_sec: effectiveRate
+        },
+        accumulated: 0,        // float progress; settled_yield = floor(accumulated)
+        settled_yield: 0,
+        planned_yield: 0,
+        planned_end_at: null,
+        clientSeq: null,
+        economyEpoch: "local-v1",
+        index: 0,
+        dependency_id: null,
+        isCancellable: true
+      };
+      state.logs.set(id, log);
+
+      // New miner resets the epoch to start at now for everyone.
+      node.epoch_start_at = nowMs;
+      node.amount_at_epoch_start = Math.max(0, Number(node.current_amount) || 0);
+      node.active_gather_ids = this._activeGatherLogs(state).map((entry) => entry.id);
+      return { ok: true, logId: id };
+    });
+  }
+
+  // Stop a mining action at nowMs: the stopping actor is settled to exactly now,
+  // remaining miners re-plan (their end times extend).
+  async stopGathering({ nodeId, logId, nowMs = Date.now() } = {}) {
+    return this._commitNodeOp(nodeId, nowMs, (state) => {
+      const log = state.logs.get(logId);
+      if (!log || log.status !== "active") return { ok: false, reason: "not-active" };
+      this._finishGatherLog(log, "cancelled", nowMs);
+
+      const stillActive = this._activeGatherLogs(state);
+      state.node.active_gather_ids = stillActive.map((entry) => entry.id);
+      state.node.epoch_start_at = stillActive.length ? nowMs : null;
+      state.node.amount_at_epoch_start = Math.max(0, Number(state.node.current_amount) || 0);
+      return { ok: true, gathered: Number(log.settled_yield) || 0 };
+    });
+  }
+
+  // Heartbeat / lifecycle commit: settle the node to nowMs without changing the
+  // miner set (also fires deterministic exhaust/expiry completion if reached).
+  async settleNode({ nodeId, nowMs = Date.now() } = {}) {
+    return this._commitNodeOp(nodeId, nowMs, null);
+  }
+
+  // Read-only projection for HUD/extrapolation — never writes. Returns each
+  // active miner's projected gathered amount at nowMs.
+  async deriveNodeState(nodeId, nowMs = Date.now()) {
+    const [node, allLogs, allQuantityItems, allStorages] = await Promise.all([
+      this.getStoreValue("resourceNodes", nodeId),
+      this.getAll("gatheringLogs"),
+      this.getAll("quantityItems"),
+      this.getAll("storageLocations")
+    ]);
+    if (!node) return null;
+
+    const state = this._buildNodeState(node, allLogs, allQuantityItems, allStorages, nodeId);
+    this._simulateGathering(state, nowMs);
+    this._replanGathering(state);
+    return {
+      node: state.nodeDeleted ? null : state.node,
+      depleted: state.nodeDeleted,
+      logs: [...state.logs.values()].map((log) => ({
+        id: log.id,
+        actor_id: log.actor_id,
+        status: log.status,
+        gathered: Number(log.settled_yield) || 0,
+        planned_yield: Number(log.planned_yield) || 0,
+        planned_end_at: log.planned_end_at
+      }))
+    };
+  }
+
+  async getGatheringLogs({ nodeId = null, actorId = null, activeOnly = false } = {}) {
+    const all = await this.getAll("gatheringLogs");
+    return all.filter((log) => (
+      (nodeId == null || log.target_node_id === nodeId)
+      && (actorId == null || log.actor_id === actorId)
+      && (!activeOnly || log.status === "active")
+    ));
   }
 
   normalizeVector(vector = {}) {

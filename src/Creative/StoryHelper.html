@@ -1,0 +1,1729 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Void Zero Story Helper</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    :root {
+      color-scheme: dark;
+      --bg: #10120f;
+      --panel: #171a16;
+      --panel-2: #1e231d;
+      --panel-3: #262c25;
+      --field: #0d100d;
+      --line: rgba(210, 225, 204, 0.16);
+      --line-strong: rgba(210, 225, 204, 0.32);
+      --text: #e3eadf;
+      --muted: #98a493;
+      --quiet: #697363;
+      --accent: #74d39e;
+      --accent-soft: rgba(116, 211, 158, 0.14);
+      --warn: #f0bc67;
+      --danger: #f06f64;
+      --shadow: rgba(0, 0, 0, 0.36);
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 12px;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-3);
+      color: var(--text);
+      padding: 0 10px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button:hover:not(:disabled) {
+      border-color: var(--line-strong);
+      background: #30372e;
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+
+    .btn-primary {
+      border-color: rgba(116, 211, 158, 0.46);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .btn-warn {
+      border-color: rgba(240, 188, 103, 0.45);
+      background: rgba(240, 188, 103, 0.12);
+      color: var(--warn);
+    }
+
+    .btn-danger {
+      border-color: rgba(240, 111, 100, 0.46);
+      background: rgba(240, 111, 100, 0.12);
+      color: #ffaaa2;
+    }
+
+    .btn-small {
+      height: 26px;
+      padding: 0 8px;
+      font-size: 11px;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--field);
+      color: var(--text);
+      padding: 7px 8px;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 92px;
+      resize: vertical;
+      line-height: 1.52;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: rgba(116, 211, 158, 0.7);
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: 58px minmax(0, 1fr);
+      width: 100%;
+      height: 100%;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto;
+      align-items: center;
+      gap: 14px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+      background: #131611;
+      box-shadow: 0 10px 24px var(--shadow);
+      min-width: 0;
+    }
+
+    .brand {
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .brand-title {
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .brand-sub {
+      color: var(--quiet);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .status {
+      max-width: 230px;
+      min-width: 80px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--quiet);
+      text-align: right;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(230px, 280px) minmax(360px, 1fr) minmax(320px, 400px);
+      min-width: 0;
+      min-height: 0;
+      background: var(--line);
+      gap: 1px;
+    }
+
+    .pane {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      background: var(--panel);
+    }
+
+    .pane-header {
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+    }
+
+    .pane-title {
+      min-width: 0;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .pane-subtitle {
+      margin-top: 2px;
+      color: var(--quiet);
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .pane-actions {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .scroll {
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .sidebar-body {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-height: 0;
+    }
+
+    .search-wrap {
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(0, 0, 0, 0.08);
+    }
+
+    .character-list {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+    }
+
+    .character-row {
+      width: 100%;
+      min-height: 74px;
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr);
+      gap: 10px;
+      text-align: left;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #151914;
+      padding: 8px;
+    }
+
+    .character-row.is-active {
+      border-color: rgba(116, 211, 158, 0.64);
+      background: rgba(116, 211, 158, 0.12);
+    }
+
+    .avatar {
+      width: 44px;
+      height: 56px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background:
+        linear-gradient(135deg, rgba(116, 211, 158, 0.12), transparent),
+        #0d100d;
+      object-fit: cover;
+      overflow: hidden;
+    }
+
+    .avatar-placeholder {
+      display: grid;
+      place-items: center;
+      color: var(--quiet);
+      font-weight: 800;
+      letter-spacing: 0.05em;
+    }
+
+    .row-main {
+      min-width: 0;
+      display: grid;
+      align-content: center;
+      gap: 4px;
+    }
+
+    .row-title {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 750;
+      color: var(--text);
+    }
+
+    .row-meta {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--quiet);
+      font-size: 11px;
+    }
+
+    .editor-body {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 6px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(0, 0, 0, 0.08);
+    }
+
+    .tab {
+      height: 30px;
+      border-radius: 999px;
+      color: var(--muted);
+    }
+
+    .tab.is-active {
+      border-color: rgba(116, 211, 158, 0.5);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .form-grid {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .character-empty {
+      height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--quiet);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .resource-list,
+    .lyric-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .resource-card,
+    .lyric-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #151914;
+      overflow: hidden;
+    }
+
+    .resource-card {
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1fr);
+    }
+
+    .resource-card.is-linked {
+      border-color: rgba(116, 211, 158, 0.56);
+    }
+
+    .resource-thumb {
+      width: 88px;
+      min-height: 96px;
+      background:
+        linear-gradient(135deg, rgba(240, 188, 103, 0.10), transparent),
+        #0d100d;
+      border-right: 1px solid var(--line);
+      object-fit: cover;
+    }
+
+    .resource-fallback {
+      display: grid;
+      place-items: center;
+      padding: 8px;
+      color: var(--quiet);
+      text-align: center;
+      line-height: 1.35;
+    }
+
+    .card-body {
+      min-width: 0;
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+    }
+
+    .card-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .card-title {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 750;
+    }
+
+    .card-meta {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--quiet);
+      font-size: 11px;
+    }
+
+    .lyric-card {
+      padding: 10px;
+      display: grid;
+      gap: 10px;
+      overflow: visible;
+    }
+
+    .lyric-card textarea {
+      min-height: 140px;
+      overflow: hidden;
+      resize: none;
+    }
+
+    .lyric-language-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      align-items: start;
+    }
+
+    .lyric-language-grid label {
+      align-self: start;
+    }
+
+    .lyric-language-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .lyric-language-code {
+      color: var(--quiet);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .side-body {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .side-tabs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(0, 0, 0, 0.08);
+    }
+
+    .output-tools {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .output-area {
+      min-height: 420px;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 11px;
+      white-space: pre;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .mini-note {
+      color: var(--quiet);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    @media (max-width: 980px) {
+      body {
+        overflow: auto;
+      }
+
+      .app {
+        grid-template-rows: auto auto;
+        height: auto;
+        min-height: 100%;
+      }
+
+      .topbar {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+        height: auto;
+        padding: 10px;
+      }
+
+      .toolbar {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .status {
+        text-align: left;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+        min-height: auto;
+      }
+
+      .pane {
+        min-height: 420px;
+      }
+
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+
+      .lyric-language-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-title">Void Zero Story Helper</div>
+        <div class="brand-sub" id="projectSummary">세계관, 캐릭터 메모, 가사, 이미지 리소스 관리</div>
+      </div>
+      <div class="toolbar">
+        <button type="button" class="btn-primary" id="saveButton">저장</button>
+        <button type="button" id="exportJsonButton">JSON 출력</button>
+        <button type="button" id="importJsonButton">JSON 불러오기</button>
+        <button type="button" id="downloadMarkdownButton">Markdown 출력</button>
+        <button type="button" class="btn-danger" id="resetButton">초기화</button>
+        <div class="status" id="saveStatus">준비됨</div>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="pane">
+        <div class="pane-header">
+          <div>
+            <div class="pane-title">캐릭터</div>
+            <div class="pane-subtitle" id="characterCount">0명</div>
+          </div>
+          <div class="pane-actions">
+            <button type="button" class="btn-small btn-primary" id="addCharacterButton">추가</button>
+          </div>
+        </div>
+        <div class="sidebar-body">
+          <div class="search-wrap">
+            <input id="characterSearch" type="search" placeholder="이름, 역할, 태그 검색">
+          </div>
+          <div class="scroll">
+            <div class="character-list" id="characterList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pane">
+        <div class="pane-header">
+          <div>
+            <div class="pane-title" id="editorTitle">스토리 컨텍스트</div>
+            <div class="pane-subtitle" id="editorSubtitle">프로젝트 기본 정보</div>
+          </div>
+          <div class="pane-actions">
+            <button type="button" class="btn-small btn-danger" id="deleteCharacterButton">캐릭터 삭제</button>
+          </div>
+        </div>
+        <div class="editor-body">
+          <div class="tabs">
+            <button type="button" class="tab is-active" data-main-tab="world">세계관</button>
+            <button type="button" class="tab" data-main-tab="character">캐릭터 메모</button>
+            <button type="button" class="tab" data-main-tab="lyrics">노래 가사</button>
+          </div>
+
+          <div class="scroll" id="worldPanel">
+            <div class="form-grid">
+              <div class="two-col">
+                <label>
+                  프로젝트 제목
+                  <input id="worldTitle" data-bind="world.title" placeholder="예: Void Zero">
+                </label>
+                <label>
+                  기준 톤
+                  <input id="worldTone" data-bind="world.tone" placeholder="예: 우주 오페라, 잔잔한 SF, 전쟁 이후">
+                </label>
+              </div>
+              <label>
+                세계관 요약
+                <textarea id="worldPremise" data-bind="world.premise" placeholder="세계의 핵심 전제, 현재 갈등, 주요 세력"></textarea>
+              </label>
+              <label>
+                타임라인 / 사건
+                <textarea id="worldTimeline" data-bind="world.timeline" placeholder="연도 또는 에피소드별 사건 정리"></textarea>
+              </label>
+              <label>
+                용어 / 설정 사전
+                <textarea id="worldGlossary" data-bind="world.glossary" placeholder="장소, 기술, 세력, 장비, 고유명사"></textarea>
+              </label>
+            </div>
+          </div>
+
+          <div class="scroll hidden" id="characterPanel">
+            <div class="character-empty hidden" id="characterEmpty">
+              캐릭터를 추가하거나 왼쪽 목록에서 선택하면 메모를 편집할 수 있습니다.
+            </div>
+            <div class="form-grid" id="characterForm">
+              <div class="two-col">
+                <label>
+                  이름
+                  <input id="characterName" data-character-field="name" placeholder="캐릭터 이름">
+                </label>
+                <label>
+                  역할
+                  <input id="characterRole" data-character-field="role" placeholder="예: 항해사, 라이벌, 합창 파트">
+                </label>
+              </div>
+              <div class="two-col">
+                <label>
+                  태그
+                  <input id="characterTags" data-character-field="tagsText" placeholder="쉼표로 구분">
+                </label>
+                <label>
+                  연결 이미지
+                  <select id="characterImageSelect">
+                    <option value="">대표 이미지 없음</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                한 줄 요약
+                <input id="characterSummary" data-character-field="summary" placeholder="성격, 갈등, 장면에서 기억할 핵심">
+              </label>
+              <label>
+                캐릭터별 메모
+                <textarea id="characterMemo" data-character-field="memo" placeholder="말투, 관계, 배경, 장면 아이디어, 금지사항"></textarea>
+              </label>
+            </div>
+          </div>
+
+          <div class="scroll hidden" id="lyricsPanel">
+            <div class="character-empty hidden" id="lyricsEmpty">
+              캐릭터를 선택한 뒤 가사 블록을 추가하세요.
+            </div>
+            <div class="form-grid" id="lyricsForm">
+              <div class="pane-actions">
+                <button type="button" class="btn-small btn-primary" id="addLyricButton">가사 블록 추가</button>
+              </div>
+              <div class="lyric-list" id="lyricList"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pane">
+        <div class="pane-header">
+          <div>
+            <div class="pane-title">리소스 / 출력</div>
+            <div class="pane-subtitle">이미지는 별도 리소스로 연결</div>
+          </div>
+          <div class="pane-actions">
+            <button type="button" class="btn-small btn-primary" id="addImageButton">이미지 추가</button>
+          </div>
+        </div>
+        <div class="side-body">
+          <div class="side-tabs">
+            <button type="button" class="tab is-active" data-side-tab="resources">이미지 리소스</button>
+            <button type="button" class="tab" data-side-tab="output">출력 미리보기</button>
+          </div>
+          <div class="scroll" id="resourcesPanel">
+            <div class="form-grid">
+              <label>
+                리소스 경로 직접 추가
+                <input id="imagePathInput" placeholder="예: portrait/character_001.png">
+              </label>
+              <div class="pane-actions">
+                <button type="button" class="btn-small" id="addPathImageButton">경로 등록</button>
+                <button type="button" class="btn-small" id="pickImageButton">파일 선택</button>
+              </div>
+              <div class="mini-note">파일 선택은 브라우저 미리보기용 데이터도 저장합니다. 실제 프로젝트에서는 경로 리소스명을 함께 유지하세요.</div>
+              <div class="resource-list" id="imageList"></div>
+            </div>
+          </div>
+          <div class="scroll hidden" id="outputPanel">
+            <div class="form-grid">
+              <div class="output-tools">
+                <select id="outputMode">
+                  <option value="markdown">Markdown</option>
+                  <option value="json">JSON</option>
+                </select>
+                <button type="button" class="btn-small" id="copyOutputButton">복사</button>
+                <button type="button" class="btn-small" id="downloadOutputButton">다운로드</button>
+              </div>
+              <textarea class="output-area" id="outputText" readonly></textarea>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <input class="file-input" type="file" id="jsonFileInput" accept="application/json,.json">
+  <input class="file-input" type="file" id="imageFileInput" accept="image/*" multiple>
+
+  <script>
+    (() => {
+      const STORAGE_KEY = "void-zero-story-helper-state-v1";
+      const LYRIC_LANGUAGES = [
+        { key: "ko", label: "한국어", title: "한국어 가사", code: "KO", placeholder: "한국어 가사" },
+        { key: "en", label: "English", title: "English Lyrics", code: "EN", placeholder: "English lyrics" },
+        { key: "ja", label: "日本語", title: "日本語 歌詞", code: "JA", placeholder: "日本語の歌詞" },
+      ];
+
+      const $ = (selector, root = document) => root.querySelector(selector);
+      const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+
+      const state = {
+        data: createDefaultData(),
+        selectedCharacterId: null,
+        mainTab: "world",
+        sideTab: "resources",
+        outputMode: "markdown",
+        search: "",
+        saveTimer: null,
+      };
+
+      const elements = {
+        projectSummary: $("#projectSummary"),
+        saveStatus: $("#saveStatus"),
+        characterCount: $("#characterCount"),
+        characterList: $("#characterList"),
+        characterSearch: $("#characterSearch"),
+        editorTitle: $("#editorTitle"),
+        editorSubtitle: $("#editorSubtitle"),
+        deleteCharacterButton: $("#deleteCharacterButton"),
+        worldPanel: $("#worldPanel"),
+        characterPanel: $("#characterPanel"),
+        lyricsPanel: $("#lyricsPanel"),
+        characterEmpty: $("#characterEmpty"),
+        characterForm: $("#characterForm"),
+        lyricsEmpty: $("#lyricsEmpty"),
+        lyricsForm: $("#lyricsForm"),
+        addLyricButton: $("#addLyricButton"),
+        lyricList: $("#lyricList"),
+        characterImageSelect: $("#characterImageSelect"),
+        imagePathInput: $("#imagePathInput"),
+        imageList: $("#imageList"),
+        resourcesPanel: $("#resourcesPanel"),
+        outputPanel: $("#outputPanel"),
+        outputMode: $("#outputMode"),
+        outputText: $("#outputText"),
+        jsonFileInput: $("#jsonFileInput"),
+        imageFileInput: $("#imageFileInput"),
+      };
+
+      init();
+
+      function init() {
+        loadFromStorage();
+        if (!state.selectedCharacterId && state.data.characters.length) {
+          state.selectedCharacterId = state.data.characters[0].id;
+        }
+        bindEvents();
+        render();
+        setStatus("로컬 저장 불러옴");
+      }
+
+      function createDefaultData() {
+        const firstCharacterId = createId("char");
+        return {
+          schema: "void-zero-story-helper",
+          version: 1,
+          updatedAt: "",
+          world: {
+            title: "Void Zero",
+            tone: "",
+            premise: "",
+            timeline: "",
+            glossary: "",
+          },
+          characters: [
+            {
+              id: firstCharacterId,
+              name: "Character 001",
+              role: "",
+              tags: [],
+              summary: "",
+              memo: "",
+              imageIds: ["img_default_001"],
+              lyrics: [
+                {
+                  id: createId("lyric"),
+                  title: "Main Theme",
+                  mood: "",
+                  texts: createEmptyLyricTexts(),
+                },
+              ],
+            },
+          ],
+          imageResources: [
+            {
+              id: "img_default_001",
+              name: "character_001.png",
+              path: "portrait/character_001.png",
+              tags: ["portrait"],
+              notes: "Creative/portrait 폴더의 기본 캐릭터 이미지",
+              dataUrl: "",
+            },
+          ],
+        };
+      }
+
+      function bindEvents() {
+        $("#saveButton").addEventListener("click", () => saveToStorage("저장됨"));
+        $("#exportJsonButton").addEventListener("click", downloadJson);
+        $("#importJsonButton").addEventListener("click", () => elements.jsonFileInput.click());
+        $("#downloadMarkdownButton").addEventListener("click", () => downloadText(buildMarkdown(), "void-zero-story-context.md", "text/markdown"));
+        $("#resetButton").addEventListener("click", resetData);
+        $("#addCharacterButton").addEventListener("click", addCharacter);
+        $("#deleteCharacterButton").addEventListener("click", deleteSelectedCharacter);
+        $("#addImageButton").addEventListener("click", () => elements.imagePathInput.focus());
+        $("#addPathImageButton").addEventListener("click", addPathImage);
+        $("#pickImageButton").addEventListener("click", () => elements.imageFileInput.click());
+        $("#copyOutputButton").addEventListener("click", copyOutput);
+        $("#downloadOutputButton").addEventListener("click", downloadCurrentOutput);
+
+        elements.characterSearch.addEventListener("input", (event) => {
+          state.search = event.target.value.trim().toLowerCase();
+          renderCharacters();
+        });
+
+        elements.outputMode.addEventListener("change", (event) => {
+          state.outputMode = event.target.value;
+          updateOutput();
+        });
+
+        elements.jsonFileInput.addEventListener("change", importJson);
+        elements.imageFileInput.addEventListener("change", importImageFiles);
+
+        $$("[data-main-tab]").forEach((button) => {
+          button.addEventListener("click", () => {
+            state.mainTab = button.dataset.mainTab;
+            renderTabs();
+          });
+        });
+
+        $$("[data-side-tab]").forEach((button) => {
+          button.addEventListener("click", () => {
+            state.sideTab = button.dataset.sideTab;
+            renderSideTabs();
+          });
+        });
+
+        $$("[data-bind]").forEach((input) => {
+          input.addEventListener("input", () => {
+            setPath(state.data, input.dataset.bind, input.value);
+            touch();
+          });
+        });
+
+        $$("[data-character-field]").forEach((input) => {
+          input.addEventListener("input", () => {
+            const character = getSelectedCharacter();
+            if (!character) return;
+            const field = input.dataset.characterField;
+            if (field === "tagsText") {
+              character.tags = parseTags(input.value);
+            } else {
+              character[field] = input.value;
+            }
+            touch({ characters: true, editor: true });
+          });
+        });
+
+        elements.characterImageSelect.addEventListener("change", (event) => {
+          const character = getSelectedCharacter();
+          if (!character) return;
+          character.imageIds = event.target.value ? [event.target.value] : [];
+          touch({ characters: true, images: true });
+        });
+
+        elements.addLyricButton.addEventListener("click", addLyric);
+      }
+
+      function createId(prefix) {
+        if (window.crypto && window.crypto.randomUUID) {
+          return `${prefix}_${window.crypto.randomUUID().slice(0, 8)}`;
+        }
+        return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      }
+
+      function loadFromStorage() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (!saved) {
+          state.data = createDefaultData();
+          state.selectedCharacterId = state.data.characters[0]?.id || null;
+          return;
+        }
+
+        try {
+          state.data = normalizeData(JSON.parse(saved));
+          state.selectedCharacterId = state.data.characters[0]?.id || null;
+        } catch (error) {
+          console.warn("Failed to parse saved story helper state.", error);
+          state.data = createDefaultData();
+          state.selectedCharacterId = state.data.characters[0]?.id || null;
+          setStatus("저장 데이터 파싱 실패");
+        }
+      }
+
+      function saveToStorage(message = "자동 저장됨") {
+        state.data.updatedAt = new Date().toISOString();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+        setStatus(`${message} ${formatTime(new Date())}`);
+      }
+
+      function touch(options = {}) {
+        state.data.updatedAt = new Date().toISOString();
+        if (options.render) {
+          render();
+        } else {
+          if (options.characters) renderCharacters();
+          if (options.editor) renderCharacterEditor();
+          if (options.lyrics) renderLyrics();
+          if (options.images) renderImages();
+          refreshProjectSummary();
+          updateOutput();
+        }
+        window.clearTimeout(state.saveTimer);
+        state.saveTimer = window.setTimeout(() => saveToStorage(), 450);
+      }
+
+      function render() {
+        bindWorldFields();
+        renderCharacters();
+        renderCharacterEditor();
+        renderLyrics();
+        renderImages();
+        renderTabs();
+        renderSideTabs();
+        updateOutput();
+        refreshProjectSummary();
+      }
+
+      function refreshProjectSummary() {
+        elements.projectSummary.textContent = `${state.data.world.title || "Untitled"} · 캐릭터 ${state.data.characters.length} · 이미지 ${state.data.imageResources.length}`;
+      }
+
+      function bindWorldFields() {
+        $$("[data-bind]").forEach((input) => {
+          const value = getPath(state.data, input.dataset.bind) || "";
+          if (input.value !== value) input.value = value;
+        });
+      }
+
+      function renderCharacters() {
+        const characters = state.data.characters.filter((character) => {
+          if (!state.search) return true;
+          const haystack = [
+            character.name,
+            character.role,
+            character.summary,
+            character.memo,
+            (character.tags || []).join(" "),
+          ].join(" ").toLowerCase();
+          return haystack.includes(state.search);
+        });
+
+        elements.characterCount.textContent = `${state.data.characters.length}명`;
+        elements.characterList.innerHTML = "";
+
+        if (!characters.length) {
+          const empty = document.createElement("div");
+          empty.className = "mini-note";
+          empty.textContent = "검색 결과가 없습니다.";
+          elements.characterList.append(empty);
+          return;
+        }
+
+        characters.forEach((character) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = `character-row${character.id === state.selectedCharacterId ? " is-active" : ""}`;
+          button.addEventListener("click", () => {
+            state.selectedCharacterId = character.id;
+            state.mainTab = state.mainTab === "world" ? "character" : state.mainTab;
+            render();
+          });
+
+          button.append(createAvatar(character), createCharacterRowMain(character));
+          elements.characterList.append(button);
+        });
+      }
+
+      function createAvatar(character) {
+        const resource = getPrimaryImage(character);
+        if (resource && getImageSource(resource)) {
+          const img = document.createElement("img");
+          img.className = "avatar";
+          img.alt = "";
+          img.src = getImageSource(resource);
+          return img;
+        }
+
+        const placeholder = document.createElement("div");
+        placeholder.className = "avatar avatar-placeholder";
+        placeholder.textContent = getInitials(character.name);
+        return placeholder;
+      }
+
+      function createCharacterRowMain(character) {
+        const main = document.createElement("div");
+        main.className = "row-main";
+
+        const title = document.createElement("div");
+        title.className = "row-title";
+        title.textContent = character.name || "이름 없음";
+
+        const meta = document.createElement("div");
+        meta.className = "row-meta";
+        meta.textContent = character.role || "역할 미지정";
+
+        const sub = document.createElement("div");
+        sub.className = "row-meta";
+        sub.textContent = character.tags?.length ? character.tags.join(", ") : "태그 없음";
+
+        main.append(title, meta, sub);
+        return main;
+      }
+
+      function renderCharacterEditor() {
+        const character = getSelectedCharacter();
+        const hasCharacter = Boolean(character);
+        elements.characterEmpty.classList.toggle("hidden", hasCharacter);
+        elements.characterForm.classList.toggle("hidden", !hasCharacter);
+        elements.deleteCharacterButton.disabled = !hasCharacter;
+
+        if (!character) {
+          elements.editorTitle.textContent = "스토리 컨텍스트";
+          elements.editorSubtitle.textContent = "캐릭터 없음";
+          return;
+        }
+
+        elements.editorTitle.textContent = character.name || "이름 없는 캐릭터";
+        elements.editorSubtitle.textContent = character.role || "역할 미지정";
+
+        $$("[data-character-field]").forEach((input) => {
+          const field = input.dataset.characterField;
+          const value = field === "tagsText" ? (character.tags || []).join(", ") : character[field] || "";
+          if (input.value !== value) input.value = value;
+        });
+
+        renderImageSelect(character);
+      }
+
+      function renderImageSelect(character) {
+        const currentId = character.imageIds?.[0] || "";
+        elements.characterImageSelect.innerHTML = "";
+        const none = new Option("대표 이미지 없음", "");
+        elements.characterImageSelect.append(none);
+        state.data.imageResources.forEach((resource) => {
+          elements.characterImageSelect.append(new Option(resource.name || resource.path || resource.id, resource.id));
+        });
+        elements.characterImageSelect.value = currentId;
+      }
+
+      function renderLyrics() {
+        const character = getSelectedCharacter();
+        const hasCharacter = Boolean(character);
+        elements.lyricsEmpty.classList.toggle("hidden", hasCharacter);
+        elements.lyricsForm.classList.toggle("hidden", !hasCharacter);
+        elements.lyricList.innerHTML = "";
+
+        if (!character) return;
+        character.lyrics = character.lyrics || [];
+
+        if (!character.lyrics.length) {
+          const empty = document.createElement("div");
+          empty.className = "mini-note";
+          empty.textContent = "아직 가사 블록이 없습니다.";
+          elements.lyricList.append(empty);
+          return;
+        }
+
+        character.lyrics.forEach((lyric, index) => {
+          const card = document.createElement("div");
+          card.className = "lyric-card";
+
+          const titleRow = document.createElement("div");
+          titleRow.className = "card-title-row";
+
+          const title = document.createElement("div");
+          title.className = "card-title";
+          title.textContent = `가사 ${index + 1}`;
+
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "btn-small btn-danger";
+          remove.textContent = "삭제";
+          remove.addEventListener("click", () => {
+            character.lyrics = character.lyrics.filter((item) => item.id !== lyric.id);
+            touch({ render: true });
+          });
+
+          titleRow.append(title, remove);
+
+          const nameLabel = createInputLabel("제목", lyric.title || "", (value) => {
+            lyric.title = value;
+            touch();
+          });
+          const moodLabel = createInputLabel("무드 / 사용 장면", lyric.mood || "", (value) => {
+            lyric.mood = value;
+            touch();
+          });
+          lyric.texts = normalizeLyricTexts(lyric);
+          const languageGrid = document.createElement("div");
+          languageGrid.className = "lyric-language-grid";
+
+          LYRIC_LANGUAGES.forEach((language) => {
+            const bodyLabel = createTextareaLabel(createLanguageTitle(language), lyric.texts[language.key] || "", (value) => {
+              lyric.texts[language.key] = value;
+              touch();
+            }, { autoGrow: true, placeholder: language.placeholder });
+            languageGrid.append(bodyLabel);
+          });
+
+          card.append(titleRow, nameLabel, moodLabel, languageGrid);
+          elements.lyricList.append(card);
+        });
+      }
+
+      function renderImages() {
+        elements.imageList.innerHTML = "";
+
+        if (!state.data.imageResources.length) {
+          const empty = document.createElement("div");
+          empty.className = "mini-note";
+          empty.textContent = "등록된 이미지 리소스가 없습니다.";
+          elements.imageList.append(empty);
+          return;
+        }
+
+        state.data.imageResources.forEach((resource) => {
+          const card = document.createElement("div");
+          const linked = state.data.characters.some((character) => (character.imageIds || []).includes(resource.id));
+          card.className = `resource-card${linked ? " is-linked" : ""}`;
+
+          const src = getImageSource(resource);
+          if (src) {
+            const img = document.createElement("img");
+            img.className = "resource-thumb";
+            img.alt = "";
+            img.src = src;
+            card.append(img);
+          } else {
+            const fallback = document.createElement("div");
+            fallback.className = "resource-thumb resource-fallback";
+            fallback.textContent = "이미지 경로";
+            card.append(fallback);
+          }
+
+          const body = document.createElement("div");
+          body.className = "card-body";
+
+          const titleRow = document.createElement("div");
+          titleRow.className = "card-title-row";
+
+          const title = document.createElement("div");
+          title.className = "card-title";
+          title.textContent = resource.name || resource.path || "이름 없는 리소스";
+
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "btn-small btn-danger";
+          remove.textContent = "삭제";
+          remove.addEventListener("click", () => removeImage(resource.id));
+          titleRow.append(title, remove);
+
+          const path = document.createElement("div");
+          path.className = "card-meta";
+          path.textContent = resource.path || "파일 선택 리소스";
+
+          const notes = document.createElement("textarea");
+          notes.value = resource.notes || "";
+          notes.placeholder = "리소스 메모";
+          notes.addEventListener("input", () => {
+            resource.notes = notes.value;
+            touch();
+          });
+
+          body.append(titleRow, path, notes);
+          card.append(body);
+          elements.imageList.append(card);
+        });
+      }
+
+      function renderTabs() {
+        $$("[data-main-tab]").forEach((button) => {
+          button.classList.toggle("is-active", button.dataset.mainTab === state.mainTab);
+        });
+        elements.worldPanel.classList.toggle("hidden", state.mainTab !== "world");
+        elements.characterPanel.classList.toggle("hidden", state.mainTab !== "character");
+        elements.lyricsPanel.classList.toggle("hidden", state.mainTab !== "lyrics");
+        if (state.mainTab === "lyrics") {
+          requestAnimationFrame(() => autoSizeLyricTextareas());
+        }
+      }
+
+      function renderSideTabs() {
+        $$("[data-side-tab]").forEach((button) => {
+          button.classList.toggle("is-active", button.dataset.sideTab === state.sideTab);
+        });
+        elements.resourcesPanel.classList.toggle("hidden", state.sideTab !== "resources");
+        elements.outputPanel.classList.toggle("hidden", state.sideTab !== "output");
+      }
+
+      function addCharacter() {
+        const character = {
+          id: createId("char"),
+          name: `Character ${String(state.data.characters.length + 1).padStart(3, "0")}`,
+          role: "",
+          tags: [],
+          summary: "",
+          memo: "",
+          imageIds: [],
+          lyrics: [],
+        };
+        state.data.characters.push(character);
+        state.selectedCharacterId = character.id;
+        state.mainTab = "character";
+        touch({ render: true });
+      }
+
+      function deleteSelectedCharacter() {
+        const character = getSelectedCharacter();
+        if (!character) return;
+        const ok = window.confirm(`"${character.name || "이름 없는 캐릭터"}" 캐릭터를 삭제할까요?`);
+        if (!ok) return;
+        state.data.characters = state.data.characters.filter((item) => item.id !== character.id);
+        state.selectedCharacterId = state.data.characters[0]?.id || null;
+        touch({ render: true });
+      }
+
+      function addLyric() {
+        const character = getSelectedCharacter();
+        if (!character) return;
+        character.lyrics = character.lyrics || [];
+        character.lyrics.push({
+          id: createId("lyric"),
+          title: `Lyric ${character.lyrics.length + 1}`,
+          mood: "",
+          texts: createEmptyLyricTexts(),
+        });
+        state.mainTab = "lyrics";
+        touch({ render: true });
+      }
+
+      function addPathImage() {
+        const path = elements.imagePathInput.value.trim();
+        if (!path) {
+          setStatus("이미지 경로를 입력하세요");
+          return;
+        }
+
+        state.data.imageResources.push({
+          id: createId("img"),
+          name: getFileName(path),
+          path,
+          tags: [],
+          notes: "",
+          dataUrl: "",
+        });
+        elements.imagePathInput.value = "";
+        touch({ render: true });
+      }
+
+      function importImageFiles(event) {
+        const files = Array.from(event.target.files || []);
+        if (!files.length) return;
+
+        let pending = files.length;
+        files.forEach((file) => {
+          const reader = new FileReader();
+          reader.addEventListener("load", () => {
+            state.data.imageResources.push({
+              id: createId("img"),
+              name: file.name,
+              path: file.name,
+              tags: [],
+              notes: "",
+              dataUrl: reader.result,
+            });
+            pending -= 1;
+            if (pending === 0) {
+              elements.imageFileInput.value = "";
+              touch({ render: true });
+              setStatus(`${files.length}개 이미지 등록`);
+            }
+          });
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function removeImage(imageId) {
+        const resource = state.data.imageResources.find((item) => item.id === imageId);
+        const ok = window.confirm(`"${resource?.name || "이미지 리소스"}"를 삭제할까요? 캐릭터 연결도 함께 해제됩니다.`);
+        if (!ok) return;
+        state.data.imageResources = state.data.imageResources.filter((item) => item.id !== imageId);
+        state.data.characters.forEach((character) => {
+          character.imageIds = (character.imageIds || []).filter((id) => id !== imageId);
+        });
+        touch({ render: true });
+      }
+
+      function resetData() {
+        const ok = window.confirm("현재 로컬 Story Helper 데이터를 초기화할까요? JSON 출력으로 백업한 뒤 진행하는 것을 권장합니다.");
+        if (!ok) return;
+        state.data = createDefaultData();
+        state.selectedCharacterId = state.data.characters[0]?.id || null;
+        state.mainTab = "world";
+        state.sideTab = "resources";
+        saveToStorage("초기화됨");
+        render();
+      }
+
+      function importJson(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.addEventListener("load", () => {
+          try {
+            const parsed = JSON.parse(reader.result);
+            state.data = normalizeData(parsed);
+            state.selectedCharacterId = state.data.characters[0]?.id || null;
+            state.mainTab = "world";
+            saveToStorage("JSON 불러옴");
+            render();
+          } catch (error) {
+            console.error(error);
+            setStatus("JSON 불러오기 실패");
+            window.alert("JSON 파일을 읽을 수 없습니다.");
+          } finally {
+            elements.jsonFileInput.value = "";
+          }
+        });
+        reader.readAsText(file, "utf-8");
+      }
+
+      function downloadJson() {
+        const name = slugify(state.data.world.title || "story-helper");
+        downloadText(JSON.stringify(state.data, null, 2), `${name}.story.json`, "application/json");
+      }
+
+      function copyOutput() {
+        const text = elements.outputText.value;
+        navigator.clipboard?.writeText(text)
+          .then(() => setStatus("출력 내용 복사됨"))
+          .catch(() => {
+            elements.outputText.select();
+            document.execCommand("copy");
+            setStatus("출력 내용 복사됨");
+          });
+      }
+
+      function downloadCurrentOutput() {
+        const mode = elements.outputMode.value;
+        if (mode === "json") {
+          downloadJson();
+          return;
+        }
+        const name = slugify(state.data.world.title || "story-helper");
+        downloadText(elements.outputText.value, `${name}.md`, "text/markdown");
+      }
+
+      function updateOutput() {
+        elements.outputMode.value = state.outputMode;
+        elements.outputText.value = state.outputMode === "json"
+          ? JSON.stringify(state.data, null, 2)
+          : buildMarkdown();
+      }
+
+      function buildMarkdown() {
+        const lines = [];
+        const world = state.data.world;
+        lines.push(`# ${world.title || "Untitled Story Context"}`);
+        lines.push("");
+        lines.push(`- Updated: ${state.data.updatedAt || "not saved yet"}`);
+        lines.push(`- Tone: ${world.tone || ""}`);
+        lines.push("");
+        lines.push("## World");
+        lines.push("");
+        lines.push(world.premise || "_No premise yet._");
+        lines.push("");
+        lines.push("## Timeline");
+        lines.push("");
+        lines.push(world.timeline || "_No timeline yet._");
+        lines.push("");
+        lines.push("## Glossary");
+        lines.push("");
+        lines.push(world.glossary || "_No glossary yet._");
+        lines.push("");
+        lines.push("## Image Resources");
+        lines.push("");
+        if (state.data.imageResources.length) {
+          state.data.imageResources.forEach((resource) => {
+            lines.push(`- ${resource.name || resource.id}: ${resource.path || "(embedded preview data)"}`);
+            if (resource.notes) lines.push(`  - Notes: ${resource.notes}`);
+          });
+        } else {
+          lines.push("_No image resources._");
+        }
+        lines.push("");
+        lines.push("## Characters");
+        lines.push("");
+
+        if (!state.data.characters.length) {
+          lines.push("_No characters._");
+        }
+
+        state.data.characters.forEach((character) => {
+          lines.push(`### ${character.name || "Unnamed Character"}`);
+          lines.push("");
+          lines.push(`- Role: ${character.role || ""}`);
+          lines.push(`- Tags: ${(character.tags || []).join(", ")}`);
+          lines.push(`- Image: ${getCharacterImageLabel(character)}`);
+          lines.push("");
+          lines.push(character.summary || "_No summary._");
+          lines.push("");
+          lines.push("#### Memo");
+          lines.push("");
+          lines.push(character.memo || "_No memo._");
+          lines.push("");
+          lines.push("#### Lyrics");
+          lines.push("");
+          if (character.lyrics?.length) {
+            character.lyrics.forEach((lyric) => {
+              lines.push(`##### ${lyric.title || "Untitled Lyric"}`);
+              if (lyric.mood) lines.push(`_Mood: ${lyric.mood}_`);
+              lines.push("");
+              const texts = normalizeLyricTexts(lyric);
+              if (hasAnyLyricText(texts)) {
+                LYRIC_LANGUAGES.forEach((language) => {
+                  lines.push(`###### ${language.label}`);
+                  lines.push("");
+                  lines.push(texts[language.key] || "_No lyrics yet._");
+                  lines.push("");
+                });
+              } else {
+                lines.push("_No lyrics yet._");
+                lines.push("");
+              }
+              lines.push("");
+            });
+          } else {
+            lines.push("_No lyrics._");
+            lines.push("");
+          }
+        });
+
+        return lines.join("\n");
+      }
+
+      function normalizeData(input) {
+        const fallback = createDefaultData();
+        const data = {
+          schema: input.schema || fallback.schema,
+          version: Number(input.version || 1),
+          updatedAt: input.updatedAt || "",
+          world: {
+            ...fallback.world,
+            ...(input.world || {}),
+          },
+          characters: Array.isArray(input.characters) ? input.characters : [],
+          imageResources: Array.isArray(input.imageResources) ? input.imageResources : [],
+        };
+
+        data.characters = data.characters.map((character, index) => ({
+          id: character.id || createId("char"),
+          name: character.name || `Character ${String(index + 1).padStart(3, "0")}`,
+          role: character.role || "",
+          tags: Array.isArray(character.tags) ? character.tags : parseTags(character.tags || ""),
+          summary: character.summary || "",
+          memo: character.memo || "",
+          imageIds: Array.isArray(character.imageIds) ? character.imageIds : [],
+          lyrics: Array.isArray(character.lyrics) ? character.lyrics.map((lyric) => ({
+            id: lyric.id || createId("lyric"),
+            title: lyric.title || "",
+            mood: lyric.mood || "",
+            texts: normalizeLyricTexts(lyric),
+          })) : [],
+        }));
+
+        data.imageResources = data.imageResources.map((resource) => ({
+          id: resource.id || createId("img"),
+          name: resource.name || getFileName(resource.path || ""),
+          path: resource.path || "",
+          tags: Array.isArray(resource.tags) ? resource.tags : parseTags(resource.tags || ""),
+          notes: resource.notes || "",
+          dataUrl: resource.dataUrl || "",
+        }));
+
+        return data;
+      }
+
+      function getSelectedCharacter() {
+        return state.data.characters.find((character) => character.id === state.selectedCharacterId) || null;
+      }
+
+      function createEmptyLyricTexts() {
+        return LYRIC_LANGUAGES.reduce((texts, language) => {
+          texts[language.key] = "";
+          return texts;
+        }, {});
+      }
+
+      function normalizeLyricTexts(lyric = {}) {
+        const source = lyric.texts || lyric.translations || {};
+        const texts = createEmptyLyricTexts();
+        LYRIC_LANGUAGES.forEach((language) => {
+          texts[language.key] = source[language.key] || "";
+        });
+        if (!texts.ko && lyric.body) {
+          texts.ko = lyric.body;
+        }
+        return texts;
+      }
+
+      function hasAnyLyricText(texts) {
+        return LYRIC_LANGUAGES.some((language) => String(texts[language.key] || "").trim());
+      }
+
+      function getPrimaryImage(character) {
+        const imageId = character.imageIds?.[0];
+        if (!imageId) return null;
+        return state.data.imageResources.find((resource) => resource.id === imageId) || null;
+      }
+
+      function getImageSource(resource) {
+        if (resource.dataUrl) return resource.dataUrl;
+        return normalizePreviewPath(resource.path || "");
+      }
+
+      function normalizePreviewPath(path) {
+        return String(path).replace(/^\.?\/?Creative[\\/]/i, "");
+      }
+
+      function getCharacterImageLabel(character) {
+        const resource = getPrimaryImage(character);
+        return resource ? (resource.path || resource.name || resource.id) : "";
+      }
+
+      function parseTags(text) {
+        if (Array.isArray(text)) return text;
+        return String(text)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean);
+      }
+
+      function getPath(target, path) {
+        return path.split(".").reduce((current, key) => current?.[key], target);
+      }
+
+      function setPath(target, path, value) {
+        const parts = path.split(".");
+        const last = parts.pop();
+        const owner = parts.reduce((current, key) => current[key], target);
+        owner[last] = value;
+      }
+
+      function createInputLabel(title, value, onInput) {
+        const label = document.createElement("label");
+        label.textContent = title;
+        const input = document.createElement("input");
+        input.value = value;
+        input.addEventListener("input", () => onInput(input.value));
+        label.append(input);
+        return label;
+      }
+
+      function createTextareaLabel(title, value, onInput, options = {}) {
+        const label = document.createElement("label");
+        if (typeof title === "string") {
+          label.textContent = title;
+        } else {
+          label.append(title);
+        }
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        if (options.placeholder) {
+          textarea.placeholder = options.placeholder;
+        }
+        textarea.addEventListener("input", () => {
+          onInput(textarea.value);
+          if (options.autoGrow) autoSizeTextarea(textarea);
+        });
+        label.append(textarea);
+        if (options.autoGrow) {
+          requestAnimationFrame(() => autoSizeTextarea(textarea));
+        }
+        return label;
+      }
+
+      function createLanguageTitle(language) {
+        const title = document.createElement("span");
+        title.className = "lyric-language-title";
+
+        const label = document.createElement("span");
+        label.textContent = language.title;
+
+        const code = document.createElement("span");
+        code.className = "lyric-language-code";
+        code.textContent = language.code;
+
+        title.append(label, code);
+        return title;
+      }
+
+      function autoSizeTextarea(textarea) {
+        textarea.style.height = "auto";
+        textarea.style.height = `${textarea.scrollHeight + 2}px`;
+      }
+
+      function autoSizeLyricTextareas() {
+        $$(".lyric-card textarea", elements.lyricsPanel).forEach(autoSizeTextarea);
+      }
+
+      function downloadText(text, filename, type) {
+        const blob = new Blob([text], { type });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.append(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+        setStatus(`${filename} 다운로드`);
+      }
+
+      function slugify(text) {
+        const slug = String(text)
+          .trim()
+          .toLowerCase()
+          .replace(/[^\p{L}\p{N}]+/gu, "-")
+          .replace(/^-+|-+$/g, "");
+        return slug || "story-helper";
+      }
+
+      function getFileName(path) {
+        return String(path).split(/[\\/]/).filter(Boolean).pop() || "image";
+      }
+
+      function getInitials(name) {
+        const trimmed = String(name || "").trim();
+        if (!trimmed) return "?";
+        const parts = trimmed.split(/\s+/);
+        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+        return parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+      }
+
+      function formatTime(date) {
+        return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      }
+
+      function setStatus(message) {
+        elements.saveStatus.textContent = message;
+      }
+    })();
+  </script>
+</body>
+</html>

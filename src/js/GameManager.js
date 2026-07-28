@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { BloomRenderPipeline } from "./BloomRenderPipeline.js";
 import { BetaSpaceManager } from "./BetaSpaceManager.js";
+import { DialogueManager } from "./DialogueManager.js";
 import { HyperdriveWarpLayer } from "./HyperdriveWarpLayer.js";
 import { CONFIG, CONTROL_SETTINGS, DEFAULT_KEY_BINDINGS, KEY_BINDING_GROUPS } from "./config.js";
 import { MinimapManager } from "./MinimapManager.js";
@@ -152,6 +153,12 @@ export class GameManager {
     this.hyperdriveLogId = null;
     this.isHyperdrive = false;
 
+    this.miningSession = null;          // { logId, nodeId, storageId } while gathering, else null
+    this.miningAligning = null;         // { nodeId, storageId, targetPos, committing } during pre-mining alignment
+    this._miningBusy = false;
+    this._miningVisAccumMs = 0;
+    this._lastGatherDerive = null;
+
     this.activeActions = new Set();
     this.clock = new THREE.Clock();
     this.shipStats = { ...this.getShipSpecs(this.defaultShipId) };
@@ -172,6 +179,13 @@ export class GameManager {
       keyBindingGroups: KEY_BINDING_GROUPS,
       defaultKeyBindings: DEFAULT_KEY_BINDINGS
     });
+    this.dialogue = new DialogueManager({
+      i18n: this.i18n,
+      dialogueDefinitions: gameData.dialogueDefinitions || { speakers: {}, dialogues: {} },
+      assetBaseUrl: new URL("../", gameData.baseUrl).href
+    });
+    this.messageDefinitions = gameData.messageDefinitions || { messages: {} };
+    this.inboxState = null;
     this.resourceManager = new ResourceManager({
       onChange: (snapshot) => this.ui.setResourceProgress(snapshot)
     });
@@ -410,6 +424,8 @@ export class GameManager {
       onDock: (station) => void this.dock(station),
       onUndock: () => void this.undock(),
       onGetDockState: (stationId) => this.getDockState(stationId),
+      onGetBuildingStorage: (buildingId) => this.getBuildingStorageView(buildingId),
+      onTradeAtStation: (buildingId, itemId, direction, amount) => this.tradeAtDockedStation(itemId, direction, amount),
       onToggleCameraMode: () => this.requestCameraToggle(),
       onOpenMinimap: () => this.minimapManager?.open(),
       onOpenFittingSimulator: ({ canvas, shipId, mode }) => void this.openFittingPreview({ canvas, shipId, mode }),
@@ -420,7 +436,13 @@ export class GameManager {
       onApplyShipLoadoutChange: (change) => this.applyShipLoadoutChange(change),
       onRefreshPlayerAssets: () => this.runExclusiveAssetMutation(() => this.loadPlayerAssets()),
       onGetActiveShipCargo: () => this.getActiveShipCargoListView(),
-      onPlayerProfileNameChange: (displayName) => this.updatePlayerDisplayName(displayName)
+      onGatherWorldObject: (object) => this.startGatheringAtObject(object),
+      onStopGatherWorldObject: (object) => void this.stopGatheringAtObject(object),
+      onStopGathering: () => void this.stopGatheringControl(),
+      onGetGatherState: (objectId) => this.getGatherState(objectId),
+      onPlayerProfileNameChange: (displayName) => this.updatePlayerDisplayName(displayName),
+      onRequestInbox: () => this.getInboxView(),
+      onOpenMessage: (messageId) => this.openMessage(messageId)
     });
     this.ui.setChunkBoundsMode(this.worldViewSettings.chunkBoundsMode);
     this.ui.setEnvironmentMode(this.environmentMode);
@@ -436,6 +458,8 @@ export class GameManager {
     ]);
 
     this.ui.setInteractionGate();
+    await this.loadInbox();
+    this.ui.setInboxState(this.getInboxView());
     this.updateCameraProjection();
     this.targetingOverlay.resize();
     this.resetInitialCamera();
@@ -538,6 +562,77 @@ export class GameManager {
     }
   }
 
+  async loadInbox() {
+    let saved = null;
+    if (this.worldDataManager.db) {
+      try {
+        saved = await this.worldDataManager.getStoreValue("settings", "messageInbox");
+      } catch {
+        saved = null;
+      }
+    }
+    if (saved && Array.isArray(saved.items)) {
+      this.inboxState = { items: saved.items };
+      return;
+    }
+    // First start (no persisted inbox): receive the catalog's messages, all unread.
+    this.inboxState = { items: this.createInitialInboxItems() };
+    await this.saveInbox();
+  }
+
+  createInitialInboxItems() {
+    const now = Date.now();
+    return Object.keys(this.messageDefinitions.messages || {}).map((messageId) => ({
+      messageId,
+      read: false,
+      receivedAt: now
+    }));
+  }
+
+  async saveInbox() {
+    if (!this.worldDataManager.db) return;
+    try {
+      await this.worldDataManager.putStoreValue("settings", {
+        key: "messageInbox",
+        items: this.inboxState?.items || []
+      });
+    } catch {
+      this.ui.showErrorToast("settings storage unavailable");
+    }
+  }
+
+  getInboxView() {
+    const items = this.inboxState?.items || [];
+    return items
+      .filter((item) => this.messageDefinitions.messages?.[item.messageId])
+      .map((item) => {
+        const definition = this.messageDefinitions.messages[item.messageId];
+        return {
+          messageId: item.messageId,
+          title: this.i18n.t(definition.title_id),
+          sender: this.dialogue.resolveSpeaker(definition.sender),
+          read: item.read === true,
+          receivedAt: item.receivedAt || 0
+        };
+      })
+      .sort((a, b) => b.receivedAt - a.receivedAt);
+  }
+
+  openMessage(messageId) {
+    const definition = this.messageDefinitions.messages?.[messageId];
+    if (!definition) return;
+
+    const item = (this.inboxState?.items || []).find((entry) => entry.messageId === messageId);
+    if (item && !item.read) {
+      item.read = true;
+      void this.saveInbox();
+    }
+
+    this.ui.setInboxState(this.getInboxView());
+    this.ui.closeMessageInbox();
+    if (definition.dialogue_id) this.dialogue.play(definition.dialogue_id);
+  }
+
   applyPerformanceSettingsToRuntime() {
     this.renderPipeline?.setObjectBloomSettings(this.getObjectBloomSettings());
     this.renderPipeline?.setStylizedRenderMode(this.performanceSettings.stylizedRenderMode);
@@ -614,6 +709,10 @@ export class GameManager {
   async loadPlayerAssets() {
     this.playerAssets = await this.worldDataManager.loadOrCreatePlayerAssets(this.characterId);
     this.activeShipUid = this.playerAssets?.profile?.active_ship_uid || null;
+    // While docked the active ship lives server-side in the station's docked_ships
+    // zone (not in player stores). Reconstruct an in-memory player view of it so
+    // ship accessors (cargo/fitting/render/dock scene) keep working.
+    await this.reconstructDockedShipIntoAssets();
     this.rebuildPlayerShipLoadoutsFromAssets();
     this.ownedEquipmentDefinitions = this.createOwnedEquipmentDefinitionsFromAssets();
     this.shipCombatSummaries = this.buildShipCombatSummaries();
@@ -629,6 +728,40 @@ export class GameManager {
       defaultShipId: this.defaultShipId
     });
     this.syncDockingPresentation();
+  }
+
+  // In-memory reconstruction. "Docked" is DERIVED from location: if the active ship
+  // is NOT in the player namespace, it lives in some station's docked_ships zone.
+  // Pull it and rebuild its player-asset view (ship located in a station_hangar +
+  // cargo + fittings) so accessors/scene keep working. NOT persisted — docked_ships
+  // remains the truth; deriveDockingState reads the reconstructed location.
+  async reconstructDockedShipIntoAssets() {
+    if (!this.playerAssets) return;
+    const shipUid = this.playerAssets.profile?.active_ship_uid;
+    if (!shipUid) return;
+    // Active ship present in the player namespace → flying; nothing to reconstruct.
+    if (this.playerAssets.uniqueItems.some((u) => u.item_uid === shipUid)) return;
+    const located = await this.worldDataManager.findDockedShip(shipUid);
+    if (!located) return;
+    const { station_id: stationId, entry } = located;
+    const now = Date.now();
+    const hangarStorageId = `station-hangar-${this.characterId}-${stationId}`;
+    const cargoStorageId = `storage-${shipUid}-cargo`;
+    const restored = this.worldDataManager.restoreDockedShipRecords(entry, {
+      activeShipStorageId: hangarStorageId, cargoStorageId, characterId: this.characterId, createdAt: now
+    });
+    // The ship's location while docked = a station_hangar anchored to the station.
+    this.playerAssets.storageLocations.push({
+      storage_id: hangarStorageId, storage_type: "station_hangar", owner_character_id: this.characterId,
+      world_object_id: stationId, parent_item_uid: null, capacity: null, created_at: now, updated_at: now
+    });
+    restored.storageLocationsToPut.forEach((s) => this.playerAssets.storageLocations.push(s));
+    restored.uniqueItemsToPut.forEach((u) => {
+      if (u.item_uid === shipUid && Number.isInteger(entry.dock_slot)) u.dock_slot = entry.dock_slot;
+      this.playerAssets.uniqueItems.push(u);
+    });
+    restored.quantityItemsToPut.forEach((e) => this.playerAssets.quantityItems.push(e));
+    restored.slotAssignmentsToPut.forEach((a) => this.playerAssets.slotAssignments.push(a));
   }
 
   async updatePlayerDisplayName(displayName) {
@@ -1008,6 +1141,15 @@ export class GameManager {
   }
 
   applyShipLoadoutChange(change) {
+    // While docked the active ship lives server-side in the station's docked_ships
+    // zone; the in-memory view is read-only. Block asset changes (refit/cargo) so
+    // they can't desync from the authoritative dock-moment snapshot. (Even a forced
+    // player-store write can't corrupt it: docked_ships is the SSoT, re-asserted on
+    // next load. Docked-change write-back is a future feature.)
+    if (this.isDocked()) {
+      this.ui?.showToast?.(this.ui?.t?.("ui.fitting.dockedLocked", "정박 중에는 함선을 변경할 수 없습니다") || "정박 중에는 함선을 변경할 수 없습니다");
+      return Promise.resolve({ status: "blocked", toast: "docked" });
+    }
     return this.runExclusiveAssetMutation(() => this._applyShipLoadoutChange(change));
   }
 
@@ -1872,6 +2014,7 @@ export class GameManager {
             this._deactivationLog = null;
           }
           this._commitDeactivationNavLog(null, 0);
+          if (this.miningSession) void this.worldDataManager.settleNode({ nodeId: this.miningSession.nodeId });
           this.savePlayerShipState({ force: true });
         }
       },
@@ -1960,6 +2103,7 @@ export class GameManager {
     this.worldMapManager.renderWorld(snapshot);
     await this.loadSavedWorldViewSettings();
     await this.restorePlayerShipState();
+    await this.resumeGatheringSessions();
     this.syncWorldRuntimeWithPlayer({ force: true });
     await this.refreshWorldSummary({ force: true });
     return snapshot;
@@ -2240,6 +2384,77 @@ export class GameManager {
     // On restore-while-docked the ship model can finish loading after the dock scene was set up
     // (parallel load). Re-apply the dock presentation so the ship pose/offsets use the real model.
     if (this.isDocked() && this.dockInteriorObject) this.setupDockPresentation();
+    this.setupShipAnimations();
+  }
+
+  // Persistent in-space ship animation mixer: anim_idle (continuous loop) and
+  // anim_mining (transition-driven). anim_landing stays owned by the dock mixer.
+  // Any of these clips may be absent on a given model — all paths no-op safely.
+  setupShipAnimations() {
+    this.disposeShipMixer();
+    const clips = this.shipAnimationClips || [];
+    if (!clips.length) return;
+
+    this.shipMixer = new THREE.AnimationMixer(this.ship);
+
+    const idleClip = this.findAnimationClip(clips, "anim_idle");
+    if (idleClip) {
+      this.shipIdleAction = this.shipMixer.clipAction(idleClip);
+      this.shipIdleAction.setLoop(THREE.LoopRepeat, Infinity);
+      this.shipIdleAction.play();
+    }
+
+    const miningClip = this.findAnimationClip(clips, "anim_mining");
+    if (miningClip) {
+      this.shipMiningAction = this.shipMixer.clipAction(miningClip);
+      this.shipMiningAction.setLoop(THREE.LoopOnce, 1);
+      this.shipMiningAction.clampWhenFinished = true;
+      // Default = rest (start) pose; only state transitions drive it. If the
+      // model (re)loaded while already mining, jump straight to the held end.
+      if (this.miningSession) this._snapShipMiningToEnd();
+    }
+  }
+
+  disposeShipMixer() {
+    if (this.shipMixer) {
+      this.shipMixer.stopAllAction();
+      this.shipMixer.uncacheRoot(this.ship);
+    }
+    this.shipMixer = null;
+    this.shipIdleAction = null;
+    this.shipMiningAction = null;
+  }
+
+  updateShipAnimations(dt) {
+    this.shipMixer?.update(dt);
+  }
+
+  // Mining transition: forward = deploy then hold the end frame (clampWhenFinished);
+  // reverse = retract back to the rest pose. play() never resets time, so reverse
+  // resumes from wherever the forward pass left off.
+  driveShipMiningAnimation(forward) {
+    const action = this.shipMiningAction;
+    if (!action) return;
+    action.enabled = true;
+    action.paused = false;
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.timeScale = forward ? 1 : -1;
+    action.play();
+  }
+
+  _snapShipMiningToEnd() {
+    const action = this.shipMiningAction;
+    if (!action) return;
+    const clip = action.getClip();
+    action.enabled = true;
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.play();
+    action.time = clip ? clip.duration : 0;
+    action.timeScale = 1;
+    this.shipMixer?.update(0); // apply the held end pose immediately
+    action.paused = true;
   }
 
   applyShipReflection(model, shipVisualDefinition = this.getShipDefinition(this.defaultShipId)?.visual) {
@@ -2654,6 +2869,7 @@ export class GameManager {
 
   setTarget({ x, y, z }) {
     if (this.isDocked()) return;
+    if (this.isMiningBusy()) return;
     if (this.isHyperdrive) return;
     const { decelerationRate, accelerationRate, pitchRate, yawRate, arrivalRadius } = this.shipStats;
 
@@ -2791,6 +3007,7 @@ export class GameManager {
 
   initiateHyperdrive({ x, y, z }) {
     if (this.isHyperdrive) return;
+    if (this.isMiningBusy()) { this.ui.showToast("stop gathering first"); return; }
     if (this.isDocked()) {
       this.ui.showToast("undock to use hyperdrive");
       return;
@@ -4004,24 +4221,35 @@ export class GameManager {
     if (this.isDocked()) return;
     if (this.isBetaSpaceActive() && this.updateBetaSpaceState()) return;
     if (!this.isBetaSpaceActive()) void this.updateBetaVoidLifecycle();
-    this.updateAutopilot(dt);
-    this.updateThrottleTarget(dt);
-    this.updateSpeed(dt);
-    if (this.state.autopilotPhase === null) {
-      this.updateManualRotation(dt);
-    } else if (
-      this.state.autopilotPhase !== "aligning" &&
-      this.state.autopilotPhase !== "stopping" &&
-      this.state.autopilotPhase !== "warping"
-    ) {
-      this.updateAutopilotRollOnly(dt);
+    if (this.miningAligning) {
+      // Local pre-mining alignment delay: rotate to face the node, hold position.
+      this.updateMiningAlignment(dt);
+    } else if (this.miningSession) {
+      // Gathering: the ship is locked in place; no autopilot or manual movement.
+      this.setSpeed(0);
+      this.state.desiredSpeed = 0;
+    } else {
+      this.updateAutopilot(dt);
+      this.updateThrottleTarget(dt);
+      this.updateSpeed(dt);
+      if (this.state.autopilotPhase === null) {
+        this.updateManualRotation(dt);
+      } else if (
+        this.state.autopilotPhase !== "aligning" &&
+        this.state.autopilotPhase !== "stopping" &&
+        this.state.autopilotPhase !== "warping"
+      ) {
+        this.updateAutopilotRollOnly(dt);
+      }
+      this.updatePosition(dt);
     }
-    this.updatePosition(dt);
     this.syncWorldRuntimeWithPlayer();
     if (this.isBetaSpaceActive() && this.updateBetaSpaceState()) return;
     this.updateCamera(dt);
     this.updateStars();
     this.worldMapManager.update(dt);
+    this.updateShipAnimations(dt);
+    if (this.miningSession) this.updateMiningHeartbeat(dt);
     this.savePlayerShipState();
   }
 
@@ -4351,6 +4579,7 @@ export class GameManager {
 
   navigateToWorldObject(object) {
     if (!object?.target) return;
+    if (this.isMiningBusy()) { this.ui.showToast("stop gathering first"); return; }
     if (this.isDocked()) {
       this.ui.showToast("undock to navigate");
       return;
@@ -4360,7 +4589,223 @@ export class GameManager {
 
   hyperdriveToWorldObject(object) {
     if (!object?.target) return;
+    if (this.isMiningBusy()) { this.ui.showToast("stop gathering first"); return; }
     this.initiateHyperdrive(object.target);
+  }
+
+  // =====================================================================
+  // Mining Action System bridge (Phase 2 lifecycle + Phase 3 UI controller)
+  // Data authority lives in WorldDataManager.startGathering/stopGathering/
+  // settleNode/deriveNodeState. Here we drive the session, the visual + safety
+  // settle heartbeats, and reconnect/pagehide settlement.
+  // =====================================================================
+
+  // Mining proximity, expressed in data-space (node distances are data-space).
+  getMiningRange() {
+    const renderScale = Number(this.config.renderScale) || 0.01;
+    const arrivalData = (Number(this.shipStats.arrivalRadius) || 0) / renderScale;
+    return Math.max(arrivalData * 2, 8000);
+  }
+
+  findResourceListItem(objectId) {
+    const list = this.getWorldObjectList();
+    return (list.resources || []).find((item) => item.id === objectId) || null;
+  }
+
+  describeGatherReason(reason) {
+    switch (reason) {
+      case "already-gathering": return "already gathering this node";
+      case "node-depleted": return "resource depleted";
+      case "zero-yield": return "cannot gather here";
+      case "missing-node": return "resource unavailable";
+      default: return "gather failed";
+    }
+  }
+
+  isMiningBusy() {
+    return !!(this.miningSession || this.miningAligning);
+  }
+
+  // Synchronous snapshot for the UI (button label / range / live progress).
+  // Progress comes from the cached read-only derive refreshed by the heartbeat.
+  getGatherState(objectId) {
+    const item = this.findResourceListItem(objectId);
+    const gathering = this.miningSession?.nodeId === objectId || this.miningAligning?.nodeId === objectId;
+    const inRange = item ? (Number(item.distance) || Infinity) <= this.getMiningRange() : false;
+    const derive = gathering && this._lastGatherDerive?.nodeId === objectId ? this._lastGatherDerive : null;
+    return {
+      exists: !!item,
+      gathering,
+      inRange,
+      blocked: this.isDocked() || this.isBetaSpaceActive(),
+      gathered: derive ? derive.gathered : 0,
+      planned: derive ? derive.planned : 0
+    };
+  }
+
+  // Begins the LOCAL alignment delay (not a timestamped action). The gathering
+  // log is created only after the ship finishes facing the node — see
+  // updateMiningAlignment -> commitMiningStart.
+  startGatheringAtObject(object) {
+    const nodeId = object?.id;
+    if (!nodeId) return;
+    if (this.isMiningBusy()) { this.ui.showToast("already gathering"); return; }
+    if (this.isDocked()) { this.ui.showToast("undock to gather"); return; }
+    if (this.isBetaSpaceActive()) return;
+
+    const cargo = this.getActiveShipCargoStorage();
+    if (!cargo?.storage_id) { this.ui.showToast("no cargo hold"); return; }
+
+    const item = this.findResourceListItem(nodeId);
+    if (!item) { this.ui.showToast("resource unavailable"); return; }
+    if ((Number(item.distance) || Infinity) > this.getMiningRange()) {
+      this.ui.showToast("approach the resource node");
+      return;
+    }
+
+    if (this.state.autopilotPhase !== null) this.cancelAutopilot();
+    const t = item.target || {};
+    this.miningAligning = {
+      nodeId,
+      storageId: cargo.storage_id,
+      targetPos: new THREE.Vector3(Number(t.x) || 0, Number(t.y) || 0, Number(t.z) || 0),
+      committing: false
+    };
+    this.ui.setGatheringState({ active: true });
+    this.ui.showToast("aligning to resource node");
+  }
+
+  // Per-frame alignment: rotate the ship to face the node, holding position.
+  // Once aligned, the gathering log is created (the "delay" the user requested).
+  updateMiningAlignment(dt) {
+    const pending = this.miningAligning;
+    if (!pending || pending.committing) return;
+    this.setSpeed(0);
+    this.state.desiredSpeed = 0;
+
+    const dir = pending.targetPos.clone().sub(this.ship.position).normalize();
+    this.vectors.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion);
+    this.lookMatrix.lookAt(dir, new THREE.Vector3(0, 0, 0), this.vectors.up);
+    this.quaternions.desired.setFromRotationMatrix(this.lookMatrix);
+    const rate = Math.min(1, Math.min(this.shipStats.pitchRate, this.shipStats.yawRate) * dt);
+    this.ship.quaternion.slerp(this.quaternions.desired, rate).normalize();
+    this.ship.getWorldDirection(this.vectors.forward);
+    if (this.vectors.forward.dot(dir) > 0.99999) {
+      pending.committing = true;
+      void this.commitMiningStart();
+    }
+  }
+
+  // Alignment finished -> create the gathering log (authority side).
+  async commitMiningStart() {
+    const pending = this.miningAligning;
+    if (!pending || this._miningBusy) return;
+    this._miningBusy = true;
+    try {
+      const result = await this.worldDataManager.startGathering({
+        nodeId: pending.nodeId,
+        storageId: pending.storageId,
+        actorId: this.characterId
+      });
+      this.miningAligning = null;
+      if (!result?.ok) {
+        this.ui.showToast(this.describeGatherReason(result?.reason));
+        this.ui.setGatheringState({ active: false });
+        return;
+      }
+      this.miningSession = { logId: result.logId, nodeId: pending.nodeId, storageId: pending.storageId };
+      this._miningVisAccumMs = 0;
+      this._lastGatherDerive = null;
+      this.driveShipMiningAnimation(true); // deploy + hold end while mining
+      this.ui.showToast("gathering started");
+    } finally {
+      this._miningBusy = false;
+    }
+  }
+
+  // Bottom stop button + bubble stop: cancels alignment or settles a session.
+  async stopGatheringControl() {
+    if (this.miningAligning) {
+      this.miningAligning = null;
+      this.ui.setGatheringState({ active: false });
+      this.ui.showToast("gathering cancelled");
+      return;
+    }
+    if (this.miningSession) await this.finalizeGathering({ manual: true });
+  }
+
+  async stopGatheringAtObject(object) {
+    if (object?.id && this.miningAligning && object.id !== this.miningAligning.nodeId) return;
+    if (object?.id && this.miningSession && object.id !== this.miningSession.nodeId) return;
+    await this.stopGatheringControl();
+  }
+
+  // Settle the active session and tear it down. manual=true credits up to "now"
+  // and cancels the log; manual=false lets deterministic completion (cargo full
+  // / exhaust) finalize it. Reloads assets so the cargo hold reflects new items.
+  async finalizeGathering({ manual = false } = {}) {
+    const session = this.miningSession;
+    if (!session || this._miningBusy) return;
+    this._miningBusy = true;
+    try {
+      const result = manual
+        ? await this.worldDataManager.stopGathering({ nodeId: session.nodeId, logId: session.logId })
+        : await this.worldDataManager.settleNode({ nodeId: session.nodeId });
+      this.miningSession = null;
+      this._lastGatherDerive = null;
+      this._miningVisAccumMs = 0;
+      this.driveShipMiningAnimation(false); // retract back to rest pose
+      this.ui.setGatheringState({ active: false });
+      await this.loadPlayerAssets();
+      if (manual && Number.isFinite(Number(result?.gathered))) {
+        this.ui.showToast(`gathered ${Math.floor(Number(result.gathered))}`);
+      }
+    } finally {
+      this._miningBusy = false;
+    }
+  }
+
+  updateMiningHeartbeat(dt) {
+    const dtMs = (Number(dt) || 0) * 1000;
+    this._miningVisAccumMs += dtMs;
+    if (this._miningVisAccumMs >= 500) { this._miningVisAccumMs = 0; void this.tickMiningDerive(); }
+  }
+
+  // Read-only projection for HUD + completion detection (no DB writes).
+  async tickMiningDerive() {
+    const session = this.miningSession;
+    if (!session || this._miningBusy) return;
+    let state;
+    try { state = await this.worldDataManager.deriveNodeState(session.nodeId); }
+    catch { return; }
+    if (this.miningSession?.logId !== session.logId) return;
+    if (!state || state.depleted) { await this.finalizeGathering({ manual: false }); return; }
+    const log = (state.logs || []).find((entry) => entry.id === session.logId);
+    if (!log || log.status !== "active") { await this.finalizeGathering({ manual: false }); return; }
+    this._lastGatherDerive = { nodeId: session.nodeId, gathered: log.gathered, planned: log.planned_yield };
+  }
+
+  // On (re)connect: fold offline progress and resume an in-flight session.
+  async resumeGatheringSessions() {
+    let active;
+    try {
+      const logs = await this.worldDataManager.getGatheringLogs({ actorId: this.characterId, activeOnly: true });
+      active = logs[0];
+    } catch { return; }
+    if (!active) return;
+
+    try { await this.worldDataManager.settleNode({ nodeId: active.target_node_id }); }
+    catch { /* node may be gone */ }
+    await this.loadPlayerAssets();
+
+    const remaining = await this.worldDataManager.getGatheringLogs({ actorId: this.characterId, activeOnly: true });
+    if (remaining.find((log) => log.id === active.id)) {
+      this.miningSession = { logId: active.id, nodeId: active.target_node_id, storageId: active.target_storage_id };
+      this._miningVisAccumMs = 0;
+      this._lastGatherDerive = null;
+      this.ui.setGatheringState({ active: true });
+      this._snapShipMiningToEnd(); // already mining on resume -> hold the end pose
+    }
   }
 
   isBetaSpaceActive() {
@@ -4378,17 +4823,41 @@ export class GameManager {
     return (this.playerAssets?.storageLocations || []).find((storage) => storage.storage_id === ship.storage_id) || null;
   }
 
+  // No stored "docked" state — derive it from the active ship's LOCATION: if the
+  // ship sits in a station_hangar storage, it's docked there (06 §11.9). While
+  // docked the ship lives in the station's docked_ships zone (server) and
+  // loadPlayerAssets reconstructs that station_hangar location in memory.
   deriveDockingState() {
     const storage = this.getActiveShipLocationStorage();
     if (storage?.storage_type !== "station_hangar") return null;
     const ship = this.getActiveShipItem();
-    const slot = Number.isInteger(ship?.dock_slot) ? ship.dock_slot : 0;
-    return { station_id: storage.world_object_id, storage_id: storage.storage_id, slot };
+    return { station_id: storage.world_object_id, slot: Number.isInteger(ship?.dock_slot) ? ship.dock_slot : 0 };
   }
 
   getStationCapacity(buildingId) {
     const capacity = Number(this.buildingDefinitions[buildingId]?.docking?.capacity);
     return Number.isFinite(capacity) && capacity > 0 ? capacity : 10;
+  }
+
+  // Trade (load/unload) between the docked ship's cargo and the station's public
+  // stock. direction "out" = load onto ship, "in" = unload into station. Requires
+  // being docked at the station (ship lives in its docked_ships zone).
+  async tradeAtDockedStation(itemId, direction, amount = 1) {
+    const stationId = this.getDockedStationId();
+    if (!stationId) return { ok: false, reason: "not-docked" };
+    const shipUid = this.getActiveShipItem()?.item_uid || this.activeShipUid;
+    if (!shipUid) return { ok: false, reason: "no-ship" };
+    const result = await this.worldDataManager.runStationTrade(stationId, shipUid, { itemId, direction, amount, nowMs: Date.now() });
+    await this.loadPlayerAssets(); // refresh in-memory docked cargo view
+    return result;
+  }
+
+  // Lowest free hangar slot (< capacity) at a station, or -1 if full.
+  async pickDockSlot(stationId, capacity) {
+    const snap = await this.worldDataManager.getStationInventorySnapshot(stationId);
+    const occupied = new Set((snap?.docked_ships || []).map((s) => s.dock_slot).filter(Number.isInteger));
+    for (let i = 0; i < capacity; i += 1) if (!occupied.has(i)) return i;
+    return -1;
   }
 
   // Hangar label: "{n}번 격납고" (ko) / "Hanger {n}" (en); slot is 0-based, label is 1-based.
@@ -4470,7 +4939,22 @@ export class GameManager {
       this.advanceDockMixerToEnd(this.dockShipMixer, landingClip.duration); // deploy landing gear
     }
     this.ship.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(this.ship);
+    // Measure the HULL only. setFromObject(this.ship) would also fold in the engine/aux
+    // glow billboards — THREE.Sprites added to the ship root by ShipVisualManager — whose
+    // oversized quads hang well below the hull. That phantom volume seated the ship on the
+    // glow box and floated the real landing gear. Restrict to hull geometry: skip Sprites
+    // and lights (non-mesh) and the outline-shell helpers, and use each mesh's own geometry
+    // bounds (not setFromObject, which would also pull in any non-hull descendants).
+    const box = new THREE.Box3().makeEmpty();
+    const meshBox = new THREE.Box3();
+    this.ship.traverse((object) => {
+      if (!object.isMesh || object.userData?.__voidZeroToonHelper) return;
+      const geometry = object.geometry;
+      if (!geometry?.attributes?.position) return;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      meshBox.copy(geometry.boundingBox).applyMatrix4(object.matrixWorld);
+      box.union(meshBox);
+    });
     if (box.isEmpty()) {
       this.dockBottomOffset = new THREE.Vector3();
       this.dockCenterOffset = new THREE.Vector3();
@@ -4699,6 +5183,62 @@ export class GameManager {
     return { dockable: true, inRange: this.isWithinDockRange(resolved.renderPosition) };
   }
 
+  // Building detail-popup storage view. PUBLIC = the building's station_inventory
+  // (owner=null, tradable; F1). PRIVATE = docked ships anchored to this building
+  // (owner=character) with their cargo + fitting — not tradable by others. Both
+  // are anchored to the building (world_object_id); ownership is the discriminator.
+  async getBuildingStorageView(buildingInstanceId) {
+    // Materialize timestamp-derived production up to now before reading the snapshot.
+    await this.worldDataManager.settleBuildingProduction(buildingInstanceId, Date.now());
+    const snapshot = await this.worldDataManager.getStationInventorySnapshot(buildingInstanceId);
+    if (!snapshot) return null;
+
+    const itemRow = (entry) => {
+      const kind = entry.kind || this.itemDefinitions[entry.item_id]?.kind || "item";
+      const quantity = numberOrZero(entry.quantity);
+      const unitMass = numberOrZero(this.itemDefinitions[entry.item_id]?.mass);
+      return {
+        item_id: entry.item_id,
+        label: this.getInventoryItemDisplayName(kind, entry.item_id),
+        kind,
+        quantity,
+        unit_mass: unitMass,
+        total_mass: unitMass * quantity
+      };
+    };
+
+    const publicRows = (snapshot.items || []).map(itemRow).sort((a, b) => b.total_mass - a.total_mass);
+
+    // PRIVATE zone: docked ships live server-side in the station's docked_ships zone.
+    const ships = (snapshot.docked_ships || []).map((entry) => ({
+      item_uid: entry.ship_uid,
+      ship_id: entry.ship_id,
+      owner_character_id: entry.owner_character_id,
+      label: this.getInventoryItemDisplayName("ship", entry.ship_id),
+      dock_slot: Number.isInteger(entry.dock_slot) ? entry.dock_slot : null,
+      cargo_rows: Object.entries(entry.cargo || {})
+        .filter(([, quantity]) => numberOrZero(quantity) > 0)
+        .map(([item_id, quantity]) => itemRow({ item_id, quantity }))
+        .sort((a, b) => b.total_mass - a.total_mass),
+      cargo_unique: (entry.cargo_unique || [])
+        .map((u) => ({ item_uid: u.item_uid, item_id: u.item_id, kind: u.kind, label: this.getInventoryItemDisplayName(u.kind, u.item_id) })),
+      fitting: (entry.fittings || [])
+        .map((f) => ({ slot_type: f.slot_type, slot_id: f.slot_id, item_id: f.item_id, item_uid: f.item_uid, label: this.getInventoryItemDisplayName(f.slot_type, f.item_id) }))
+    }));
+
+    return {
+      building_id: snapshot.building_id,
+      public: {
+        tradable: true,
+        capacity: snapshot.capacity,
+        used_mass: snapshot.used_mass,
+        free_mass: snapshot.free_mass,
+        rows: publicRows
+      },
+      private: { tradable: false, ships }
+    };
+  }
+
   // Deterministic orientation facing the station's front direction (mirrors nav heading convention).
   computeFacingQuaternion(facing) {
     const direction = new THREE.Vector3(facing[0], facing[1], facing[2]);
@@ -4719,6 +5259,7 @@ export class GameManager {
 
   async dock(station) {
     if (this.isDocked() || this.isBetaSpaceActive() || this.state.phase !== "running") return;
+    if (this.isMiningBusy()) { this.ui.showToast("stop gathering first"); return; }
     const resolved = this.resolveDockableStation(station);
     if (!resolved) {
       this.ui.showErrorToast("cannot dock here");
@@ -4747,40 +5288,20 @@ export class GameManager {
 
     await this.ui.fadeOut(this.getSpaceBackgroundColor(), 2000); // 2s fade to space bg, then transition
 
-    // Single source of truth: re-parent the ship asset into the station hangar (one transaction).
+    // Custody migration (one transaction): move the active ship subtree out of the
+    // player namespace into the station's docked_ships zone (server custody), so a
+    // station blowing up resolves it field-locally. "Docked" is derived from the
+    // ship's location (its docked_ships membership) — no stored docked state.
     const stationId = resolved.id;
-    const hangarStorageId = `station-hangar-${this.characterId}-${stationId}`;
     const capacity = this.getStationCapacity(resolved.building_id);
     const now = Date.now();
-    const result = await this.worldDataManager.runPlayerAssetMutation(this.characterId, (assets) => {
-      const activeShipUid = assets.profile?.active_ship_uid;
-      const ship = (assets.uniqueItems || []).find((item) => item.item_uid === activeShipUid);
-      if (!ship) return null;
-      // Dock into the lowest-numbered empty hangar slot.
-      const occupied = new Set(
-        (assets.uniqueItems || [])
-          .filter((item) => item.kind === "ship" && item.storage_id === hangarStorageId && Number.isInteger(item.dock_slot))
-          .map((item) => item.dock_slot)
-      );
-      let slotIndex = -1;
-      for (let i = 0; i < capacity; i += 1) {
-        if (!occupied.has(i)) { slotIndex = i; break; }
-      }
-      if (slotIndex < 0) return null; // hangar full
-      return {
-        storageLocationsToPut: [{
-          storage_id: hangarStorageId,
-          storage_type: "station_hangar",
-          owner_character_id: this.characterId,
-          world_object_id: stationId,
-          parent_item_uid: null,
-          capacity,
-          created_at: now,
-          updated_at: now
-        }],
-        uniqueItemsToPut: [{ ...ship, storage_id: hangarStorageId, dock_slot: slotIndex, updated_at: now }]
-      };
-    });
+    const dockSlot = await this.pickDockSlot(stationId, capacity);
+    if (dockSlot < 0) {
+      this.ui.showErrorToast("cannot dock — hangar full");
+      await this.ui.fadeIn(2000);
+      return;
+    }
+    const result = await this.worldDataManager.dockActiveShipToStation(this.characterId, stationId, { dockSlot, nowMs: now });
     if (!result?.committed) {
       this.ui.showErrorToast("cannot dock — hangar unavailable");
       await this.ui.fadeIn(2000);
@@ -4797,28 +5318,9 @@ export class GameManager {
     const stationId = this.getDockedStationId();
     await this.ui.fadeOut(this.getSpaceBackgroundColor(), 2000); // 2s fade to space bg, then transition
     const now = Date.now();
-    const result = await this.worldDataManager.runPlayerAssetMutation(this.characterId, (assets) => {
-      const activeShipUid = assets.profile?.active_ship_uid;
-      const ship = (assets.uniqueItems || []).find((item) => item.item_uid === activeShipUid);
-      if (!ship) return null;
-      const existing = (assets.storageLocations || [])
-        .find((storage) => storage.storage_type === "active_ship" && storage.owner_character_id === this.characterId);
-      const activeStorageId = existing?.storage_id || `storage-${activeShipUid}-active`;
-      const storageLocationsToPut = existing ? [] : [{
-        storage_id: activeStorageId,
-        storage_type: "active_ship",
-        owner_character_id: this.characterId,
-        world_object_id: null,
-        parent_item_uid: null,
-        capacity: null,
-        created_at: now,
-        updated_at: now
-      }];
-      return {
-        storageLocationsToPut,
-        uniqueItemsToPut: [{ ...ship, storage_id: activeStorageId, dock_slot: null, updated_at: now }]
-      };
-    });
+    // Custody migration (one transaction): bring the ship subtree back from the
+    // station's docked_ships zone into the player namespace; clear dock truth.
+    const result = await this.worldDataManager.undockShipFromStation(this.characterId, stationId, { nowMs: now });
     if (!result?.committed) {
       this.ui.showErrorToast("undock failed");
       await this.ui.fadeIn(2000);
@@ -5073,6 +5575,7 @@ export class GameManager {
 
   async enterBetaSpaceFromUi(object) {
     if (!object?.id || object.kind !== "betaVoid" || this.isBetaSpaceActive()) return;
+    if (this.isMiningBusy()) { this.ui.showToast("stop gathering first"); return; }
     if (this.isDocked()) {
       this.ui.showToast("undock to enter Beta Space");
       return;
@@ -6236,6 +6739,7 @@ export class GameManager {
     }
 
     this.ui.dispose();
+    this.dialogue?.dispose();
     this.closeFittingPreview();
     this.targetingOverlay.dispose();
     this.minimapManager?.dispose();

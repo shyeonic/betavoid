@@ -89,6 +89,8 @@ export class UIManager {
     this.onDock = null;
     this.onUndock = null;
     this.onGetDockState = null;
+    this.onGetBuildingStorage = null;
+    this.onTradeAtStation = null;
     this.dockingUi = null;
     this._dockingActive = false;
     this._dockingStationName = "";
@@ -103,7 +105,15 @@ export class UIManager {
     this.onApplyShipLoadoutChange = null;
     this.onRefreshPlayerAssets = null;
     this.onGetActiveShipCargo = null;
+    this.onGatherWorldObject = null;
+    this.onStopGatherWorldObject = null;
+    this.onStopGathering = null;
+    this.onGetGatherState = null;
     this.onPlayerProfileNameChange = null;
+    this.onRequestInbox = null;
+    this.onOpenMessage = null;
+    this.inboxView = [];
+    this.messagePopupReturnFocus = null;
     this.boundBindingKeyDown = (event) => this.onBindingKeyDown(event);
     this.boundSelectionSummaryGlobalPointerDown = (event) => this.onSelectionSummaryGlobalPointerDown(event);
     this.elements = {
@@ -160,6 +170,11 @@ export class UIManager {
       chunkBoundsOffButton: this.getElement("#chunkBoundsOffButton"),
       bottomNavPlayerButton: this.getElement("#bottomNavPlayerButton"),
       bottomNavShipButton: this.getElement("#bottomNavShipButton"),
+      bottomNavMessageButton: this.getElement("#bottomNavMessageButton"),
+      bottomNavMessageBadge: this.getElement("#bottomNavMessageBadge"),
+      messagePopup: this.getElement("#messagePopup"),
+      messagePopupCloseButton: this.getElement("#messagePopupCloseButton"),
+      messageList: this.getElement("#messageList"),
       playerPopup: this.getElement("#playerPopup"),
       playerPopupCloseButton: this.getElement("#playerPopupCloseButton"),
       playerProfilePortrait: this.getElement("#playerProfilePortrait"),
@@ -333,6 +348,8 @@ export class UIManager {
     onDock,
     onUndock,
     onGetDockState,
+    onGetBuildingStorage,
+    onTradeAtStation,
     onToggleCameraMode,
     onOpenMinimap,
     onOpenFittingSimulator,
@@ -343,7 +360,13 @@ export class UIManager {
     onApplyShipLoadoutChange,
     onRefreshPlayerAssets,
     onGetActiveShipCargo,
-    onPlayerProfileNameChange
+    onGatherWorldObject,
+    onStopGatherWorldObject,
+    onStopGathering,
+    onGetGatherState,
+    onPlayerProfileNameChange,
+    onRequestInbox,
+    onOpenMessage
   }) {
     this.onSetSpeed = onSetSpeed;
     this.onKeyBindingsChange = onKeyBindingsChange;
@@ -358,6 +381,8 @@ export class UIManager {
     this.onDock = typeof onDock === "function" ? onDock : null;
     this.onUndock = typeof onUndock === "function" ? onUndock : null;
     this.onGetDockState = typeof onGetDockState === "function" ? onGetDockState : null;
+    this.onGetBuildingStorage = typeof onGetBuildingStorage === "function" ? onGetBuildingStorage : null;
+    this.onTradeAtStation = typeof onTradeAtStation === "function" ? onTradeAtStation : null;
     this.onOpenFittingSimulator = typeof onOpenFittingSimulator === "function" ? onOpenFittingSimulator : null;
     this.onCloseFittingSimulator = typeof onCloseFittingSimulator === "function" ? onCloseFittingSimulator : null;
     this.onBuildFittingSummary = typeof onBuildFittingSummary === "function" ? onBuildFittingSummary : null;
@@ -366,7 +391,13 @@ export class UIManager {
     this.onApplyShipLoadoutChange = typeof onApplyShipLoadoutChange === "function" ? onApplyShipLoadoutChange : null;
     this.onRefreshPlayerAssets = typeof onRefreshPlayerAssets === "function" ? onRefreshPlayerAssets : null;
     this.onGetActiveShipCargo = typeof onGetActiveShipCargo === "function" ? onGetActiveShipCargo : null;
+    this.onGatherWorldObject = typeof onGatherWorldObject === "function" ? onGatherWorldObject : null;
+    this.onStopGatherWorldObject = typeof onStopGatherWorldObject === "function" ? onStopGatherWorldObject : null;
+    this.onStopGathering = typeof onStopGathering === "function" ? onStopGathering : null;
+    this.onGetGatherState = typeof onGetGatherState === "function" ? onGetGatherState : null;
     this.onPlayerProfileNameChange = typeof onPlayerProfileNameChange === "function" ? onPlayerProfileNameChange : null;
+    this.onRequestInbox = typeof onRequestInbox === "function" ? onRequestInbox : null;
+    this.onOpenMessage = typeof onOpenMessage === "function" ? onOpenMessage : null;
 
     this.elements.startGateScene.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
@@ -535,6 +566,37 @@ export class UIManager {
       event.stopPropagation();
       this.closeBottomNavMenu();
       this.openShipInfoPopup();
+    });
+    this.elements.bottomNavMessageButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeBottomNavMenu();
+      this.openMessageInbox();
+    });
+    this.elements.messagePopupCloseButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeMessageInbox();
+    });
+    this.elements.messagePopup.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (event.target === this.elements.messagePopup) {
+        this.closeMessageInbox();
+      }
+    });
+    this.elements.messagePopup.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeMessageInbox();
+    });
+    this.elements.messageList.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const row = target?.closest("[data-message-id]");
+      if (!row) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.onOpenMessage?.(row.dataset.messageId);
     });
     this.elements.playerPopupCloseButton.addEventListener("click", (event) => {
       event.preventDefault();
@@ -729,6 +791,17 @@ export class UIManager {
 
         this.onEnterBetaSpace(object);
         this.closeObjectList({ restoreFocus: false });
+        return;
+      }
+
+      const gatherButton = target?.closest("[data-object-gather-id]");
+      if (gatherButton instanceof HTMLButtonElement) {
+        event.preventDefault();
+        if (gatherButton.disabled) return;
+        const object = this.findRenderedObject(gatherButton.dataset.objectGatherId);
+        if (!object) return;
+        if (gatherButton.dataset.gatherMode === "stop") this.onStopGatherWorldObject?.(object);
+        else this.onGatherWorldObject?.(object);
         return;
       }
 
@@ -965,6 +1038,90 @@ export class UIManager {
     }
 
     this.playerPopupReturnFocus = null;
+  }
+
+  setInboxState(view) {
+    this.inboxView = Array.isArray(view) ? view : [];
+    const unreadCount = this.inboxView.filter((message) => !message.read).length;
+    const badge = this.elements.bottomNavMessageBadge;
+    badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
+    badge.hidden = unreadCount === 0;
+    if (!this.elements.messagePopup.hidden) this.renderMessageList();
+  }
+
+  renderMessageList() {
+    const list = this.elements.messageList;
+    if (this.inboxView.length === 0) {
+      list.innerHTML = `<p class="message-empty">${this.escapeHtml(this.t("ui.messages.empty", "No messages"))}</p>`;
+      return;
+    }
+    list.innerHTML = this.inboxView.map((message) => {
+      const portrait = message.sender?.image || "";
+      const sender = message.sender?.name || "";
+      const portraitMarkup = portrait
+        ? `<img class="message-portrait" src="${this.escapeHtml(portrait)}" alt="" loading="lazy">`
+        : `<span class="message-portrait" aria-hidden="true"></span>`;
+      return `
+        <button class="message-row ${message.read ? "" : "is-unread"}" type="button" data-message-id="${this.escapeHtml(message.messageId)}">
+          ${portraitMarkup}
+          <span class="message-body">
+            <span class="message-sender">${this.escapeHtml(sender)}</span>
+            <span class="message-title">${this.escapeHtml(message.title || "")}</span>
+          </span>
+          <span class="message-unread-dot" aria-hidden="true"></span>
+        </button>`;
+    }).join("");
+  }
+
+  openMessageInbox() {
+    this.messagePopupReturnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+      ? document.activeElement
+      : this.elements.bottomNavMessageButton;
+
+    if (typeof this.onRequestInbox === "function") {
+      this.setInboxState(this.onRequestInbox());
+    }
+    this.renderMessageList();
+
+    if (this.elements.messagePopup.parentElement !== document.body) {
+      document.body.append(this.elements.messagePopup);
+    }
+    this.elements.messagePopup.hidden = false;
+    this.elements.messagePopup.removeAttribute("inert");
+    this.elements.messagePopup.classList.add("open");
+    this.elements.messagePopup.setAttribute("aria-hidden", "false");
+    try {
+      this.elements.messagePopupCloseButton.focus({ preventScroll: true });
+    } catch {
+      this.elements.messagePopupCloseButton.focus();
+    }
+  }
+
+  closeMessageInbox({ restoreFocus = true } = {}) {
+    if (this.elements.messagePopup.hidden) return;
+
+    const activeElement = document.activeElement;
+    this.elements.messagePopup.classList.remove("open");
+    this.elements.messagePopup.hidden = true;
+    this.elements.messagePopup.setAttribute("aria-hidden", "true");
+    this.elements.messagePopup.setAttribute("inert", "");
+
+    if (activeElement instanceof HTMLElement && this.elements.messagePopup.contains(activeElement)) {
+      activeElement.blur();
+    }
+
+    if (restoreFocus) {
+      const focusTarget = this.messagePopupReturnFocus instanceof HTMLElement && document.contains(this.messagePopupReturnFocus)
+        ? this.messagePopupReturnFocus
+        : this.elements.bottomNavMessageButton;
+      try {
+        focusTarget.focus({ preventScroll: true });
+      } catch {
+        focusTarget.focus();
+      }
+    }
+
+    this.messagePopupReturnFocus = null;
   }
 
   getSelectedShipDefinition() {
@@ -1275,7 +1432,48 @@ export class UIManager {
       bubble.append(enter);
     }
     this.appendDockButton(bubble, object);
+    this.appendGatherButton(bubble, object);
     return bubble;
+  }
+
+  // Adds a gather/stop toggle to a resource node's detail bubble. Mirrors the
+  // dock button: visible but disabled (with a hint) when out of mining range.
+  appendGatherButton(bubble, object) {
+    if (object.kind !== "resource") return;
+    if (!this.onGatherWorldObject && !this.onStopGatherWorldObject) return;
+    const button = document.createElement("button");
+    button.className = "object-bubble-button object-gather-button";
+    button.type = "button";
+    button.dataset.objectGatherId = object.id;
+    bubble.append(button);
+    this.applyGatherButtonState(button, object.id);
+  }
+
+  applyGatherButtonState(button, objectId) {
+    const state = this.onGetGatherState?.(objectId) || null;
+    const gathering = !!state?.gathering;
+    button.dataset.gatherMode = gathering ? "stop" : "start";
+    if (gathering) {
+      const planned = Number(state.planned) || 0;
+      const gathered = Number(state.gathered) || 0;
+      const pct = planned > 0 ? Math.min(100, Math.floor((gathered / planned) * 100)) : 0;
+      button.disabled = false;
+      button.textContent = `${this.t("ui.scanner.stopGather", "채광 중지")} (${Math.floor(gathered)} · ${pct}%)`;
+      button.title = button.textContent;
+    } else {
+      const inRange = !state || state.inRange;
+      button.disabled = !inRange || !!state?.blocked;
+      button.textContent = inRange
+        ? this.t("ui.scanner.gather", "채광")
+        : this.t("ui.scanner.gatherOutOfRange", "채광 (거리 초과)");
+      button.title = button.textContent;
+    }
+  }
+
+  refreshGatherButton(bubble) {
+    const button = bubble.querySelector("[data-object-gather-id]");
+    if (!button) return;
+    this.applyGatherButtonState(button, button.dataset.objectGatherId);
   }
 
   // Adds a dock button to a station's detail bubble; disabled (but visible) when out of range.
@@ -1320,13 +1518,16 @@ export class UIManager {
   // Periodically re-evaluates the dock button's range while the selection bubble is open.
   startDockBubbleRefresh(bubble) {
     this.stopDockBubbleRefresh();
-    if (!bubble.querySelector("[data-dock-id]")) return;
+    const hasDock = !!bubble.querySelector("[data-dock-id]");
+    const hasGather = !!bubble.querySelector("[data-object-gather-id]");
+    if (!hasDock && !hasGather) return;
     this._dockBubbleRefreshTimer = setInterval(() => {
       if (!bubble.isConnected) {
         this.stopDockBubbleRefresh();
         return;
       }
       this.refreshDockButton(bubble);
+      this.refreshGatherButton(bubble);
     }, 600);
   }
 
@@ -1343,6 +1544,7 @@ export class UIManager {
 
     const popup = this.createObjectDetailPopupElement(object, () => this.closeObjectDetailPopup());
     this.elements.objectListPanel.append(popup);
+    void this.injectBuildingStorageSection(popup, object);
     this.focusObjectDetailPopup(popup);
   }
 
@@ -1422,6 +1624,269 @@ export class UIManager {
     return popup;
   }
 
+  // Building detail popup: append a storage section that visibly separates the
+  // station's PUBLIC stock (station_inventory, tradable) from PRIVATE docked-ship
+  // assets (cargo + fitting, not for sale). Async (public stock is read from DB).
+  async injectBuildingStorageSection(popup, object) {
+    if (!popup || object.kind !== "building" || !this.onGetBuildingStorage) return;
+    let view = null;
+    try { view = await this.onGetBuildingStorage(object.id); } catch { view = null; }
+    if (!view || !popup.isConnected) return;
+    popup.append(this.renderBuildingStorageSection(view, object.id, object.name));
+  }
+
+  renderBuildingStorageSection(view, buildingInstanceId = null, buildingName = "") {
+    const wrap = document.createElement("div");
+    wrap.className = "building-storage-section";
+
+    const pub = document.createElement("div");
+    pub.className = "building-storage-group building-storage-public";
+    const pubTitle = document.createElement("h4");
+    pubTitle.className = "building-storage-title";
+    pubTitle.textContent = this.t("ui.scanner.publicStock", "공공 재고 (거래 가능)");
+    pub.append(pubTitle);
+    // Trade (load/unload) is available when a ship is docked here.
+    if (this.onTradeAtStation && buildingInstanceId && view.private?.ships?.length) {
+      const tradeBtn = document.createElement("button");
+      tradeBtn.className = "object-bubble-button building-trade-open";
+      tradeBtn.type = "button";
+      tradeBtn.textContent = this.t("ui.scanner.openTrade", "무역 (적재/적하)");
+      tradeBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void this.openStationTradeWindow(buildingInstanceId, buildingName);
+      });
+      pub.append(tradeBtn);
+    }
+    pub.append(this.createObjectBubbleLine(
+      this.t("ui.scanner.capacity", "용량"),
+      `${this.formatStorageNumber(view.public.used_mass)} / ${this.formatStorageNumber(view.public.capacity)}`
+    ));
+    pub.append(view.public.rows.length
+      ? this.renderStorageItemList(view.public.rows)
+      : this.createStorageEmptyLine());
+    wrap.append(pub);
+
+    const priv = document.createElement("div");
+    priv.className = "building-storage-group building-storage-private";
+    const privTitle = document.createElement("h4");
+    privTitle.className = "building-storage-title";
+    privTitle.textContent = this.t("ui.scanner.privateAssets", "정박 함선 · 사적 자산 (비매물)");
+    priv.append(privTitle);
+    if (view.private.ships.length) {
+      view.private.ships.forEach((ship) => priv.append(this.renderDockedShipAssets(ship)));
+    } else {
+      priv.append(this.createStorageEmptyLine());
+    }
+    wrap.append(priv);
+
+    return wrap;
+  }
+
+  renderStorageItemList(rows) {
+    const list = document.createElement("ul");
+    list.className = "building-storage-list";
+    rows.forEach((row) => {
+      const li = document.createElement("li");
+      li.className = "building-storage-item";
+      const name = document.createElement("span");
+      name.className = "building-storage-item-name";
+      name.textContent = row.label || row.item_id;
+      const qty = document.createElement("span");
+      qty.className = "building-storage-item-qty";
+      qty.textContent = `×${this.formatStorageNumber(row.quantity)}`;
+      li.append(name, qty);
+      list.append(li);
+    });
+    return list;
+  }
+
+  renderDockedShipAssets(ship) {
+    const block = document.createElement("div");
+    block.className = "building-storage-ship";
+    const head = document.createElement("div");
+    head.className = "building-storage-ship-head";
+    const slot = Number.isInteger(ship.dock_slot)
+      ? ` · ${this.t("ui.scanner.hangar", "격납고")} ${ship.dock_slot + 1}`
+      : "";
+    head.textContent = `${ship.label || ship.ship_id}${slot}`;
+    block.append(head);
+
+    const cargo = [
+      ...(ship.cargo_rows || []),
+      ...(ship.cargo_unique || []).map((u) => ({ label: u.label, item_id: u.item_id, quantity: 1 }))
+    ];
+    if (cargo.length) {
+      const cargoTitle = document.createElement("div");
+      cargoTitle.className = "building-storage-subtitle";
+      cargoTitle.textContent = this.t("ui.scanner.cargo", "카고");
+      block.append(cargoTitle, this.renderStorageItemList(cargo));
+    }
+    if ((ship.fitting || []).length) {
+      const fitTitle = document.createElement("div");
+      fitTitle.className = "building-storage-subtitle";
+      fitTitle.textContent = this.t("ui.scanner.fitting", "장착");
+      block.append(fitTitle);
+      const list = document.createElement("ul");
+      list.className = "building-storage-list";
+      ship.fitting.forEach((f) => {
+        const li = document.createElement("li");
+        li.className = "building-storage-item";
+        const name = document.createElement("span");
+        name.className = "building-storage-item-name";
+        name.textContent = f.label || f.item_id;
+        const tag = document.createElement("span");
+        tag.className = "building-storage-item-qty";
+        tag.textContent = f.slot_type;
+        li.append(name, tag);
+        list.append(li);
+      });
+      block.append(list);
+    }
+    return block;
+  }
+
+  createStorageEmptyLine() {
+    const line = document.createElement("div");
+    line.className = "building-storage-empty";
+    line.textContent = this.t("ui.scanner.storageEmpty", "비어 있음");
+    return line;
+  }
+
+  formatStorageNumber(value) {
+    return Math.round(Number(value) || 0).toLocaleString();
+  }
+
+  // ── Station trade (load/unload) window ──────────────────────────────────────
+  closeStationTradeWindow() {
+    document.querySelectorAll(".station-trade-window").forEach((w) => w.remove());
+  }
+
+  async openStationTradeWindow(buildingId, buildingName = "") {
+    this.closeStationTradeWindow();
+    const win = document.createElement("section");
+    win.className = "station-trade-window";
+    win.dataset.stationTradeId = buildingId;
+    win.setAttribute("role", "dialog");
+    win.style.cssText = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;max-height:80vh;overflow:auto;background:rgba(8,14,26,0.97);color:#cfe4ff;border:1px solid #2a6;border-radius:6px;padding:1em 1.2em;min-width:20em;font-size:0.9em;box-shadow:0 8px 40px rgba(0,0,0,0.6);";
+    document.body.append(win);
+    await this.refreshStationTradeWindow(buildingId, buildingName);
+  }
+
+  async refreshStationTradeWindow(buildingId, buildingName = "") {
+    const win = document.querySelector(".station-trade-window");
+    if (!win || !this.onGetBuildingStorage) return;
+    let view = null;
+    try { view = await this.onGetBuildingStorage(buildingId); } catch { view = null; }
+    if (!win.isConnected) return;
+    win.innerHTML = "";
+    win.append(this.renderStationTradeWindow(view, buildingId, buildingName));
+  }
+
+  renderStationTradeWindow(view, buildingId, buildingName) {
+    const frag = document.createDocumentFragment();
+    const header = document.createElement("header");
+    header.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:1em;margin-bottom:0.6em;";
+    const title = document.createElement("h3");
+    title.style.cssText = "margin:0;font-size:1em;";
+    title.textContent = `${this.t("ui.scanner.tradeTitle", "무역")} — ${buildingName || ""}`;
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "✕";
+    close.style.cssText = "background:none;border:none;color:inherit;font-size:1.1em;cursor:pointer;";
+    close.addEventListener("click", (e) => { e.preventDefault(); this.closeStationTradeWindow(); });
+    header.append(title, close);
+    frag.append(header);
+
+    const ship = (view?.private?.ships || [])[0] || null;
+    if (!view || !ship) {
+      const note = document.createElement("div");
+      note.textContent = this.t("ui.scanner.tradeDockFirst", "정박 후 이용 가능");
+      frag.append(note);
+      return frag;
+    }
+
+    const amountRow = document.createElement("div");
+    amountRow.style.cssText = "margin:0.4em 0 0.8em;";
+    const amountLabel = document.createElement("label");
+    amountLabel.textContent = `${this.t("ui.scanner.tradeAmount", "수량")}: `;
+    const amountInput = document.createElement("input");
+    amountInput.type = "number"; amountInput.min = "1"; amountInput.value = "1";
+    amountInput.style.cssText = "width:6em;background:rgba(255,255,255,0.08);color:inherit;border:1px solid #356;border-radius:3px;padding:0.1em 0.3em;";
+    amountLabel.append(amountInput);
+    amountRow.append(amountLabel);
+    frag.append(amountRow);
+    const getAmount = () => Math.max(1, Math.floor(Number(amountInput.value) || 1));
+
+    const group = (titleText) => {
+      const g = document.createElement("div");
+      g.style.cssText = "margin-bottom:0.8em;";
+      const h = document.createElement("h4");
+      h.style.cssText = "margin:0 0 0.3em;font-size:0.85em;opacity:0.85;";
+      h.textContent = titleText;
+      g.append(h);
+      return g;
+    };
+
+    // Station public stock → load onto ship (out)
+    const stationGroup = group(this.t("ui.scanner.publicStock", "공공 재고 (거래 가능)"));
+    const pubRows = view.public?.rows || [];
+    if (!pubRows.length) stationGroup.append(this.createStorageEmptyLine());
+    pubRows.forEach((row) => stationGroup.append(
+      this.renderTradeRow(row, this.t("ui.scanner.loadToShip", "적재 →"), () => this.execTrade(buildingId, row.item_id, "out", getAmount(), buildingName))
+    ));
+    frag.append(stationGroup);
+
+    // Ship cargo → unload into station (in)
+    const cargoGroup = group(this.t("ui.scanner.cargo", "카고"));
+    const cargoRows = ship.cargo_rows || [];
+    if (!cargoRows.length) cargoGroup.append(this.createStorageEmptyLine());
+    cargoRows.forEach((row) => cargoGroup.append(
+      this.renderTradeRow(row, this.t("ui.scanner.unloadToStation", "← 적하"), () => this.execTrade(buildingId, row.item_id, "in", getAmount(), buildingName))
+    ));
+    frag.append(cargoGroup);
+
+    return frag;
+  }
+
+  renderTradeRow(row, btnLabel, onClick) {
+    const li = document.createElement("div");
+    li.style.cssText = "display:flex;align-items:center;gap:0.6em;padding:0.15em 0;";
+    const name = document.createElement("span");
+    name.style.cssText = "flex:1;";
+    name.textContent = row.label || row.item_id;
+    const qty = document.createElement("span");
+    qty.style.cssText = "opacity:0.8;min-width:4em;text-align:right;";
+    qty.textContent = `×${this.formatStorageNumber(row.quantity)}`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = btnLabel;
+    btn.style.cssText = "background:rgba(40,120,80,0.4);color:inherit;border:1px solid #2a6;border-radius:3px;padding:0.1em 0.5em;cursor:pointer;";
+    btn.addEventListener("click", (e) => { e.preventDefault(); onClick(); });
+    li.append(name, qty, btn);
+    return li;
+  }
+
+  async execTrade(buildingId, itemId, direction, amount, buildingName) {
+    if (!this.onTradeAtStation) return;
+    let res = null;
+    try { res = await this.onTradeAtStation(buildingId, itemId, direction, amount); } catch { res = null; }
+    if (res && res.ok === false && res.reason) this.showToast?.(this.tradeReasonText(res.reason));
+    await this.refreshStationTradeWindow(buildingId, buildingName);
+  }
+
+  tradeReasonText(reason) {
+    const map = {
+      "not-docked": this.t("ui.scanner.tradeDockFirst", "정박 후 이용 가능"),
+      "no-ship": this.t("ui.scanner.tradeNoShip", "함선 없음"),
+      "insufficient-stock": this.t("ui.scanner.tradeNoStock", "재고 부족"),
+      "cargo-full": this.t("ui.scanner.tradeCargoFull", "카고 가득 참"),
+      "insufficient-cargo": this.t("ui.scanner.tradeNoCargo", "카고에 없음"),
+      "station-full": this.t("ui.scanner.tradeStationFull", "스테이션 재고 가득 참")
+    };
+    return map[reason] || String(reason);
+  }
+
   focusObjectDetailPopup(popup) {
     const close = popup.querySelector(".object-detail-popup-close");
     if (!(close instanceof HTMLElement)) return;
@@ -1482,6 +1947,18 @@ export class UIManager {
         event.stopPropagation();
         if (this.onEnterBetaSpace) this.onEnterBetaSpace(object);
         this.closeSelectionSummaryBubble();
+        return;
+      }
+
+      const gatherButton = target?.closest("[data-object-gather-id]");
+      if (gatherButton instanceof HTMLButtonElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!gatherButton.disabled) {
+          if (gatherButton.dataset.gatherMode === "stop") this.onStopGatherWorldObject?.(object);
+          else this.onGatherWorldObject?.(object);
+        }
+        // Keep the bubble open so the live progress / stop toggle stays visible.
         return;
       }
 
@@ -1572,6 +2049,7 @@ export class UIManager {
     });
 
     document.body.append(popup);
+    void this.injectBuildingStorageSection(popup, object);
     this.focusObjectDetailPopup(popup);
   }
 
@@ -2190,7 +2668,7 @@ export class UIManager {
   }
 
   updateBottomNavIconColors(icons = document.querySelectorAll(".bottom-nav .bottom-nav-icon")) {
-    const color = getComputedStyle(document.documentElement).getPropertyValue("--ui_color").trim() || "#6975A0";
+    const color = getComputedStyle(document.documentElement).getPropertyValue("--bottom-nav-icon-color").trim() || "#333333";
     Array.from(icons).forEach((icon) => {
       if (icon instanceof HTMLElement) {
         void this.applyBottomNavIconColor(icon, color);
@@ -2201,28 +2679,66 @@ export class UIManager {
   async applyBottomNavIconColor(icon, color) {
     const sourceUrl = this.getSvgIconSourceUrl(icon);
     if (!sourceUrl) return;
-    icon.dataset.svgTintSource = sourceUrl;
-    icon.dataset.svgTintColor = color;
 
-    const cacheKey = `${sourceUrl}|${color}`;
+    // Icons inside the burger stack (.bottom-nav-stack.open) get an inverted two-tone
+    // recolor in dark mode so two-tone icons stay legible. The replacement colors are
+    // declared globally as CSS variables for easy editing.
+    const stackDark = this.environmentMode === "dark" && !!icon.closest(".bottom-nav-stack");
+    const tintKey = stackDark ? "stack-dark" : color;
+    icon.dataset.svgTintSource = sourceUrl;
+    icon.dataset.svgTintColor = tintKey;
+
+    let stackPrimary = "";
+    let stackSecondary = "";
+    if (stackDark) {
+      const rootStyle = getComputedStyle(document.documentElement);
+      stackPrimary = rootStyle.getPropertyValue("--bottom-nav-stack-icon-color").trim() || "#ffffff";
+      stackSecondary = rootStyle.getPropertyValue("--bottom-nav-stack-icon-bg").trim() || "#000000";
+    }
+
+    const cacheKey = stackDark ? `${sourceUrl}|stack|${stackPrimary}|${stackSecondary}` : `${sourceUrl}|${color}`;
     let imageValue = this.bottomNavIconDataCache.get(cacheKey);
     if (!imageValue) {
-      let svg = this.bottomNavIconSourceCache.get(sourceUrl);
-      if (!svg) {
-        const response = await fetch(sourceUrl);
-        if (!response.ok) return;
-        svg = await response.text();
-        this.bottomNavIconSourceCache.set(sourceUrl, svg);
-      }
-
-      const tintedSvg = svg.replace(/#6975a0/gi, color);
+      const svg = await this.loadBottomNavIconSvg(sourceUrl);
+      if (svg == null) return;
+      const tintedSvg = stackDark
+        ? this.tintStackIconSvg(svg, stackPrimary, stackSecondary)
+        : svg.replace(/#6975a0/gi, color);
       imageValue = `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(tintedSvg)}")`;
       this.bottomNavIconDataCache.set(cacheKey, imageValue);
     }
 
-    if (icon.dataset.svgTintSource === sourceUrl && icon.dataset.svgTintColor === color) {
+    if (icon.dataset.svgTintSource === sourceUrl && icon.dataset.svgTintColor === tintKey) {
       icon.style.setProperty("--bottom-nav-icon-image", imageValue);
     }
+  }
+
+  async loadBottomNavIconSvg(sourceUrl) {
+    let svg = this.bottomNavIconSourceCache.get(sourceUrl);
+    if (!svg) {
+      const response = await fetch(sourceUrl);
+      if (!response.ok) return null;
+      svg = await response.text();
+      this.bottomNavIconSourceCache.set(sourceUrl, svg);
+    }
+    return svg;
+  }
+
+  // Two-tone recolor for burger-stack icons: #6975A0 -> primary, white -> secondary.
+  // A sentinel guards against the primary color (which may itself be white) being
+  // swept up by the subsequent white->secondary replacement.
+  tintStackIconSvg(svg, primary, secondary) {
+    const SENTINEL = "__bnStackPrimary__";
+    let tinted = svg.replace(/#6975a0/gi, SENTINEL);
+    tinted = tinted.replace(
+      /\b(fill|stroke|color|stop-color)=("|')(?:#fff(?:fff)?|white)\2/gi,
+      `$1=$2${secondary}$2`
+    );
+    tinted = tinted.replace(
+      /\b(fill|stroke|color|stop-color)\s*:\s*(?:#fff(?:fff)?|white)(?=[;\s"'])/gi,
+      `$1:${secondary}`
+    );
+    return tinted.split(SENTINEL).join(primary);
   }
 
   tintSvgToDataUrl(svg, color, dark) {
@@ -3531,6 +4047,7 @@ export class UIManager {
     this.elements.startScene.classList.add("hidden");
     this._started = true;
     this.applyDockingOverlay();
+    if (this._gatheringActive) this.setGatheringState({ active: true });
   }
 
   showToast(message) {
@@ -3623,6 +4140,52 @@ export class UIManager {
     // Hide the movement throttle UI while docked, but keep the burger/bottom-nav visible.
     if (ui.speedControl) ui.speedControl.style.display = active ? "none" : "";
     this.applyDockingOverlay();
+  }
+
+  // Bottom-of-screen "stop gathering" button, built to the same spec as the
+  // station undock button (className + svg reused).
+  ensureGatheringUi() {
+    if (this.gatheringUi) return this.gatheringUi;
+    const hud = document.querySelector(".hud");
+
+    const overlay = document.createElement("div");
+    overlay.id = "gatheringOverlay";
+    overlay.className = "docking-overlay gathering-overlay";
+    overlay.hidden = true;
+    overlay.style.cssText = "position:fixed;inset:0;display:none;pointer-events:none;";
+
+    const stopButton = document.createElement("button");
+    stopButton.type = "button";
+    stopButton.id = "stopGatherButton";
+    stopButton.className = "docking-undock-button";
+    stopButton.setAttribute("aria-label", "채광 중지");
+    stopButton.title = "채광 중지";
+    const icon = document.createElement("img");
+    icon.className = "docking-undock-icon";
+    icon.src = "rss/svg/ui_undock.svg";
+    icon.alt = "";
+    icon.setAttribute("aria-hidden", "true");
+    stopButton.append(icon);
+    stopButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      if (this.onStopGathering) this.onStopGathering();
+    });
+
+    overlay.append(stopButton);
+    (hud || document.body).append(overlay);
+
+    this.gatheringUi = { overlay, stopButton, hud, speedControl: document.querySelector("#speedControl") };
+    return this.gatheringUi;
+  }
+
+  setGatheringState({ active = false } = {}) {
+    const ui = this.ensureGatheringUi();
+    this._gatheringActive = !!active;
+    // Hide the movement throttle UI while gathering (movement is locked anyway).
+    if (ui.speedControl) ui.speedControl.style.display = active ? "none" : "";
+    const show = this._gatheringActive && this._started;
+    ui.overlay.hidden = !show;
+    ui.overlay.style.display = show ? "block" : "none";
   }
 
   ensureFadeOverlay() {

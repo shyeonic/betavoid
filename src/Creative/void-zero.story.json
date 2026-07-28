@@ -1,0 +1,45 @@
+{
+  "schema": "void-zero-story-helper",
+  "version": 1,
+  "updatedAt": "2026-06-28T14:57:54.820Z",
+  "world": {
+    "title": "Void Zero",
+    "tone": "",
+    "premise": "",
+    "timeline": "",
+    "glossary": ""
+  },
+  "characters": [
+    {
+      "id": "char_2539860b",
+      "name": "Lian(리안)",
+      "role": "",
+      "tags": [],
+      "summary": "",
+      "memo": "",
+      "imageIds": [
+        "img_default_001"
+      ],
+      "lyrics": [
+        {
+          "id": "lyric_f258adff",
+          "title": "Run",
+          "mood": "",
+          "body": "[Intro]\n\n(intro)\n\n(instrumental)\n\n[Verse1]\n\n희망을 들고 달아 나\n\n내일은 저 멀리 있으니\n\n\n\n(instrumental)\n\n\n\n오랜 두려움 잠들고\n\n이름도 모를 곳으로\n\n\n\n(instrumental: build up)\n\n\n\n뒤 돌지 말고 달려 가\n\n\n\n[Interlude]\n\n(interlude)\n\n\n\n[Verse2]\n\n언젠가 다시 온다면,\n\n불을 품고 돌아 와\n\n\n\n(instrumental)\n\n\n\n늦은 새벽을 지나고\n\n어두운 구름 넘어서\n\n\n\n(instrumental: build up)\n\n\n\n다시 또 다시 날아 가\n\n\n\n[Interlude]\n\n(interlude)\n\n\n\n[Outro]\n\n희망을 들고 달아 나\n\n내일은 저 멀리 있으니\n\n\n\n희망을 들고 달아 나\n\n내일은 저 멀리 있으니\n\n\n\n(instrumental)\n\n\n\n(interlude)\n\n\n\n희망을 들고 달아 나\n\n내일은 저 멀리 있으니\n\n\n\n희망을 들고 달아 나\n\n내일은 저 멀리 있으니\n\n\n\n(instrumental)\n\n\n\n희망을 찾아 돌아 와\n\n내일을 알 수 없대도\n\n\n\n희망을 찾아 돌아 와\n\n다시 붙잡은 두 손이\n\n\n\n우리의 내일이 될 테니\n\n\n\n우리의 내일이 될 테니"
+        }
+      ]
+    }
+  ],
+  "imageResources": [
+    {
+      "id": "img_default_001",
+      "name": "character_001.png",
+      "path": "portrait/character_001.png",
+      "tags": [
+        "portrait"
+      ],
+      "notes": "Creative/portrait 폴더의 기본 캐릭터 이미지",
+      "dataUrl": ""
+    }
+  ]
+}

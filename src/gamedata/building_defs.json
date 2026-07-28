@@ -416,7 +416,8 @@
         "outputs": []
       },
       "docking": {
-        "capacity": 0
+        "capacity": 4,
+        "theme_music_id": "bgm_hanger_01"
       },
       "trade": {
         "enabled": false,
@@ -452,7 +453,8 @@
         "outputs": []
       },
       "docking": {
-        "capacity": 0
+        "capacity": 4,
+        "theme_music_id": "bgm_hanger_01"
       },
       "trade": {
         "enabled": false,
@@ -488,7 +490,8 @@
         "outputs": []
       },
       "docking": {
-        "capacity": 0
+        "capacity": 4,
+        "theme_music_id": "bgm_hanger_01"
       },
       "trade": {
         "enabled": false,

@@ -1,6 +1,6 @@
 export const WORLD_CONFIG = {
-  dbName: "void-zero-world",
-  dbVersion: 8,
+  dbName: "void-zero",
+  dbVersion: 1,
   renderScale: 0.01,
   sectorSize: {
     x: 400000,
