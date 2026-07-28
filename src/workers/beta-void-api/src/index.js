@@ -64,7 +64,7 @@ export default {
       }
 
       if (url.pathname === "/v1/presence/connect" && request.method === "GET") {
-        return connectPresence(request, env, url);
+        return await connectPresence(request, env, url);
       }
 
       if (url.pathname === "/v1/profile" && request.method === "POST") {
