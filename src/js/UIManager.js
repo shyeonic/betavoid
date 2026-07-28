@@ -144,7 +144,6 @@ export class UIManager {
       worldBuildingCountValue: this.getElement("#worldBuildingCountValue"),
       worldCurrentSectorValue: this.getElement("#worldCurrentSectorValue"),
       worldCurrentChunkValue: this.getElement("#worldCurrentChunkValue"),
-      worldRegenerateButton: this.getElement("#worldRegenerateButton"),
       worldReloadButton: this.getElement("#worldReloadButton"),
       dataClearButton: this.getElement("#dataClearButton"),
       environmentLightButton: this.getElement("#environmentLightButton"),
@@ -331,7 +330,6 @@ export class UIManager {
     onHyperdriveToWorldObject,
     onSetSpeed,
     onKeyBindingsChange,
-    onRegenerateWorld,
     onClearAllData,
     onReloadWorldData,
     onEnvironmentModeChange,
@@ -452,11 +450,6 @@ export class UIManager {
         return;
       }
       window.location.reload();
-    });
-    this.elements.worldRegenerateButton.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (confirm(this.t("ui.settings.world.confirmRegenerate", "Regenerate world data?"))) onRegenerateWorld();
     });
     this.elements.dataClearButton.addEventListener("click", (event) => {
       event.preventDefault();

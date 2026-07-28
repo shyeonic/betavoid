@@ -1,6 +1,7 @@
 import { GameManager } from "./GameManager.js";
 import { loadGameData } from "./GameDataLoader.js";
 import { createAuthGate, createAuthSessionMenu } from "./AuthView.js";
+import { OnlineApiClient } from "./OnlineApiClient.js";
 import { OnlineIdentityManager } from "./OnlineIdentityManager.js";
 
 const app = document.querySelector("#app");
@@ -10,6 +11,7 @@ if (window.__betaVoidGame) {
 }
 
 const identity = new OnlineIdentityManager();
+const onlineApi = new OnlineApiClient({ identity });
 window.__betaVoidAuth = identity;
 
 let game = null;
@@ -72,10 +74,13 @@ async function startAuthenticatedGame() {
 
     try {
       gameDataPromise ||= loadGameData();
-      const gameData = await gameDataPromise;
+      const [gameData, worldBootstrap] = await Promise.all([
+        gameDataPromise,
+        onlineApi.getWorldBootstrap()
+      ]);
       console.info(`[game-data] loaded ${gameData.enabledChunks.length} enabled chunks from ${gameData.dataSetName}`);
 
-      game = new GameManager({ root: app, gameData, identity });
+      game = new GameManager({ root: app, gameData, identity, worldBootstrap });
       activeUid = identity.identity.uid;
       await game.init();
 

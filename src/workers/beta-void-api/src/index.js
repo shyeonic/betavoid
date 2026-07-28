@@ -1,5 +1,7 @@
 const FIREBASE_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const KEY_CACHE_TTL_MS = 55 * 60 * 1000;
+const PRIMARY_WORLD_ID = "primary";
+const WORLD_DATA_SOURCE_KEY = "beta-void-world-v1";
 
 let keyCache = {
   expiresAt: 0,
@@ -23,6 +25,12 @@ export default {
         const auth = await requireFirebaseUser(request, env);
         const profile = await getOrCreatePlayerProfile(env.DB, auth);
         return json({ ok: true, auth, profile }, { request, env });
+      }
+
+      if (url.pathname === "/v1/world/bootstrap" && request.method === "GET") {
+        await requireFirebaseUser(request, env);
+        const world = await getOrCreateWorldBootstrap(env.DB);
+        return json({ ok: true, world, server_time: Date.now() }, { request, env });
       }
 
       if (url.pathname === "/v1/profile" && request.method === "POST") {
@@ -140,6 +148,34 @@ async function getOrCreatePlayerProfile(db, auth) {
   return upsertPlayerProfile(db, auth, { displayName: auth.name || "Pilot" });
 }
 
+async function getOrCreateWorldBootstrap(db) {
+  const now = Date.now();
+  const seed = crypto.randomUUID();
+  const [, selected] = await db.batch([
+    db.prepare(`
+      INSERT OR IGNORE INTO world_instances (
+        world_id,
+        seed,
+        data_source_key,
+        revision,
+        generated_at,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, 1, ?, ?, ?)
+    `).bind(PRIMARY_WORLD_ID, seed, WORLD_DATA_SOURCE_KEY, now, now, now),
+    db.prepare(`
+      SELECT world_id, seed, data_source_key, revision, generated_at, created_at, updated_at
+      FROM world_instances
+      WHERE world_id = ?
+    `).bind(PRIMARY_WORLD_ID)
+  ]);
+
+  const row = selected?.results?.[0];
+  if (!row) throw httpError(500, "WORLD_BOOTSTRAP_UNAVAILABLE", "World bootstrap unavailable.");
+  return normalizeWorldRow(row);
+}
+
 async function upsertPlayerProfile(db, auth, { displayName }) {
   const now = Date.now();
   const characterId = characterIdFromUid(auth.uid);
@@ -221,6 +257,18 @@ function normalizeProfileRow(row) {
     is_anonymous: Boolean(row.is_anonymous),
     created_at: row.created_at,
     updated_at: row.updated_at
+  };
+}
+
+function normalizeWorldRow(row) {
+  return {
+    world_id: row.world_id,
+    seed: row.seed,
+    data_source_key: row.data_source_key,
+    revision: Number(row.revision),
+    generated_at: Number(row.generated_at),
+    created_at: Number(row.created_at),
+    updated_at: Number(row.updated_at)
   };
 }
 

@@ -103,8 +103,9 @@ function resolveDefaultShipId(gameData, shipDefinitions) {
 }
 
 export class GameManager {
-  constructor({ root, gameData = null, identity = null }) {
+  constructor({ root, gameData = null, identity = null, worldBootstrap = null }) {
     if (!gameData) throw new Error("GameManager requires loaded gameData.");
+    if (!worldBootstrap) throw new Error("GameManager requires a server world bootstrap.");
 
     this.root = root;
     this.gameData = gameData;
@@ -196,7 +197,8 @@ export class GameManager {
     });
     this.worldDataManager = new WorldDataManager({
       config: this.worldConfig,
-      gameData
+      gameData,
+      worldBootstrap
     });
     this.betaSpaceManager = new BetaSpaceManager({
       worldConfig: this.worldConfig
@@ -408,7 +410,6 @@ export class GameManager {
       onHyperdriveToWorldObject: (object) => this.hyperdriveToWorldObject(object),
       onSetSpeed: (speed) => this.setManualSpeed(speed),
       onKeyBindingsChange: (bindings) => this.setKeyBindings(bindings),
-      onRegenerateWorld: () => this.regenerateWorld(),
       onClearAllData: () => this.clearAllData(),
       onReloadWorldData: () => this.reloadWorldData(),
       onChunkBoundsModeChange: (mode) => this.setChunkBoundsMode(mode),
@@ -4286,24 +4287,6 @@ export class GameManager {
       this.ui.showErrorToast("player ship state save failed");
     } finally {
       this.playerShipSavePending = false;
-    }
-  }
-
-  async regenerateWorld() {
-    if (!this.worldDataManager.db) {
-      this.ui.showErrorToast("world database unavailable");
-      return;
-    }
-
-    try {
-      const snapshot = await this.worldDataManager.createNewWorld();
-      this.worldMapManager.renderWorld(snapshot);
-      await this.restorePlayerShipState();
-      this.syncWorldRuntimeWithPlayer({ force: true });
-      await this.refreshWorldSummary({ force: true });
-      this.ui.showToast("world regenerated");
-    } catch (error) {
-      this.ui.showErrorToast(error instanceof Error ? error.message : "world regenerate failed");
     }
   }
 

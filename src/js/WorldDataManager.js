@@ -2,8 +2,8 @@ import { WORLD_CONFIG } from "./worldDefinitions.js";
 
 // Single IndexedDB database `beta-void` (IndexedDB has no nested databases). Stores
 // are grouped by name prefix into two clearly-separated namespaces:
-//   worlds_*      — universal world / authority-server SSoT
-//   playerPrefs_* — per-character private data
+//   worlds_*      — cached world snapshot plus temporary client-side world actions
+//   playerPrefs_* — per-character client preferences and temporary player state
 // One DB keeps cross-domain transactions (mining settle, dock migration) atomic.
 // Code uses LOGICAL store names; storeName() translates to the physical prefixed name.
 const WORLD_STORE_KEYPATHS = {
@@ -69,8 +69,9 @@ function requireDefinitionList(gameData, key) {
 }
 
 export class WorldDataManager {
-  constructor({ config = null, gameData = null } = {}) {
+  constructor({ config = null, gameData = null, worldBootstrap = null } = {}) {
     if (!gameData) throw new Error("WorldDataManager requires loaded gameData.");
+    if (!worldBootstrap) throw new Error("WorldDataManager requires a server world bootstrap.");
 
     this.gameData = gameData;
     this.config = config || gameData.worldConfig || WORLD_CONFIG;
@@ -88,6 +89,7 @@ export class WorldDataManager {
     this.chunkAnnotations = this.chunkMap?.chunks || {};
     this.enabledChunks = Array.isArray(gameData.enabledChunks) ? gameData.enabledChunks : null;
     this.dataSourceKey = gameData.dataSourceKey || "game-data:unknown";
+    this.worldBootstrap = normalizeWorldBootstrap(worldBootstrap);
     this.db = null;
     this.snapshot = null;
   }
@@ -140,8 +142,7 @@ export class WorldDataManager {
 
   async loadOrCreateWorld() {
     const meta = await this.getStoreValue("meta", "world");
-    if (!meta) return this.createNewWorld();
-    if (meta.data_source_key !== this.dataSourceKey) return this.createNewWorld();
+    if (!this.isWorldCacheCurrent(meta)) return this.createWorldCache();
 
     await this.checkAndSpawnResources();
     await this.processBetaVoidLifecycle();
@@ -149,9 +150,22 @@ export class WorldDataManager {
     return this.snapshot;
   }
 
-  async createNewWorld({ seed = Date.now() } = {}) {
+  isWorldCacheCurrent(meta) {
+    const bootstrap = this.worldBootstrap;
+    return Boolean(meta)
+      && meta.data_source_key === this.dataSourceKey
+      && meta.server_world_id === bootstrap.worldId
+      && meta.server_data_source_key === bootstrap.dataSourceKey
+      && Number(meta.server_revision) === bootstrap.revision
+      && String(meta.seed) === bootstrap.seed
+      && Number(meta.generated_at) === bootstrap.generatedAt;
+  }
+
+  async createWorldCache() {
+    const bootstrap = this.worldBootstrap;
+    const seed = bootstrap.seed;
     const rng = createSeededRandom(seed);
-    const now = Date.now();
+    const now = bootstrap.generatedAt;
     const chunks = this.createWorldChunks(now);
     const sectors = this.createSectors(now, rng, chunks);
     const placedObjects = [];
@@ -187,13 +201,23 @@ export class WorldDataManager {
       seed,
       data_source_key: this.dataSourceKey,
       data_source_name: this.gameData?.dataSetName || "static",
+      server_world_id: bootstrap.worldId,
+      server_data_source_key: bootstrap.dataSourceKey,
+      server_revision: bootstrap.revision,
       generated_at: now
     };
-    const playerShip = this.createDefaultPlayerShipState(now, sectors);
-    const playerAssets = this.createDefaultPlayerAssets({ createdAt: now });
     const stationInventories = this.createInitialStationInventories(buildings, now);
 
-    await this.replaceWorldData({ sectors, chunks, resourceNodes, buildings, betaVoids, meta, playerShip, resourceManager, playerAssets, stationInventories });
+    await this.replaceWorldCache({
+      sectors,
+      chunks,
+      resourceNodes,
+      buildings,
+      betaVoids,
+      meta,
+      resourceManager,
+      stationInventories
+    });
     this.snapshot = await this.getWorldSnapshot();
     return this.snapshot;
   }
@@ -1996,7 +2020,7 @@ export class WorldDataManager {
   // building (universal structure) + seed quantityItems from initial_inventory
   // where present. Whether an inventory is filled/used (production/trade) is a
   // separate trigger, not a condition here. Returned arrays are written to the
-  // authoritative store by replaceWorldData.
+  // world cache by replaceWorldCache.
   createInitialStationInventories(buildings = [], createdAt = Date.now()) {
     const buildingStorages = buildings.map((building) => {
       const publicInventory = this.buildInitialInventoryMap(building.building_id);
@@ -2235,10 +2259,10 @@ export class WorldDataManager {
     return nextState;
   }
 
-  async replaceWorldData({ sectors, chunks, resourceNodes, buildings, betaVoids = [], meta, playerShip, resourceManager, playerAssets = null, stationInventories = null }) {
-    // Single DB → world + player reset/write in one atomic transaction.
-    const { transaction, stores } = this.openTx(ALL_STORES, "readwrite");
-    ALL_STORES.forEach((name) => stores[name].clear());
+  async replaceWorldCache({ sectors, chunks, resourceNodes, buildings, betaVoids = [], meta, resourceManager, stationInventories = null }) {
+    // Rebuild only the server-derived world cache. Player preferences survive revisions.
+    const { transaction, stores } = this.openTx(WORLD_STORES, "readwrite");
+    WORLD_STORES.forEach((name) => stores[name].clear());
     // worlds_*
     sectors.forEach((sector) => stores.sectors.put(sector));
     chunks.forEach((chunk) => stores.chunks.put(chunk));
@@ -2248,13 +2272,6 @@ export class WorldDataManager {
     stores.meta.put(meta);
     if (resourceManager) stores.meta.put(resourceManager);
     (stationInventories?.buildingStorages || []).forEach((storage) => stores.buildingStorages.put(storage));
-    // playerPrefs_*
-    if (playerShip) stores.playerShip.put(playerShip);
-    if (playerAssets?.profile) stores.characterProfiles.put(playerAssets.profile);
-    (playerAssets?.storageLocations || []).forEach((storage) => stores.storageLocations.put(storage));
-    (playerAssets?.quantityItems || []).forEach((item) => stores.quantityItems.put(item));
-    (playerAssets?.uniqueItems || []).forEach((item) => stores.uniqueItems.put(item));
-    (playerAssets?.slotAssignments || []).forEach((assignment) => stores.slotAssignments.put(assignment));
     await transactionDone(transaction);
   }
 
@@ -2280,7 +2297,7 @@ export class WorldDataManager {
   }
 
   async clearWorld() {
-    await this.clearStores(ALL_STORES);
+    await this.clearStores(WORLD_STORES);
     this.snapshot = await this.getWorldSnapshot();
     return this.snapshot;
   }
@@ -2324,7 +2341,7 @@ export class WorldDataManager {
   }
 
   async resetWorld() {
-    return this.createNewWorld();
+    return this.createWorldCache();
   }
 
   async getWorldSnapshot() {
@@ -2910,6 +2927,30 @@ function requestToPromise(request) {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error("IndexedDB request failed."));
   });
+}
+
+function normalizeWorldBootstrap(value) {
+  const normalized = {
+    worldId: String(value?.worldId || ""),
+    seed: String(value?.seed || ""),
+    dataSourceKey: String(value?.dataSourceKey || ""),
+    revision: Number(value?.revision),
+    generatedAt: Number(value?.generatedAt)
+  };
+
+  if (
+    !normalized.worldId
+    || !normalized.seed
+    || !normalized.dataSourceKey
+    || !Number.isInteger(normalized.revision)
+    || normalized.revision < 1
+    || !Number.isFinite(normalized.generatedAt)
+    || normalized.generatedAt <= 0
+  ) {
+    throw new Error("WorldDataManager received an invalid server world bootstrap.");
+  }
+
+  return Object.freeze(normalized);
 }
 
 function transactionDone(transaction) {
