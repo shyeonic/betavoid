@@ -1,7 +1,17 @@
 const FIREBASE_APP_MODULE = "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
 const FIREBASE_AUTH_MODULE = "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 
-export async function installFirebaseAuthMock(page, { signedIn = true } = {}) {
+export async function installFirebaseAuthMock(page, {
+  signedIn = true,
+  user = {},
+  idToken = "playwright.firebase.id-token"
+} = {}) {
+  const testUser = {
+    uid: user.uid || "playwright-google-user",
+    displayName: user.displayName || "Playwright Pilot",
+    email: user.email || "pilot@example.test",
+    photoURL: user.photoURL || null
+  };
   await page.route(FIREBASE_APP_MODULE, (route) => route.fulfill({
     contentType: "text/javascript",
     body: `
@@ -18,13 +28,13 @@ export async function installFirebaseAuthMock(page, { signedIn = true } = {}) {
 
       const listeners = new Set();
       const testUser = {
-        uid: "playwright-google-user",
-        displayName: "Playwright Pilot",
-        email: "pilot@example.test",
-        photoURL: null,
+        uid: ${JSON.stringify(testUser.uid)},
+        displayName: ${JSON.stringify(testUser.displayName)},
+        email: ${JSON.stringify(testUser.email)},
+        photoURL: ${JSON.stringify(testUser.photoURL)},
         isAnonymous: false,
         providerData: [{ providerId: "google.com" }],
-        async getIdToken() { return "playwright.firebase.id-token"; }
+        async getIdToken() { return ${JSON.stringify(idToken)}; }
       };
       const auth = { currentUser: ${signedIn ? "testUser" : "null"} };
 

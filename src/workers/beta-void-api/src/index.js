@@ -1,3 +1,10 @@
+import {
+  commitPlayerAssets,
+  getOrCreatePlayerState,
+  savePlayerShipState
+} from "./player-state.js";
+export { PresenceShard } from "./presence-shard.js";
+
 const FIREBASE_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const KEY_CACHE_TTL_MS = 55 * 60 * 1000;
 const PRIMARY_WORLD_ID = "primary";
@@ -33,6 +40,33 @@ export default {
         return json({ ok: true, world, server_time: Date.now() }, { request, env });
       }
 
+      if (url.pathname === "/v1/player/state" && request.method === "GET") {
+        const auth = await requireFirebaseUser(request, env);
+        const profile = await getOrCreatePlayerProfile(env.DB, auth);
+        const state = await getOrCreatePlayerState(env.DB, auth, profile);
+        return json({ ok: true, state, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/player/assets" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const profile = await getOrCreatePlayerProfile(env.DB, auth);
+        const body = await readJsonBody(request);
+        const state = await commitPlayerAssets(env.DB, auth, profile, body);
+        return json({ ok: true, state, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/player/ship-state" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const profile = await getOrCreatePlayerProfile(env.DB, auth);
+        const body = await readJsonBody(request);
+        const state = await savePlayerShipState(env.DB, auth, profile, body);
+        return json({ ok: true, state, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/presence/connect" && request.method === "GET") {
+        return connectPresence(request, env, url);
+      }
+
       if (url.pathname === "/v1/profile" && request.method === "POST") {
         const auth = await requireFirebaseUser(request, env);
         const body = await readJsonBody(request);
@@ -54,11 +88,60 @@ export default {
   }
 };
 
+async function connectPresence(request, env, url) {
+  if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+    throw httpError(426, "WEBSOCKET_REQUIRED", "WebSocket upgrade required.");
+  }
+  if (!env.PRESENCE) {
+    throw httpError(500, "PRESENCE_CONFIG_MISSING", "Presence service is not configured.");
+  }
+
+  const auth = await requireFirebaseWebSocketUser(request, env);
+  const profile = await getOrCreatePlayerProfile(env.DB, auth);
+  const state = await getOrCreatePlayerState(env.DB, auth, profile);
+  const worldId = normalizePresenceId(url.searchParams.get("world_id") || PRIMARY_WORLD_ID, "world");
+  const zoneId = normalizePresenceId(url.searchParams.get("zone_id"), "zone");
+  const shipId = normalizePresenceId(
+    state.assets?.profile?.selected_ship_id || "ship_01",
+    "ship"
+  );
+  const objectId = env.PRESENCE.idFromName(`${worldId}:${zoneId}`);
+  const stub = env.PRESENCE.get(objectId);
+
+  return stub.fetch(new Request("https://presence.internal/connect", {
+    headers: {
+      Upgrade: "websocket",
+      "Sec-WebSocket-Protocol": "beta-void.v1",
+      "X-Beta-Void-Character": profile.character_id,
+      "X-Beta-Void-Display-Name": encodeURIComponent(profile.display_name),
+      "X-Beta-Void-Ship": shipId,
+      "X-Beta-Void-Zone": zoneId
+    }
+  }));
+}
+
 async function requireFirebaseUser(request, env) {
   const header = request.headers.get("Authorization") || "";
   const match = header.match(/^Bearer\s+(.+)$/i);
   if (!match) throw httpError(401, "AUTH_REQUIRED", "Missing Firebase ID token.");
   const auth = await verifyFirebaseIdToken(match[1], env.FIREBASE_PROJECT_ID);
+  if (auth.provider !== "google.com") {
+    throw httpError(403, "GOOGLE_AUTH_REQUIRED", "Google authentication is required.");
+  }
+  return auth;
+}
+
+async function requireFirebaseWebSocketUser(request, env) {
+  const protocols = String(request.headers.get("Sec-WebSocket-Protocol") || "")
+    .split(",")
+    .map((value) => value.trim());
+  if (!protocols.includes("beta-void.v1")) {
+    throw httpError(400, "PRESENCE_PROTOCOL_INVALID", "Presence protocol is required.");
+  }
+  const authProtocol = protocols.find((value) => value.startsWith("firebase."));
+  const token = authProtocol?.slice("firebase.".length);
+  if (!token) throw httpError(401, "AUTH_REQUIRED", "Missing Firebase ID token.");
+  const auth = await verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID);
   if (auth.provider !== "google.com") {
     throw httpError(403, "GOOGLE_AUTH_REQUIRED", "Google authentication is required.");
   }
@@ -201,6 +284,14 @@ function characterIdFromUid(uid) {
 
 function normalizeDisplayName(value) {
   return String(value || "Pilot").trim().replace(/\s+/g, " ").slice(0, 32) || "Pilot";
+}
+
+function normalizePresenceId(value, label) {
+  const text = String(value || "").trim();
+  if (!text || text.length > 160 || !/^[A-Za-z0-9_.:-]+$/.test(text)) {
+    throw httpError(400, "PRESENCE_ZONE_INVALID", `Invalid presence ${label}.`);
+  }
+  return text;
 }
 
 async function readJsonBody(request) {

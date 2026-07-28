@@ -16,6 +16,36 @@ const bootstrapResponse = {
   },
   server_time: generatedAt
 };
+const characterId = "firebase-online-bootstrap-test-user";
+const activeShipUid = `ship-${characterId}-ship_01-001`;
+const playerStateResponse = {
+  ok: true,
+  state: {
+    character_id: characterId,
+    schema_version: 1,
+    assets_revision: 1,
+    ship_revision: 0,
+    assets: {
+      character_id: characterId,
+      profile: {
+        character_id: characterId,
+        display_name: "Bootstrap Pilot",
+        active_ship_uid: activeShipUid,
+        selected_ship_id: "ship_01",
+        created_at: generatedAt,
+        updated_at: generatedAt
+      },
+      storageLocations: [],
+      quantityItems: [],
+      uniqueItems: [],
+      slotAssignments: []
+    },
+    ship_state: null,
+    docking: null,
+    updated_at: generatedAt
+  },
+  server_time: generatedAt
+};
 
 const firebaseAppModule = `
   export function initializeApp(config) {
@@ -83,6 +113,12 @@ async function loadWorldInFreshContext({ preserveSetting = false } = {}) {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(bootstrapResponse)
+    });
+  });
+  await context.route("https://beta-void-api.infira-2025.workers.dev/v1/player/state", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(playerStateResponse)
     });
   });
 

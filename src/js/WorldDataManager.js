@@ -69,8 +69,15 @@ function requireDefinitionList(gameData, key) {
 }
 
 export class WorldDataManager {
-  constructor({ config = null, gameData = null, worldBootstrap = null } = {}) {
+  constructor({
+    config = null,
+    gameData = null,
+    onlineApi = null,
+    playerState = null,
+    worldBootstrap = null
+  } = {}) {
     if (!gameData) throw new Error("WorldDataManager requires loaded gameData.");
+    if (!onlineApi || !playerState) throw new Error("WorldDataManager requires server player state.");
     if (!worldBootstrap) throw new Error("WorldDataManager requires a server world bootstrap.");
 
     this.gameData = gameData;
@@ -89,7 +96,11 @@ export class WorldDataManager {
     this.chunkAnnotations = this.chunkMap?.chunks || {};
     this.enabledChunks = Array.isArray(gameData.enabledChunks) ? gameData.enabledChunks : null;
     this.dataSourceKey = gameData.dataSourceKey || "game-data:unknown";
+    this.onlineApi = onlineApi;
+    this.playerServerState = normalizePlayerServerState(playerState);
     this.worldBootstrap = normalizeWorldBootstrap(worldBootstrap);
+    this.playerCacheHydrated = false;
+    this.playerServerMutationChain = Promise.resolve();
     this.db = null;
     this.snapshot = null;
   }
@@ -2086,12 +2097,65 @@ export class WorldDataManager {
   }
 
   async loadOrCreatePlayerAssets(characterId = DEFAULT_CHARACTER_ID) {
-    const profile = await this.getStoreValue("characterProfiles", characterId);
-    if (!profile) {
-      const playerAssets = this.createDefaultPlayerAssets({ createdAt: Date.now(), characterId });
-      await this.insertPlayerAssets(playerAssets);
+    this.assertServerCharacter(characterId);
+    if (!this.playerCacheHydrated) {
+      await this.applyPlayerServerStateToCache(this.playerServerState);
     }
     return this.getPlayerAssetSnapshot(characterId);
+  }
+
+  async refreshPlayerState() {
+    const state = normalizePlayerServerState(await this.onlineApi.getPlayerState());
+    await this.applyPlayerServerStateToCache(state);
+    return state;
+  }
+
+  async applyPlayerServerStateToCache(state) {
+    const normalized = normalizePlayerServerState(state);
+    await this.syncServerDockingToWorldCache(normalized);
+
+    const { transaction, stores } = this.openTx([...PLAYER_ASSET_STORES, "playerShip"], "readwrite");
+    PLAYER_ASSET_STORES.forEach((name) => stores[name].clear());
+    stores.playerShip.clear();
+    const assets = normalized.assets;
+    if (assets.profile) stores.characterProfiles.put(assets.profile);
+    (assets.storageLocations || []).forEach((storage) => stores.storageLocations.put(storage));
+    (assets.quantityItems || []).forEach((item) => stores.quantityItems.put(item));
+    (assets.uniqueItems || []).forEach((item) => stores.uniqueItems.put(item));
+    (assets.slotAssignments || []).forEach((assignment) => stores.slotAssignments.put(assignment));
+    if (normalized.shipState) stores.playerShip.put(normalized.shipState);
+    await transactionDone(transaction);
+
+    this.playerServerState = normalized;
+    this.playerCacheHydrated = true;
+    return normalized;
+  }
+
+  async syncServerDockingToWorldCache(state) {
+    const shipUid = state.assets?.profile?.active_ship_uid;
+    if (!shipUid) return;
+    const docking = state.docking;
+    const storages = await this.getAll("buildingStorages");
+    const changed = [];
+
+    for (const storage of storages) {
+      const dockedShips = storage.docked_ships || {};
+      const isTarget = docking?.station_id === storage.world_object_id;
+      if (!dockedShips[shipUid] && !isTarget) continue;
+      const nextDockedShips = { ...dockedShips };
+      if (isTarget) nextDockedShips[shipUid] = docking.entry;
+      else delete nextDockedShips[shipUid];
+      changed.push({
+        ...storage,
+        docked_ships: nextDockedShips,
+        updated_at: Math.max(Number(storage.updated_at) || 0, Number(state.updatedAt) || Date.now())
+      });
+    }
+
+    if (!changed.length) return;
+    const { transaction, stores: txStores } = this.openTx(["buildingStorages"], "readwrite");
+    changed.forEach((storage) => txStores.buildingStorages.put(storage));
+    await transactionDone(transaction);
   }
 
   async insertPlayerAssets(playerAssets) {
@@ -2106,11 +2170,21 @@ export class WorldDataManager {
 
   async putCharacterProfile(profile) {
     if (!profile?.character_id) return null;
+    this.assertServerCharacter(profile.character_id);
+    const serverProfile = await this.onlineApi.updateProfile(profile.display_name);
     const nextProfile = {
       ...profile,
-      updated_at: Date.now()
+      display_name: serverProfile?.display_name || profile.display_name,
+      updated_at: Number(serverProfile?.updated_at) || Date.now()
     };
     await this.putStoreValue("characterProfiles", nextProfile);
+    this.playerServerState = {
+      ...this.playerServerState,
+      assets: {
+        ...this.playerServerState.assets,
+        profile: nextProfile
+      }
+    };
     return nextProfile;
   }
 
@@ -2151,7 +2225,17 @@ export class WorldDataManager {
   // overlapping mutations — including from other tabs — are serialized by
   // IndexedDB and cannot lose updates. computeMutation must not perform async
   // work or issue its own IndexedDB requests, or the transaction will close.
-  runPlayerAssetMutation(characterId = DEFAULT_CHARACTER_ID, computeMutation = () => null) {
+  async runPlayerAssetMutation(
+    characterId = DEFAULT_CHARACTER_ID,
+    computeMutation = () => null,
+    { reason = "fitting" } = {}
+  ) {
+    const result = await this.runLocalPlayerAssetMutation(characterId, computeMutation);
+    if (result.committed) await this.syncPlayerAssets(characterId, reason);
+    return result;
+  }
+
+  runLocalPlayerAssetMutation(characterId = DEFAULT_CHARACTER_ID, computeMutation = () => null) {
     return new Promise((resolve, reject) => {
       const { transaction, stores } = this.openTx(PLAYER_ASSET_STORES, "readwrite");
       const reads = {};
@@ -2225,11 +2309,58 @@ export class WorldDataManager {
     });
   }
 
+  async syncPlayerAssets(characterId = DEFAULT_CHARACTER_ID, reason) {
+    this.assertServerCharacter(characterId);
+    return this.queuePlayerServerMutation(async () => {
+      const assets = await this.getPlayerAssetSnapshot(characterId);
+      const docking = await this.getPlayerDockingSnapshot(assets);
+      try {
+        const state = normalizePlayerServerState(await this.onlineApi.commitPlayerAssets({
+          expectedRevision: this.playerServerState.assetsRevision,
+          assets,
+          docking,
+          reason
+        }));
+        await this.applyPlayerServerStateToCache(state);
+        return state;
+      } catch (error) {
+        if (error?.code === "PLAYER_STATE_CONFLICT") await this.refreshPlayerState();
+        throw error;
+      }
+    });
+  }
+
+  async getPlayerDockingSnapshot(assets) {
+    const shipUid = assets?.profile?.active_ship_uid;
+    if (!shipUid) return null;
+    if ((assets.uniqueItems || []).some((item) => item.item_uid === shipUid)) return null;
+    const located = await this.findDockedShip(shipUid);
+    return located ? { station_id: located.station_id, entry: located.entry } : null;
+  }
+
+  queuePlayerServerMutation(task) {
+    const result = this.playerServerMutationChain.then(task);
+    this.playerServerMutationChain = result.then(() => {}, () => {});
+    return result;
+  }
+
+  assertServerCharacter(characterId) {
+    if (characterId !== this.playerServerState.characterId) {
+      throw new Error("Player state character does not match the authenticated character.");
+    }
+  }
+
   async loadOrCreatePlayerShipState(characterId = DEFAULT_CHARACTER_ID) {
+    this.assertServerCharacter(characterId);
+    if (!this.playerCacheHydrated) await this.applyPlayerServerStateToCache(this.playerServerState);
     const key = this.createPlayerShipStateKey(characterId);
     let state = await this.getStoreValue("playerShip", key);
     if (!state) {
-      state = this.createDefaultPlayerShipState(Date.now(), this.snapshot?.sectors || [], characterId);
+      state = this.createDefaultPlayerShipState(
+        this.playerServerState.serverTime || Date.now(),
+        this.snapshot?.sectors || [],
+        characterId
+      );
       await this.savePlayerShipState(state);
     }
 
@@ -2238,6 +2369,7 @@ export class WorldDataManager {
 
   async savePlayerShipState(state) {
     const characterId = state.player_id || DEFAULT_CHARACTER_ID;
+    this.assertServerCharacter(characterId);
     const position = this.normalizeVector(state.position);
     const chunkData = this.getChunkDataAtPosition(position);
     const sector = this.getSectorAtPosition(position.x, position.y, position.z);
@@ -2255,8 +2387,13 @@ export class WorldDataManager {
       updated_at: Date.now()
     };
 
-    await this.putStoreValue("playerShip", nextState);
-    return nextState;
+    return this.queuePlayerServerMutation(async () => {
+      const serverState = normalizePlayerServerState(await this.onlineApi.savePlayerShipState(nextState));
+      this.playerServerState = serverState;
+      const savedState = serverState.shipState || nextState;
+      await this.putStoreValue("playerShip", savedState);
+      return savedState;
+    });
   }
 
   async replaceWorldCache({ sectors, chunks, resourceNodes, buildings, betaVoids = [], meta, resourceManager, stationInventories = null }) {
@@ -2927,6 +3064,37 @@ function requestToPromise(request) {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error("IndexedDB request failed."));
   });
+}
+
+function normalizePlayerServerState(value) {
+  const assetsRevision = Number(value?.assetsRevision);
+  const shipRevision = Number(value?.shipRevision);
+  const characterId = String(value?.characterId || "");
+  const assets = value?.assets;
+  if (
+    !characterId
+    || !assets
+    || typeof assets !== "object"
+    || assets.character_id !== characterId
+    || !Number.isInteger(assetsRevision)
+    || assetsRevision < 1
+    || !Number.isInteger(shipRevision)
+    || shipRevision < 0
+  ) {
+    throw new Error("WorldDataManager received an invalid server player state.");
+  }
+
+  return {
+    characterId,
+    schemaVersion: Number(value.schemaVersion) || 1,
+    assetsRevision,
+    shipRevision,
+    assets,
+    shipState: value.shipState || null,
+    docking: value.docking || null,
+    updatedAt: Number(value.updatedAt) || 0,
+    serverTime: Number(value.serverTime) || Date.now()
+  };
 }
 
 function normalizeWorldBootstrap(value) {

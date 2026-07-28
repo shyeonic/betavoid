@@ -9,3 +9,11 @@ FIREBASE_PROJECT_ID = "beta-void"
 binding = "DB"
 database_name = "beta-void-dev"
 database_id = "2b8bfd4b-dbe4-4aa9-b624-b41008c5d963"
+
+[[durable_objects.bindings]]
+name = "PRESENCE"
+class_name = "PresenceShard"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PresenceShard"]

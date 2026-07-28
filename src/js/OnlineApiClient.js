@@ -17,19 +17,64 @@ export class OnlineApiClient {
     return normalizeWorldBootstrap(payload?.world, payload?.server_time);
   }
 
-  async request(path, { forceTokenRefresh = false } = {}) {
+  async getPlayerState() {
+    const payload = await this.request("/v1/player/state");
+    return normalizePlayerState(payload?.state, payload?.server_time);
+  }
+
+  async commitPlayerAssets({ expectedRevision, assets, docking = null, reason }) {
+    const payload = await this.request("/v1/player/assets", {
+      method: "POST",
+      body: {
+        expected_revision: expectedRevision,
+        assets,
+        docking,
+        reason
+      }
+    });
+    return normalizePlayerState(payload?.state, payload?.server_time);
+  }
+
+  async savePlayerShipState(shipState) {
+    const payload = await this.request("/v1/player/ship-state", {
+      method: "POST",
+      body: { ship_state: shipState }
+    });
+    return normalizePlayerState(payload?.state, payload?.server_time);
+  }
+
+  async updateProfile(displayName) {
+    const payload = await this.request("/v1/profile", {
+      method: "POST",
+      body: { displayName }
+    });
+    return payload?.profile || null;
+  }
+
+  async request(path, {
+    method = "GET",
+    body = null,
+    forceTokenRefresh = false
+  } = {}) {
     const token = await this.identity.getIdToken(forceTokenRefresh);
     if (!token) throw new OnlineApiError("AUTH_REQUIRED", "Authentication is required.", 401);
 
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+      method,
       headers: {
         Accept: "application/json",
-        Authorization: `Bearer ${token}`
-      }
+        Authorization: `Bearer ${token}`,
+        ...(body == null ? {} : { "Content-Type": "application/json" })
+      },
+      body: body == null ? undefined : JSON.stringify(body)
     });
 
     if (response.status === 401 && !forceTokenRefresh) {
-      return this.request(path, { forceTokenRefresh: true });
+      return this.request(path, {
+        method,
+        body,
+        forceTokenRefresh: true
+      });
     }
 
     const payload = await readJsonResponse(response);
@@ -90,4 +135,34 @@ function normalizeWorldBootstrap(world, serverTime) {
   }
 
   return Object.freeze(normalized);
+}
+
+function normalizePlayerState(state, serverTime) {
+  const assetsRevision = Number(state?.assets_revision);
+  const shipRevision = Number(state?.ship_revision);
+  const normalized = {
+    characterId: String(state?.character_id || ""),
+    schemaVersion: Number(state?.schema_version),
+    assetsRevision,
+    shipRevision,
+    assets: state?.assets,
+    shipState: state?.ship_state || null,
+    docking: state?.docking || null,
+    updatedAt: Number(state?.updated_at),
+    serverTime: Number(serverTime)
+  };
+
+  if (
+    !normalized.characterId
+    || !normalized.assets
+    || typeof normalized.assets !== "object"
+    || !Number.isInteger(assetsRevision)
+    || assetsRevision < 1
+    || !Number.isInteger(shipRevision)
+    || shipRevision < 0
+  ) {
+    throw new OnlineApiError("PLAYER_STATE_INVALID", "Server returned an invalid player state.");
+  }
+
+  return normalized;
 }

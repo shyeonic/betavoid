@@ -6,6 +6,8 @@ import { DialogueManager } from "./DialogueManager.js";
 import { HyperdriveWarpLayer } from "./HyperdriveWarpLayer.js";
 import { CONFIG, CONTROL_SETTINGS, DEFAULT_KEY_BINDINGS, KEY_BINDING_GROUPS } from "./config.js";
 import { MinimapManager } from "./MinimapManager.js";
+import { OnlinePresenceClient } from "./OnlinePresenceClient.js";
+import { RemotePlayerManager } from "./RemotePlayerManager.js";
 import { ResourceManager } from "./ResourceManager.js";
 import { ShipVisualManager } from "./ShipVisualManager.js";
 import { SoundManager } from "./SoundManager.js";
@@ -103,13 +105,23 @@ function resolveDefaultShipId(gameData, shipDefinitions) {
 }
 
 export class GameManager {
-  constructor({ root, gameData = null, identity = null, worldBootstrap = null }) {
+  constructor({
+    root,
+    gameData = null,
+    identity = null,
+    onlineApi = null,
+    playerState = null,
+    worldBootstrap = null
+  }) {
     if (!gameData) throw new Error("GameManager requires loaded gameData.");
+    if (!onlineApi || !playerState) throw new Error("GameManager requires server player state.");
     if (!worldBootstrap) throw new Error("GameManager requires a server world bootstrap.");
 
     this.root = root;
     this.gameData = gameData;
     this.identity = identity;
+    this.onlineApi = onlineApi;
+    this.worldBootstrap = worldBootstrap;
     this.config = CONFIG;
     this.worldConfig = gameData.worldConfig || WORLD_CONFIG;
     this.buildingDefinitions = requireDefinitionMap(gameData, "buildingDefinitions");
@@ -198,6 +210,8 @@ export class GameManager {
     this.worldDataManager = new WorldDataManager({
       config: this.worldConfig,
       gameData,
+      onlineApi,
+      playerState,
       worldBootstrap
     });
     this.betaSpaceManager = new BetaSpaceManager({
@@ -207,6 +221,21 @@ export class GameManager {
     this.betaSpaceExitPending = false;
     this.worldMapManager = null;
     this.minimapManager = null;
+    this.remotePlayerManager = null;
+    this.presenceClient = new OnlinePresenceClient({
+      identity: onlineApi.identity,
+      onMessage: (message) => this.remotePlayerManager?.handlePresenceMessage(message),
+      onStateChange: (state) => {
+        if (state === "disconnected") this.remotePlayerManager?.clear();
+      }
+    });
+    this.presenceZoneId = null;
+    this.presenceRouteSignature = null;
+    this.presenceSequence = 0;
+    this.presenceLastPublishedAt = 0;
+    this.presenceLastSample = null;
+    this.presencePublishInterval = 1000;
+    this.presenceIdlePublishInterval = 15000;
     this.targetingOverlay = new TargetingOverlay({
       canvas: this.ui.elements.targetingCanvas,
       frameStyle: this.getEnvironmentPreset().targeting.frame
@@ -356,7 +385,7 @@ export class GameManager {
     this.betaVoidLifecycleInterval = 30000;
     this.playerShipSaveLastUpdatedAt = 0;
     this.playerShipSavePending = false;
-    this.playerShipSaveInterval = 1000;
+    this.playerShipSaveInterval = 30000;
     this._lastFrameTimestamp = 0;
     this._frameIntervalMs = FRAME_INTERVAL_MS;
     this._lastRenderAt = 0;
@@ -1142,6 +1171,28 @@ export class GameManager {
     return resultPromise;
   }
 
+  async syncPlayerAssetsToServer(reason) {
+    try {
+      await this.worldDataManager.syncPlayerAssets(this.characterId, reason);
+      return true;
+    } catch (error) {
+      await this.recoverServerPlayerState(error);
+      return false;
+    }
+  }
+
+  async recoverServerPlayerState(error) {
+    try {
+      await this.worldDataManager.refreshPlayerState();
+      await this.loadPlayerAssets();
+    } catch (refreshError) {
+      console.error("[player-state] recovery failed.", refreshError);
+    }
+    this.ui.showErrorToast(error?.code === "PLAYER_STATE_CONFLICT"
+      ? "player state changed in another session"
+      : "player state sync failed");
+  }
+
   applyShipLoadoutChange(change) {
     // While docked the active ship lives server-side in the station's docked_ships
     // zone; the in-memory view is read-only. Block asset changes (refit/cargo) so
@@ -1162,16 +1213,21 @@ export class GameManager {
     // The decision is made from the data the transaction reads (not this.playerAssets),
     // so it stays correct even if another tab mutated the assets in the meantime.
     let outcome = { status: "invalid" };
-    await this.worldDataManager.runPlayerAssetMutation(this.characterId, (assets) => {
-      const previousAssets = this.playerAssets;
-      this.playerAssets = assets;
-      try {
-        outcome = this._buildLoadoutMutation(change);
-      } finally {
-        this.playerAssets = previousAssets;
-      }
-      return outcome.status === "ok" ? outcome.mutation : null;
-    });
+    try {
+      await this.worldDataManager.runPlayerAssetMutation(this.characterId, (assets) => {
+        const previousAssets = this.playerAssets;
+        this.playerAssets = assets;
+        try {
+          outcome = this._buildLoadoutMutation(change);
+        } finally {
+          this.playerAssets = previousAssets;
+        }
+        return outcome.status === "ok" ? outcome.mutation : null;
+      });
+    } catch (error) {
+      await this.recoverServerPlayerState(error);
+      return null;
+    }
 
     if (outcome.status === "ok") {
       await this.loadPlayerAssets();
@@ -1909,6 +1965,19 @@ export class GameManager {
       }
     });
     this.shipVisualManager.setShipDefinitions(this.shipDefinitions, this.defaultShipId);
+    this.remotePlayerManager = new RemotePlayerManager({
+      scene: this.scene,
+      resourceManager: this.resourceManager,
+      shipDefinitions: this.shipDefinitions,
+      defaultShipId: this.defaultShipId,
+      toRenderVector: (position) => this.worldMapManager.toRenderVector(position),
+      registerStylizedRenderTarget: (object) => {
+        this.renderPipeline?.registerStylizedRenderTarget(object);
+      },
+      unregisterStylizedRenderTarget: (object) => {
+        this.renderPipeline?.unregisterStylizedRenderTarget(object);
+      }
+    });
   }
 
   setupShipLocalLights() {
@@ -2108,6 +2177,7 @@ export class GameManager {
     await this.resumeGatheringSessions();
     this.syncWorldRuntimeWithPlayer({ force: true });
     await this.refreshWorldSummary({ force: true });
+    this.updateOnlinePresence({ force: true });
     return snapshot;
   }
 
@@ -2938,6 +3008,7 @@ export class GameManager {
       });
 
       this.savePlayerShipState({ force: true });
+      this.updateOnlinePresence({ force: true });
     }
   }
 
@@ -2986,6 +3057,7 @@ export class GameManager {
     // Warp ended (arrival or cancel): revert from warp ambience to the destination's location BGM.
     if (wasHyperdrive) this.refreshBgm();
     if (!inBetaSpace) this.savePlayerShipState({ force: true });
+    if (!inBetaSpace) this.updateOnlinePresence({ force: true });
   }
 
   cancelAutopilot() {
@@ -3005,6 +3077,7 @@ export class GameManager {
     this.navTarget = null;
     this.activeNavLog = null;
     this.targetMarker.visible = false;
+    if (!this.isBetaSpaceActive()) this.updateOnlinePresence({ force: true });
   }
 
   initiateHyperdrive({ x, y, z }) {
@@ -3091,6 +3164,7 @@ export class GameManager {
     this.hyperdriveLogId = this.worldDataManager.createHyperdriveNavLog(log);
 
     this.savePlayerShipState({ force: true });
+    this.updateOnlinePresence({ force: true });
   }
 
   canCancelHyperdrive() {
@@ -4246,6 +4320,7 @@ export class GameManager {
       this.updatePosition(dt);
     }
     this.syncWorldRuntimeWithPlayer();
+    this.updateOnlinePresence();
     if (this.isBetaSpaceActive() && this.updateBetaSpaceState()) return;
     this.updateCamera(dt);
     this.updateStars();
@@ -4272,8 +4347,165 @@ export class GameManager {
     };
   }
 
+  updateOnlinePresence({ force = false } = {}) {
+    if (!this.presenceClient || !this.remotePlayerManager || !this.worldMapManager?.snapshot) return;
+    if (this.isDocked() || this.isBetaSpaceActive() || this.worldDataResetting) {
+      this.setOnlinePresenceUnavailable();
+      return;
+    }
+
+    const now = Date.now();
+    const dataPosition = this.getPlayerDataPosition();
+    const zoneId = this.getPresenceZoneId(dataPosition);
+    if (!zoneId) {
+      this.setOnlinePresenceUnavailable();
+      return;
+    }
+
+    const zoneChanged = zoneId !== this.presenceZoneId;
+    if (zoneChanged) {
+      this.presenceZoneId = zoneId;
+      this.presenceRouteSignature = null;
+      this.presenceLastSample = null;
+      this.remotePlayerManager.clear();
+      this.presenceClient.ensureZone(zoneId, {
+        worldId: this.worldBootstrap.worldId
+      });
+    }
+
+    const route = this.buildPresenceRoute(dataPosition, now);
+    if (route) {
+      const signature = `${zoneId}:${route.action_id}`;
+      if (force || signature !== this.presenceRouteSignature) {
+        this.presenceRouteSignature = signature;
+        this.presenceClient.publishRoute(route);
+      }
+      return;
+    }
+
+    this.presenceRouteSignature = null;
+    const previous = this.presenceLastSample;
+    const positionDelta = previous
+      ? this.getDataDistance(dataPosition, previous.position)
+      : Infinity;
+    const rotationDot = previous
+      ? Math.abs(
+          this.ship.quaternion.x * previous.rotation.x
+          + this.ship.quaternion.y * previous.rotation.y
+          + this.ship.quaternion.z * previous.rotation.z
+          + this.ship.quaternion.w * previous.rotation.w
+        )
+      : 0;
+    const motionActive = Math.abs(this.state.speed) > 0.05
+      || Math.abs(this.state.desiredSpeed) > 0.05
+      || positionDelta * this.worldConfig.renderScale > 2
+      || rotationDot < 0.9999
+      || [...this.activeActions].some((action) => this.isManualControlAction(action));
+    const publishInterval = motionActive
+      ? this.presencePublishInterval
+      : this.presenceIdlePublishInterval;
+    if (!force && now - this.presenceLastPublishedAt < publishInterval) return;
+
+    const elapsedSec = previous ? Math.max(0.001, (now - previous.at) / 1000) : 0;
+    const velocity = previous
+      ? {
+          x: (dataPosition.x - previous.position.x) / elapsedSec,
+          y: (dataPosition.y - previous.position.y) / elapsedSec,
+          z: (dataPosition.z - previous.position.z) / elapsedSec
+        }
+      : { x: 0, y: 0, z: 0 };
+    this.presenceLastSample = {
+      at: now,
+      position: { ...dataPosition },
+      rotation: {
+        x: this.ship.quaternion.x,
+        y: this.ship.quaternion.y,
+        z: this.ship.quaternion.z,
+        w: this.ship.quaternion.w
+      }
+    };
+    this.presenceLastPublishedAt = now;
+    this.presenceClient.publishPose({
+      seq: ++this.presenceSequence,
+      ship_id: this.selectedShipId,
+      position: dataPosition,
+      rotation: {
+        x: this.ship.quaternion.x,
+        y: this.ship.quaternion.y,
+        z: this.ship.quaternion.z,
+        w: this.ship.quaternion.w
+      },
+      velocity,
+      speed: this.state.speed
+    });
+  }
+
+  getPresenceZoneId(dataPosition) {
+    const sector = this.worldDataManager.getSectorAtPosition(
+      dataPosition.x,
+      dataPosition.y,
+      dataPosition.z
+    );
+    if (sector?.sector_id) return sector.sector_id;
+    return this.worldDataManager.getChunkDataAtPosition(dataPosition).chunk_id || null;
+  }
+
+  buildPresenceRoute(dataPosition, now = Date.now()) {
+    const hyperdrive = this.isHyperdrive && this.hyperdriveLog && this.hyperdriveLogId
+      ? {
+          actionId: this.hyperdriveLogId,
+          type: "hyperdrive",
+          target: this.hyperdriveLog.target,
+          departAt: Number(this.hyperdriveLog.jump_start_at) || now,
+          arriveAt: (Number(this.hyperdriveLog.jump_start_at) || now)
+            + Math.max(0, Number(this.hyperdriveLog.flight_duration) || 0) * 1000
+        }
+      : null;
+    const standard = !hyperdrive && this.state.autopilotPhase !== null && this.activeNavLogId && this.activeNavLog
+      ? {
+          actionId: this.activeNavLogId,
+          type: "standard",
+          target: this.activeNavLog.target,
+          departAt: Number(this.activeNavLog.flight_start_at) || now,
+          arriveAt: (Number(this.activeNavLog.flight_start_at) || now)
+            + Math.max(0, Number(this.activeNavLog.flight_duration) || 0) * 1000
+        }
+      : null;
+    const active = hyperdrive || standard;
+    if (!active?.target) return null;
+
+    const target = this.worldMapManager.toDataVector(new THREE.Vector3(
+      Number(active.target.x) || 0,
+      Number(active.target.y) || 0,
+      Number(active.target.z) || 0
+    ));
+    const departDelayMs = Math.max(0, active.departAt - now);
+    const durationMs = active.departAt > now
+      ? Math.max(0, active.arriveAt - active.departAt)
+      : Math.max(0, active.arriveAt - now);
+    return {
+      action_id: active.actionId,
+      route_type: active.type,
+      ship_id: this.selectedShipId,
+      from_position: dataPosition,
+      target: { x: target.x, y: target.y, z: target.z },
+      depart_delay_ms: departDelayMs,
+      duration_ms: durationMs
+    };
+  }
+
+  setOnlinePresenceUnavailable() {
+    if (!this.presenceZoneId && this.presenceClient?.state === "disconnected") return;
+    this.presenceZoneId = null;
+    this.presenceRouteSignature = null;
+    this.presenceLastSample = null;
+    this.presenceClient?.disconnect();
+    this.remotePlayerManager?.clear();
+  }
+
   async savePlayerShipState({ force = false } = {}) {
     if (this.isBetaSpaceActive() || this.isDocked()) return;
+    if (!force && this.state.autopilotPhase !== null) return;
     if (!this.worldDataManager.db || this.playerShipSavePending || this.worldDataResetting) return;
 
     const now = performance.now();
@@ -4740,6 +4972,9 @@ export class GameManager {
       this._miningVisAccumMs = 0;
       this.driveShipMiningAnimation(false); // retract back to rest pose
       this.ui.setGatheringState({ active: false });
+      if (result?.committed) {
+        await this.syncPlayerAssetsToServer("mining");
+      }
       await this.loadPlayerAssets();
       if (manual && Number.isFinite(Number(result?.gathered))) {
         this.ui.showToast(`gathered ${Math.floor(Number(result.gathered))}`);
@@ -4778,8 +5013,12 @@ export class GameManager {
     } catch { return; }
     if (!active) return;
 
-    try { await this.worldDataManager.settleNode({ nodeId: active.target_node_id }); }
+    let settleResult = null;
+    try { settleResult = await this.worldDataManager.settleNode({ nodeId: active.target_node_id }); }
     catch { /* node may be gone */ }
+    if (settleResult?.committed) {
+      await this.syncPlayerAssetsToServer("mining");
+    }
     await this.loadPlayerAssets();
 
     const remaining = await this.worldDataManager.getGatheringLogs({ actorId: this.characterId, activeOnly: true });
@@ -4832,6 +5071,10 @@ export class GameManager {
     const shipUid = this.getActiveShipItem()?.item_uid || this.activeShipUid;
     if (!shipUid) return { ok: false, reason: "no-ship" };
     const result = await this.worldDataManager.runStationTrade(stationId, shipUid, { itemId, direction, amount, nowMs: Date.now() });
+    if (result?.committed) {
+      const synced = await this.syncPlayerAssetsToServer("trade");
+      if (!synced) return { ok: false, reason: "server-sync-failed" };
+    }
     await this.loadPlayerAssets(); // refresh in-memory docked cargo view
     return result;
   }
@@ -5291,8 +5534,14 @@ export class GameManager {
       await this.ui.fadeIn(2000);
       return;
     }
+    const synced = await this.syncPlayerAssetsToServer("dock");
+    if (!synced) {
+      await this.ui.fadeIn(2000);
+      return;
+    }
     this._dockCutscenePending = true; // play the arrival cutscene (only on space→station dock)
     await this.loadPlayerAssets(); // syncDockingPresentation enters the docking scene
+    this.setOnlinePresenceUnavailable();
     await this.ui.fadeIn(2000); // 2s fade from space bg into the docking scene
     this.ui.showToast("docked");
   }
@@ -5307,6 +5556,11 @@ export class GameManager {
     const result = await this.worldDataManager.undockShipFromStation(this.characterId, stationId, { nowMs: now });
     if (!result?.committed) {
       this.ui.showErrorToast("undock failed");
+      await this.ui.fadeIn(2000);
+      return;
+    }
+    const synced = await this.syncPlayerAssetsToServer("undock");
+    if (!synced) {
       await this.ui.fadeIn(2000);
       return;
     }
@@ -5326,6 +5580,7 @@ export class GameManager {
     this.syncWorldRuntimeWithPlayer({ force: true });
     await this.refreshWorldSummary({ force: true });
     await this.savePlayerShipState({ force: true });
+    this.updateOnlinePresence({ force: true });
     await this.ui.fadeIn(2000); // 2s fade from space bg into the space scene
     this.ui.showToast("undocked");
   }
@@ -5603,6 +5858,7 @@ export class GameManager {
     });
     this.betaSpaceSession = session;
     this.betaSpaceExitPending = false;
+    this.setOnlinePresenceUnavailable();
 
     this.state.speed = 0;
     this.state.desiredSpeed = 0;
@@ -5646,6 +5902,7 @@ export class GameManager {
       this.syncWorldRuntimeWithPlayer({ force: true });
       await this.refreshWorldSummary({ force: true });
       await this.savePlayerShipState({ force: true });
+      this.updateOnlinePresence({ force: true });
       this.ui.showToast(reason === "expired" ? "Beta Space expired" : "exited Beta Space");
     } catch (error) {
       this.ui.showErrorToast(error instanceof Error ? error.message : "Beta Space exit failed");
@@ -5813,6 +6070,7 @@ export class GameManager {
       this.worldMapManager?.update(dt);
     }
 
+    this.remotePlayerManager?.update(dt);
     this.updateTargetMarker(dt);
     this.updateShipEngineOutput();
     this.updateHud();
@@ -6727,6 +6985,8 @@ export class GameManager {
     this.closeFittingPreview();
     this.targetingOverlay.dispose();
     this.minimapManager?.dispose();
+    this.presenceClient?.dispose();
+    this.remotePlayerManager?.dispose();
     this.worldMapManager.dispose();
     this.soundManager.dispose();
     this.resourceManager.dispose();
