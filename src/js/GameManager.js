@@ -2092,7 +2092,6 @@ export class GameManager {
           }
           this._commitDeactivationNavLog(null, 0);
           if (this.miningSession) void this.worldDataManager.settleNode({ nodeId: this.miningSession.nodeId });
-          this.savePlayerShipState({ force: true });
         }
       },
       visibilitychange: () => {
