@@ -110,4 +110,18 @@ const undocked = await request(
 );
 assert.equal(undocked.ship.spatial_mode, "FIELD");
 
+const adminShips = await request("/navigation/admin-ships");
+const adminShip = adminShips.find((ship) => ship.owner_character_id === characterId);
+assert.ok(adminShip);
+assert.ok(Number.isFinite(adminShip.position.x));
+assert.equal(adminShip.spatial_mode, "FIELD");
+
+const history = await request(
+  `/navigation/history?ship_uid=${adminShip.ship_uid}&route_type=standard&limit=10`
+);
+assert.equal(history.length, 1);
+assert.equal(history[0].status, "CANCELED");
+assert.equal(history[0].ship_uid, adminShip.ship_uid);
+assert.ok(Number.isFinite(history[0].resolved_position.z));
+
 console.log("navigation authority check passed");

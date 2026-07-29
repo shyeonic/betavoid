@@ -45,6 +45,7 @@ function renderFixture() {
     storageMetric: "31",
     fieldShipMetric: "24",
     activeRouteMetric: "7",
+    historyStatus: "12 records",
     worldIdValue: "primary",
     seedValue: "beta-void-primary-v1",
     dataSourceValue: "v3.2-current-data",
@@ -80,8 +81,26 @@ function renderFixture() {
       "ship_01",
       "FIELD",
       `SEC-${String(index).padStart(3, "0")}`,
+      "12,601,000, 12,600,000, 12,622,000",
+      "4,500",
       index % 2 ? "cruising" : "manual",
-      index % 2 ? "standard" : "-"
+      index % 2 ? "standard" : "-",
+      "2026. 7. 30."
+    ]));
+  }
+
+  const historyRows = document.getElementById("historyRows");
+  for (let index = 1; index <= 12; index += 1) {
+    historyRows.append(createRow([
+      "2026. 7. 30.",
+      `Pilot ${index}`,
+      `ship_01 / ship-pilot-${index}`,
+      index % 3 === 0 ? "hyperdrive" : "standard",
+      index % 2 ? "ARRIVED" : "CANCELED",
+      "12,601,000, 12,600,000, 12,622,000",
+      "12,701,000, 12,600,000, 12,822,000",
+      "arrived",
+      "2026. 7. 30."
     ]));
   }
 

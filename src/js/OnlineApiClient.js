@@ -128,6 +128,23 @@ export class OnlineApiClient {
     return Array.isArray(payload?.ships) ? payload.ships : [];
   }
 
+  async listAdminNavigationHistory({
+    shipUid = "",
+    ownerCharacterId = "",
+    routeType = "",
+    status = "",
+    limit = 100
+  } = {}) {
+    const query = new URLSearchParams();
+    if (shipUid) query.set("ship_uid", shipUid);
+    if (ownerCharacterId) query.set("owner_character_id", ownerCharacterId);
+    if (routeType) query.set("route_type", routeType);
+    if (status) query.set("status", status);
+    query.set("limit", String(limit));
+    const payload = await this.request(`/v1/admin/navigation/history?${query}`);
+    return Array.isArray(payload?.movements) ? payload.movements : [];
+  }
+
   async listAdminWorldEntities({
     entityType = "",
     sectorId = "",

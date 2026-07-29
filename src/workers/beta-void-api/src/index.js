@@ -13,6 +13,7 @@ import {
   checkpointPlayerShip,
   getNavigationAdminSummary,
   getPlayerNavigationState,
+  listNavigationAdminHistory,
   listNavigationAdminShips,
   listZoneShipPeers,
   overridePlayerNavigation,
@@ -82,6 +83,18 @@ export default {
         requireAdmin(await requireFirebaseUser(request, env), env);
         const ships = await listNavigationAdminShips(env.WORLD_DB);
         return json({ ok: true, ships, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/admin/navigation/history" && request.method === "GET") {
+        requireAdmin(await requireFirebaseUser(request, env), env);
+        const movements = await listNavigationAdminHistory(env.WORLD_DB, {
+          shipUid: url.searchParams.get("ship_uid"),
+          ownerCharacterId: url.searchParams.get("owner_character_id"),
+          routeType: url.searchParams.get("route_type"),
+          status: url.searchParams.get("status"),
+          limit: url.searchParams.get("limit")
+        });
+        return json({ ok: true, movements, server_time: Date.now() }, { request, env });
       }
 
       if (url.pathname === "/v1/admin/world/entities" && request.method === "GET") {

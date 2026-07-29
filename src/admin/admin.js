@@ -25,6 +25,11 @@ const elements = Object.fromEntries(
     "errorBanner",
     "generatedValue",
     "fieldShipMetric",
+    "historyRouteFilter",
+    "historyRows",
+    "historyShipFilter",
+    "historyStatus",
+    "historyStatusFilter",
     "nextButton",
     "pageStatus",
     "previousButton",
@@ -39,6 +44,9 @@ const elements = Object.fromEntries(
     "signInButton",
     "signOutButton",
     "shipRows",
+    "shipModeFilter",
+    "shipSearchFilter",
+    "shipSectorFilter",
     "storageMetric",
     "worldIdValue"
   ].map((id) => [id, document.getElementById(id)])
@@ -48,6 +56,7 @@ const state = {
   admin: null,
   summary: null,
   ships: [],
+  movements: [],
   entities: [],
   nextCursor: "",
   cursor: "",
@@ -67,6 +76,12 @@ elements.signOutButton.addEventListener("click", () => identity.signOut());
 elements.refreshButton.addEventListener("click", () => refreshDashboard());
 elements.entityTypeFilter.addEventListener("change", () => resetAndLoadEntities());
 elements.sectorFilter.addEventListener("change", () => resetAndLoadEntities());
+elements.shipSearchFilter.addEventListener("input", () => renderShips());
+elements.shipModeFilter.addEventListener("change", () => renderShips());
+elements.shipSectorFilter.addEventListener("change", () => renderShips());
+elements.historyShipFilter.addEventListener("change", () => loadMovementHistory());
+elements.historyRouteFilter.addEventListener("change", () => loadMovementHistory());
+elements.historyStatusFilter.addEventListener("change", () => loadMovementHistory());
 elements.nextButton.addEventListener("click", () => {
   if (!state.nextCursor) return;
   state.cursorHistory.push(state.cursor);
@@ -131,8 +146,12 @@ async function refreshDashboard() {
       api.listAdminNavigationShips()
     ]);
     renderSummary();
+    populateNavigationFilters();
     renderShips();
-    await resetAndLoadEntities();
+    await Promise.all([
+      resetAndLoadEntities(),
+      loadMovementHistory()
+    ]);
     setConnectionStatus("온라인", true);
   } catch (error) {
     showError(describeError(error));
@@ -161,6 +180,21 @@ async function loadEntities() {
     state.entities = result.entities;
     state.nextCursor = result.nextCursor;
     renderEntities();
+  } catch (error) {
+    showError(describeError(error));
+  }
+}
+
+async function loadMovementHistory() {
+  clearError();
+  try {
+    state.movements = await api.listAdminNavigationHistory({
+      shipUid: elements.historyShipFilter.value,
+      routeType: elements.historyRouteFilter.value,
+      status: elements.historyStatusFilter.value,
+      limit: 200
+    });
+    renderMovementHistory();
   } catch (error) {
     showError(describeError(error));
   }
@@ -206,18 +240,133 @@ function renderSummary() {
 }
 
 function renderShips() {
+  const query = elements.shipSearchFilter.value.trim().toLowerCase();
+  const mode = elements.shipModeFilter.value;
+  const sectorId = elements.shipSectorFilter.value;
+  const ships = state.ships.filter((ship) => {
+    if (mode && ship.spatial_mode !== mode) return false;
+    if (sectorId && ship.sector_id !== sectorId) return false;
+    if (!query) return true;
+    return [
+      ship.display_name,
+      ship.owner_character_id,
+      ship.ship_uid,
+      ship.ship_definition_id
+    ].some((value) => String(value || "").toLowerCase().includes(query));
+  });
   elements.shipRows.replaceChildren(
-    ...state.ships.map((ship) => {
+    ...ships.map((ship) => {
       const row = document.createElement("tr");
+      row.tabIndex = 0;
       appendCell(row, ship.display_name || ship.owner_character_id);
-      appendCell(row, ship.ship_definition_id);
+      appendCell(row, `${ship.ship_definition_id} / ${ship.ship_uid}`);
       appendCell(row, ship.spatial_mode);
       appendCell(row, ship.sector_id || ship.chunk_id || "-");
+      appendCell(row, formatVector(ship.position));
+      appendCell(row, formatNumber(Math.round(Number(ship.speed) || 0)));
       appendCell(row, ship.phase || "-");
       appendCell(row, ship.route_type || "-");
+      appendCell(row, formatDate(ship.updated_at));
+      const open = () => openShip(ship);
+      row.addEventListener("click", open);
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open();
+        }
+      });
       return row;
     })
   );
+}
+
+function populateNavigationFilters() {
+  replaceSelectOptions(
+    elements.shipSectorFilter,
+    [...new Set(state.ships.map((ship) => ship.sector_id).filter(Boolean))]
+      .sort()
+      .map((sectorId) => ({ label: sectorId, value: sectorId }))
+  );
+  replaceSelectOptions(
+    elements.historyShipFilter,
+    state.ships
+      .map((ship) => ({
+        label: `${ship.display_name || ship.owner_character_id} / ${ship.ship_definition_id}`,
+        value: ship.ship_uid
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  );
+}
+
+function replaceSelectOptions(select, options) {
+  const previousValue = select.value;
+  select.replaceChildren(
+    new Option("All", ""),
+    ...options.map((option) => new Option(option.label, option.value))
+  );
+  if ([...select.options].some((option) => option.value === previousValue)) {
+    select.value = previousValue;
+  }
+}
+
+function renderMovementHistory() {
+  elements.historyRows.replaceChildren(
+    ...state.movements.map((movement) => {
+      const row = document.createElement("tr");
+      row.tabIndex = 0;
+      appendCell(row, formatDate(movement.issued_at));
+      appendCell(row, movement.display_name || movement.owner_character_id);
+      appendCell(row, `${movement.ship_definition_id} / ${movement.ship_uid}`);
+      appendCell(row, movement.route_type);
+      appendCell(row, movement.status);
+      appendCell(row, formatVector(movement.from_position));
+      appendCell(row, formatVector(movement.target));
+      appendCell(row, movement.resolved_phase || "-");
+      appendCell(row, formatDate(resolveMovementTimestamp(movement)));
+      const open = () => openMovement(movement);
+      row.addEventListener("click", open);
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open();
+        }
+      });
+      return row;
+    })
+  );
+  elements.historyStatus.textContent = `${state.movements.length} records`;
+}
+
+async function openShip(ship) {
+  elements.dialogType.textContent = "SHIP";
+  elements.dialogTitle.textContent = ship.display_name || ship.ship_uid;
+  elements.dialogJson.textContent = "Loading...";
+  if (!elements.entityDialog.open) elements.entityDialog.showModal();
+  try {
+    const recentMovements = await api.listAdminNavigationHistory({
+      shipUid: ship.ship_uid,
+      limit: 20
+    });
+    elements.dialogJson.textContent = JSON.stringify({
+      ship,
+      recent_movements: recentMovements
+    }, null, 2);
+  } catch (error) {
+    elements.dialogJson.textContent = describeError(error);
+  }
+}
+
+function openMovement(movement) {
+  elements.dialogType.textContent = "MOVEMENT CONTRACT";
+  elements.dialogTitle.textContent = movement.contract_id;
+  elements.dialogJson.textContent = JSON.stringify(movement, null, 2);
+  if (!elements.entityDialog.open) elements.entityDialog.showModal();
+}
+
+function resolveMovementTimestamp(movement) {
+  if (movement.status === "CANCELED") return movement.canceled_at;
+  if (movement.status === "ARRIVED") return movement.settled_at || movement.arrive_at;
+  return null;
 }
 
 function renderEntities() {
@@ -329,6 +478,15 @@ function formatDate(value) {
       timeStyle: "medium"
     }).format(timestamp)
     : "-";
+}
+
+function formatVector(value) {
+  if (!value || typeof value !== "object") return "-";
+  return [
+    Math.round(Number(value.x) || 0),
+    Math.round(Number(value.y) || 0),
+    Math.round(Number(value.z) || 0)
+  ].map((component) => component.toLocaleString("ko-KR")).join(", ");
 }
 
 function describeError(error) {

@@ -7,6 +7,8 @@ import {
 import {
   checkpointPlayerShip,
   getPlayerNavigationState,
+  listNavigationAdminHistory,
+  listNavigationAdminShips,
   listZoneShipPeers,
   overridePlayerNavigation,
   startPlayerNavigation
@@ -75,6 +77,18 @@ export default {
           url.searchParams.get("zone_id"),
           { excludedCharacterId: url.searchParams.get("excluded_character_id") }
         ));
+      }
+      if (request.method === "GET" && url.pathname === "/navigation/admin-ships") {
+        return json(await listNavigationAdminShips(env.WORLD_DB));
+      }
+      if (request.method === "GET" && url.pathname === "/navigation/history") {
+        return json(await listNavigationAdminHistory(env.WORLD_DB, {
+          shipUid: url.searchParams.get("ship_uid"),
+          ownerCharacterId: url.searchParams.get("owner_character_id"),
+          routeType: url.searchParams.get("route_type"),
+          status: url.searchParams.get("status"),
+          limit: url.searchParams.get("limit")
+        }));
       }
       return json({ error: "Not found." }, 404);
     } catch (error) {

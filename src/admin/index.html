@@ -130,13 +130,36 @@
       </section>
 
       <section class="section">
-        <div class="section-heading">
+        <div class="section-heading entity-heading">
           <div>
             <p class="eyebrow">NAVIGATION</p>
             <h2>Persistent ships</h2>
           </div>
+          <div class="filters">
+            <label>
+              <span>Search</span>
+              <input id="shipSearchFilter" type="search" autocomplete="off" placeholder="Pilot or ship UID">
+            </label>
+            <label>
+              <span>Mode</span>
+              <select id="shipModeFilter">
+                <option value="">All</option>
+                <option value="FIELD">Field</option>
+                <option value="DOCKED">Docked</option>
+                <option value="STORED">Stored</option>
+                <option value="BETA_SPACE">Beta Space</option>
+                <option value="DESTROYED">Destroyed</option>
+              </select>
+            </label>
+            <label>
+              <span>Sector</span>
+              <select id="shipSectorFilter">
+                <option value="">All</option>
+              </select>
+            </label>
+          </div>
         </div>
-        <div class="table-scroll entity-table-wrap">
+        <div class="table-scroll navigation-table-wrap">
           <table>
             <thead>
               <tr>
@@ -144,12 +167,71 @@
                 <th>Ship</th>
                 <th>Mode</th>
                 <th>Sector</th>
+                <th>Position</th>
+                <th>Speed</th>
                 <th>Phase</th>
                 <th>Route</th>
+                <th>Updated</th>
               </tr>
             </thead>
             <tbody id="shipRows"></tbody>
           </table>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading entity-heading">
+          <div>
+            <p class="eyebrow">MOVEMENT CONTRACTS</p>
+            <h2>Navigation history</h2>
+          </div>
+          <div class="filters">
+            <label>
+              <span>Ship</span>
+              <select id="historyShipFilter">
+                <option value="">All</option>
+              </select>
+            </label>
+            <label>
+              <span>Route</span>
+              <select id="historyRouteFilter">
+                <option value="">All</option>
+                <option value="standard">Standard</option>
+                <option value="hyperdrive">Hyperdrive</option>
+                <option value="deactivation">Deactivation</option>
+              </select>
+            </label>
+            <label>
+              <span>Status</span>
+              <select id="historyStatusFilter">
+                <option value="">All</option>
+                <option value="ACTIVE">Active</option>
+                <option value="ARRIVED">Arrived</option>
+                <option value="CANCELED">Canceled</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="table-scroll navigation-table-wrap history-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Issued</th>
+                <th>Pilot</th>
+                <th>Ship</th>
+                <th>Route</th>
+                <th>Status</th>
+                <th>From</th>
+                <th>Target</th>
+                <th>Phase</th>
+                <th>Resolved</th>
+              </tr>
+            </thead>
+            <tbody id="historyRows"></tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <span id="historyStatus">0 records</span>
         </div>
       </section>
 

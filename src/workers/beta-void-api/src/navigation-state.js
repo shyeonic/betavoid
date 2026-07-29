@@ -535,6 +535,9 @@ export async function listNavigationAdminShips(db, now = Date.now()) {
       : null;
     const derived = contract ? deriveMovementState(contract, now) : null;
     const position = derived?.position || ship.position;
+    const rotation = contract
+      ? rotationForMovement(contract, ship.rotation, derived.phase)
+      : ship.rotation;
     const zones = zoneFields(position);
     return {
       ship_uid: ship.ship_uid,
@@ -548,8 +551,83 @@ export async function listNavigationAdminShips(db, now = Date.now()) {
       route_type: contract?.routeType || null,
       contract_id: contract?.contractId || null,
       position,
+      rotation,
+      speed: derived?.speed ?? ship.speed,
+      desired_speed: derived?.desiredSpeed ?? ship.desired_speed,
+      active_contract: contract ? publicContract(contract) : null,
       revision: ship.revision,
+      checkpoint_at: ship.checkpoint_at,
       updated_at: ship.updated_at
+    };
+  });
+}
+
+export async function listNavigationAdminHistory(db, {
+  shipUid = null,
+  ownerCharacterId = null,
+  routeType = null,
+  status = null,
+  limit = 100,
+  now = Date.now()
+} = {}) {
+  await ensureWorldInitialized(db);
+  const conditions = ["c.world_id = ?"];
+  const values = [PRIMARY_WORLD_ID];
+  const normalizedShipUid = optionalAdminId(shipUid, "ship");
+  const normalizedOwner = optionalAdminId(ownerCharacterId, "character");
+  const normalizedRouteType = optionalRouteType(routeType);
+  const normalizedStatus = optionalMovementStatus(status);
+  const normalizedLimit = Math.max(1, Math.min(200, Math.floor(Number(limit) || 100)));
+
+  if (normalizedShipUid) {
+    conditions.push("c.ship_uid = ?");
+    values.push(normalizedShipUid);
+  }
+  if (normalizedOwner) {
+    conditions.push("c.owner_character_id = ?");
+    values.push(normalizedOwner);
+  }
+  if (normalizedRouteType) {
+    conditions.push("c.route_type = ?");
+    values.push(normalizedRouteType);
+  }
+  if (normalizedStatus) {
+    conditions.push("c.status = ?");
+    values.push(normalizedStatus);
+  }
+  values.push(normalizedLimit);
+
+  const result = await db.prepare(`
+    SELECT
+      c.*,
+      s.display_name AS ship_display_name,
+      s.ship_definition_id AS current_ship_definition_id,
+      s.spatial_mode AS current_spatial_mode
+    FROM movement_contracts c
+    LEFT JOIN ship_locations s ON s.ship_uid = c.ship_uid
+    WHERE ${conditions.join(" AND ")}
+    ORDER BY c.issued_at DESC, c.contract_id DESC
+    LIMIT ?
+  `).bind(...values).all();
+
+  return (result?.results || []).map((row) => {
+    const contract = contractFromRow(row);
+    const resolvedAt = contract.status === "CANCELED"
+      ? contract.canceledAt || contract.updatedAt
+      : contract.status === "ARRIVED"
+        ? contract.arriveAt
+        : now;
+    const derived = deriveMovementState(contract, resolvedAt);
+    return {
+      ...publicContract(contract),
+      owner_character_id: contract.ownerCharacterId,
+      ship_uid: contract.shipUid,
+      display_name: row.ship_display_name || contract.ownerCharacterId,
+      ship_definition_id: row.current_ship_definition_id || contract.shipDefinitionId,
+      current_spatial_mode: row.current_spatial_mode || null,
+      resolved_position: derived.position,
+      resolved_speed: derived.speed,
+      resolved_phase: derived.phase
     };
   });
 }
@@ -1104,6 +1182,25 @@ function normalizeRouteType(value) {
     throw navigationError(400, "MOVEMENT_ROUTE_INVALID", "Unknown movement route type.");
   }
   return routeType;
+}
+
+function optionalRouteType(value) {
+  if (value == null || String(value).trim() === "") return null;
+  return normalizeRouteType(value);
+}
+
+function optionalMovementStatus(value) {
+  if (value == null || String(value).trim() === "") return null;
+  const status = String(value).trim().toUpperCase();
+  if (!["ACTIVE", "CANCELED", "ARRIVED"].includes(status)) {
+    throw navigationError(400, "MOVEMENT_STATUS_INVALID", "Unknown movement status.");
+  }
+  return status;
+}
+
+function optionalAdminId(value, label) {
+  if (value == null || String(value).trim() === "") return null;
+  return requiredId(value, label);
 }
 
 function normalizeShipDefinitionId(value) {
