@@ -61,12 +61,19 @@ export class OnlineApiClient {
     return normalizeNavigationState(payload?.navigation);
   }
 
-  async checkpointNavigation({ clientActionId, expectedRevision, ship, keepalive = false }) {
+  async checkpointNavigation({
+    clientActionId,
+    expectedRevision,
+    checkpointKind = "SNAPSHOT",
+    ship,
+    keepalive = false
+  }) {
     const payload = await this.request("/v1/navigation/checkpoint", {
       method: "POST",
       body: {
         client_action_id: clientActionId,
         expected_revision: expectedRevision,
+        checkpoint_kind: checkpointKind,
         ship
       },
       keepalive

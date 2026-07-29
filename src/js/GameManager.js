@@ -6,6 +6,10 @@ import { DialogueManager } from "./DialogueManager.js";
 import { HyperdriveWarpLayer } from "./HyperdriveWarpLayer.js";
 import { CONFIG, CONTROL_SETTINGS, DEFAULT_KEY_BINDINGS, KEY_BINDING_GROUPS } from "./config.js";
 import { MinimapManager } from "./MinimapManager.js";
+import {
+  ManualMovementSettlementTracker,
+  isManualMovementActive
+} from "./manualMovementSettlement.js";
 import { deriveMovementState } from "./navigationKinematics.js";
 import { OnlinePresenceClient } from "./OnlinePresenceClient.js";
 import { RemotePlayerManager } from "./RemotePlayerManager.js";
@@ -236,10 +240,7 @@ export class GameManager {
     this.presenceZoneId = null;
     this.presenceRouteSignature = null;
     this.presenceSequence = 0;
-    this.presenceLastPublishedAt = 0;
-    this.presenceLastSample = null;
-    this.presencePublishInterval = 1000;
-    this.presenceIdlePublishInterval = 15000;
+    this.manualSettlementTracker = new ManualMovementSettlementTracker();
     this.fieldShipRefreshInterval = 5000;
     this.fieldShipLastRefreshedAt = 0;
     this.fieldShipRefreshPending = false;
@@ -390,9 +391,7 @@ export class GameManager {
     this.betaVoidLifecycleLastCheckedAt = 0;
     this.betaVoidLifecyclePending = false;
     this.betaVoidLifecycleInterval = 30000;
-    this.playerShipSaveLastUpdatedAt = 0;
-    this.playerShipSavePending = false;
-    this.playerShipSaveInterval = 30000;
+    this.playerShipSavePendingCount = 0;
     this._lastFrameTimestamp = 0;
     this._frameIntervalMs = FRAME_INTERVAL_MS;
     this._lastRenderAt = 0;
@@ -2102,11 +2101,13 @@ export class GameManager {
         if (document.visibilityState === "hidden") {
           this._commitPreflightSnapshot();
           this._commitDeactivationNavLog();
+          this.setOnlinePresenceUnavailable();
         } else if (document.visibilityState === "visible") {
           this._resolvePreflightSnapshot();
           this._resolveDeactivationNavLog();
           this._resolveHyperdriveWarp();
           this._snapToActiveNavLog();
+          this.updateOnlinePresence({ force: true });
         }
       }
     };
@@ -2427,6 +2428,7 @@ export class GameManager {
     }
 
     const renderScale = Number(this.worldConfig.renderScale) || 0.01;
+    this.manualSettlementTracker.reset();
     const derived = contract
       ? deriveMovementState(contract, state.serverTime)
       : {
@@ -3187,7 +3189,6 @@ export class GameManager {
     // Warp ended (arrival or cancel): revert from warp ambience to the destination's location BGM.
     if (wasHyperdrive) this.refreshBgm();
     if (shouldOverrideServer) this.recordAuthoritativeManualOverride();
-    if (!inBetaSpace && !completed) this.savePlayerShipState({ force: true });
     if (!inBetaSpace && completed) {
       setTimeout(() => {
         void this.worldDataManager.refreshNavigationState()
@@ -4471,14 +4472,14 @@ export class GameManager {
       this.updatePosition(dt);
     }
     this.syncWorldRuntimeWithPlayer();
-    this.updateOnlinePresence();
+    const manualStoppedState = this.updateManualMovementSettlement();
+    this.updateOnlinePresence({ manualStoppedState });
     if (this.isBetaSpaceActive() && this.updateBetaSpaceState()) return;
     this.updateCamera(dt);
     this.updateStars();
     this.worldMapManager.update(dt);
     this.updateShipAnimations(dt);
     if (this.miningSession) this.updateMiningHeartbeat(dt);
-    this.savePlayerShipState();
   }
 
   buildPlayerShipSavePayload() {
@@ -4507,6 +4508,38 @@ export class GameManager {
       speed: state.speed / renderScale,
       desired_speed: state.desiredSpeed / renderScale
     };
+  }
+
+  updateManualMovementSettlement() {
+    const eligible = !this.isDocked()
+      && !this.isBetaSpaceActive()
+      && !this.worldDataResetting
+      && !this._deactivationLog
+      && this.state.autopilotPhase === null;
+    const controlActive = [...this.activeActions, ...this.cameraControl.touchDpadActions]
+      .some((action) => (
+        action === "throttleUp"
+        || action === "throttleDown"
+        || this.isManualControlAction(action)
+      ));
+    const moving = isManualMovementActive({
+      autopilotPhase: this.state.autopilotPhase,
+      speed: this.state.speed,
+      desiredSpeed: this.state.desiredSpeed,
+      controlActive
+    });
+    const stopped = this.manualSettlementTracker.observe({ eligible, moving });
+    if (!stopped) return null;
+
+    const shipState = this.buildPlayerShipSavePayload();
+    shipState.speed = 0;
+    shipState.desiredSpeed = 0;
+    void this.savePlayerShipState({
+      force: true,
+      shipState,
+      checkpointKind: "MANUAL_STOPPED"
+    });
+    return shipState;
   }
 
   recordAuthoritativeNavigationStart(
@@ -4573,15 +4606,19 @@ export class GameManager {
     }, 10000);
   }
 
-  updateOnlinePresence({ force = false } = {}) {
+  updateOnlinePresence({ force = false, manualStoppedState = null } = {}) {
     if (!this.presenceClient || !this.remotePlayerManager || !this.worldMapManager?.snapshot) return;
+    if (document.visibilityState === "hidden") {
+      this.setOnlinePresenceUnavailable();
+      return;
+    }
     if (this.isDocked() || this.isBetaSpaceActive() || this.worldDataResetting) {
       this.setOnlinePresenceUnavailable();
       return;
     }
 
     const now = Date.now();
-    const dataPosition = this.getPlayerDataPosition();
+    const dataPosition = manualStoppedState?.position || this.getPlayerDataPosition();
     const zoneId = this.getPresenceZoneId(dataPosition);
     if (!zoneId) {
       this.setOnlinePresenceUnavailable();
@@ -4592,7 +4629,6 @@ export class GameManager {
     if (zoneChanged) {
       this.presenceZoneId = zoneId;
       this.presenceRouteSignature = null;
-      this.presenceLastSample = null;
       this.remotePlayerManager.clear();
       this.presenceClient.ensureZone(zoneId, {
         worldId: this.worldBootstrap.worldId
@@ -4611,59 +4647,20 @@ export class GameManager {
     }
 
     this.presenceRouteSignature = null;
-    const previous = this.presenceLastSample;
-    const positionDelta = previous
-      ? this.getDataDistance(dataPosition, previous.position)
-      : Infinity;
-    const rotationDot = previous
-      ? Math.abs(
-          this.ship.quaternion.x * previous.rotation.x
-          + this.ship.quaternion.y * previous.rotation.y
-          + this.ship.quaternion.z * previous.rotation.z
-          + this.ship.quaternion.w * previous.rotation.w
-        )
-      : 0;
-    const motionActive = Math.abs(this.state.speed) > 0.05
-      || Math.abs(this.state.desiredSpeed) > 0.05
-      || positionDelta * this.worldConfig.renderScale > 2
-      || rotationDot < 0.9999
-      || [...this.activeActions].some((action) => this.isManualControlAction(action));
-    const publishInterval = motionActive
-      ? this.presencePublishInterval
-      : this.presenceIdlePublishInterval;
-    if (!force && now - this.presenceLastPublishedAt < publishInterval) return;
-
-    const elapsedSec = previous ? Math.max(0.001, (now - previous.at) / 1000) : 0;
-    const velocity = previous
-      ? {
-          x: (dataPosition.x - previous.position.x) / elapsedSec,
-          y: (dataPosition.y - previous.position.y) / elapsedSec,
-          z: (dataPosition.z - previous.position.z) / elapsedSec
-        }
-      : { x: 0, y: 0, z: 0 };
-    this.presenceLastSample = {
-      at: now,
-      position: { ...dataPosition },
-      rotation: {
-        x: this.ship.quaternion.x,
-        y: this.ship.quaternion.y,
-        z: this.ship.quaternion.z,
-        w: this.ship.quaternion.w
-      }
+    if (!force && !manualStoppedState) return;
+    const rotation = manualStoppedState?.rotation || {
+      x: this.ship.quaternion.x,
+      y: this.ship.quaternion.y,
+      z: this.ship.quaternion.z,
+      w: this.ship.quaternion.w
     };
-    this.presenceLastPublishedAt = now;
     this.presenceClient.publishPose({
       seq: ++this.presenceSequence,
       ship_id: this.selectedShipId,
       position: dataPosition,
-      rotation: {
-        x: this.ship.quaternion.x,
-        y: this.ship.quaternion.y,
-        z: this.ship.quaternion.z,
-        w: this.ship.quaternion.w
-      },
-      velocity,
-      speed: this.state.speed
+      rotation,
+      velocity: { x: 0, y: 0, z: 0 },
+      speed: manualStoppedState ? 0 : this.state.speed
     });
   }
 
@@ -4748,30 +4745,35 @@ export class GameManager {
     if (!this.presenceZoneId && this.presenceClient?.state === "disconnected") return;
     this.presenceZoneId = null;
     this.presenceRouteSignature = null;
-    this.presenceLastSample = null;
     this.fieldShipLastRefreshedAt = 0;
     this.presenceClient?.disconnect();
     this.remotePlayerManager?.clear();
   }
 
-  async savePlayerShipState({ force = false } = {}) {
+  savePlayerShipState({
+    force = false,
+    shipState = null,
+    checkpointKind = "SNAPSHOT"
+  } = {}) {
     if (this.isBetaSpaceActive() || this.isDocked()) return;
     if (this._deactivationLog) return;
     if (!force && this.state.autopilotPhase !== null) return;
-    if (!this.worldDataManager.db || this.playerShipSavePending || this.worldDataResetting) return;
+    if (!this.worldDataManager.db || this.worldDataResetting) return;
 
-    const now = performance.now();
-    if (!force && now - this.playerShipSaveLastUpdatedAt < this.playerShipSaveInterval) return;
-    this.playerShipSaveLastUpdatedAt = now;
-    this.playerShipSavePending = true;
-
-    try {
-      await this.worldDataManager.savePlayerShipState(this.buildPlayerShipSavePayload());
-    } catch {
-      this.ui.showErrorToast("player ship state save failed");
-    } finally {
-      this.playerShipSavePending = false;
-    }
+    const snapshot = shipState || this.buildPlayerShipSavePayload();
+    this.playerShipSavePendingCount += 1;
+    return this.worldDataManager.savePlayerShipState(snapshot, { checkpointKind })
+      .then((savedState) => {
+        this.navigationRecordFailed = false;
+        return savedState;
+      })
+      .catch((error) => {
+        this.handleNavigationRecordFailure(error);
+        return null;
+      })
+      .finally(() => {
+        this.playerShipSavePendingCount = Math.max(0, this.playerShipSavePendingCount - 1);
+      });
   }
 
   async clearAllData() {
@@ -4867,7 +4869,7 @@ export class GameManager {
 
   async waitForPendingPlayerShipSave() {
     const startedAt = performance.now();
-    while (this.playerShipSavePending && performance.now() - startedAt < 1500) {
+    while (this.playerShipSavePendingCount > 0 && performance.now() - startedAt < 1500) {
       await new Promise((resolve) => window.setTimeout(resolve, 50));
     }
   }

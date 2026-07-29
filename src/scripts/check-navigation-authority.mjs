@@ -33,14 +33,39 @@ const checkpoint = await request("/navigation/checkpoint", {
     character_id: characterId,
     client_action_id: checkpointAction,
     expected_revision: initial.ship.revision,
+    checkpoint_kind: "MANUAL_STOPPED",
     ship: {
       position: initial.ship.position,
       rotation: initial.ship.rotation,
-      speed: 0,
-      desired_speed: 0
+      speed: 500,
+      desired_speed: -500
     }
   }
 });
+assert.equal(checkpoint.ship.speed, 0);
+assert.equal(checkpoint.ship.desired_speed, 0);
+
+await assert.rejects(
+  request("/navigation/checkpoint", {
+    method: "POST",
+    body: {
+      character_id: characterId,
+      client_action_id: `unreachable-${characterId}`,
+      expected_revision: checkpoint.ship.revision,
+      checkpoint_kind: "MANUAL_STOPPED",
+      ship: {
+        position: {
+          ...checkpoint.ship.position,
+          x: checkpoint.ship.position.x + 100_000_000
+        },
+        rotation: checkpoint.ship.rotation,
+        speed: 0,
+        desired_speed: 0
+      }
+    }
+  }),
+  (error) => error?.code === "MANUAL_POSITION_OUT_OF_RANGE"
+);
 
 const target = {
   ...checkpoint.ship.position,

@@ -12,6 +12,8 @@ const PRIMARY_WORLD_ID = "primary";
 const FIELD_MODE = "FIELD";
 const MAX_COORDINATE = 1_000_000_000;
 const MAX_ID_LENGTH = 180;
+const MANUAL_STOPPED_CHECKPOINT = "MANUAL_STOPPED";
+const SNAPSHOT_CHECKPOINT = "SNAPSHOT";
 
 export async function getPlayerNavigationState(db, context, now = Date.now()) {
   return publicNavigationState(await getPlayerNavigationStateInternal(db, context, now));
@@ -34,6 +36,9 @@ export async function startPlayerNavigation(db, context, body, now = Date.now())
   const anchor = state.activeContract
     ? movementAnchor(state.ship, state.activeContract, now)
     : observedAnchor(body?.observed_ship, state.ship, physics);
+  if (!state.activeContract) {
+    assertManualPositionReachable(state.ship, anchor.position, physics, now);
+  }
   const routeType = normalizeRouteType(body?.route_type);
   const plan = routeType === "standard"
     ? createStandardMovementPlan({
@@ -317,6 +322,7 @@ export async function overridePlayerNavigation(db, context, body, now = Date.now
 
 export async function checkpointPlayerShip(db, context, body, now = Date.now()) {
   const clientActionId = requiredId(body?.client_action_id, "client action");
+  const checkpointKind = normalizeCheckpointKind(body?.checkpoint_kind);
   const receipt = await getCommandReceipt(db, clientActionId, context.characterId);
   if (receipt) return receipt;
 
@@ -326,7 +332,11 @@ export async function checkpointPlayerShip(db, context, body, now = Date.now()) 
     throw navigationError(409, "MOVEMENT_ACTIVE", "Manual checkpoint is unavailable during navigation.");
   }
   const physics = getShipPhysics(state.ship.ship_definition_id);
-  const anchor = observedAnchor(body?.ship, state.ship, physics);
+  const observed = observedAnchor(body?.ship, state.ship, physics);
+  assertManualPositionReachable(state.ship, observed.position, physics, now);
+  const anchor = checkpointKind === MANUAL_STOPPED_CHECKPOINT
+    ? { ...observed, speed: 0, desiredSpeed: 0 }
+    : observed;
   const zones = zoneFields(anchor.position);
   const nextRevision = state.ship.revision + 1;
   const nextShip = {
@@ -385,7 +395,7 @@ export async function checkpointPlayerShip(db, context, body, now = Date.now()) 
     createReceiptInsert(db, {
       clientActionId,
       ownerCharacterId: context.characterId,
-      commandType: "MOVE_CHECKPOINT",
+      commandType: checkpointKind,
       response,
       now,
       shipUid: state.ship.ship_uid,
@@ -891,6 +901,40 @@ function observedAnchor(value, ship, physics) {
       physics.maxSpeed
     )
   };
+}
+
+function assertManualPositionReachable(ship, position, physics, now) {
+  const elapsedSeconds = Math.max(0, (now - Number(ship.checkpoint_at || now)) / 1000);
+  const forwardSpeed = Math.max(
+    Math.abs(Number(physics.minSpeed) || 0),
+    Math.abs(Number(physics.maxSpeed) || 0)
+  );
+  const maximumCombinedSpeed = Math.hypot(
+    forwardSpeed,
+    Math.abs(Number(physics.strafeRate) || 0),
+    Math.abs(Number(physics.verticalRate) || 0)
+  );
+  const networkGraceSeconds = 2;
+  const fixedBuffer = Math.max((Number(physics.arrivalRadius) || 0) * 2, 1);
+  const allowance = maximumCombinedSpeed * (elapsedSeconds + networkGraceSeconds) + fixedBuffer;
+  const distance = Math.hypot(
+    Number(position.x) - Number(ship.position.x),
+    Number(position.y) - Number(ship.position.y),
+    Number(position.z) - Number(ship.position.z)
+  );
+  if (distance > allowance) {
+    throw navigationError(
+      409,
+      "MANUAL_POSITION_OUT_OF_RANGE",
+      "Manual settlement is outside the reachable movement range."
+    );
+  }
+}
+
+function normalizeCheckpointKind(value) {
+  if (value == null || value === "") return SNAPSHOT_CHECKPOINT;
+  if (value === MANUAL_STOPPED_CHECKPOINT || value === SNAPSHOT_CHECKPOINT) return value;
+  throw navigationError(400, "CHECKPOINT_KIND_INVALID", "Unsupported checkpoint kind.");
 }
 
 function getShipPhysics(shipDefinitionId) {

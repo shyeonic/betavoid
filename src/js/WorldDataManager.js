@@ -2476,7 +2476,7 @@ export class WorldDataManager {
     return state;
   }
 
-  async savePlayerShipState(state) {
+  async savePlayerShipState(state, { checkpointKind = "SNAPSHOT" } = {}) {
     const characterId = state.player_id || DEFAULT_CHARACTER_ID;
     this.assertServerCharacter(characterId);
     const position = this.normalizeVector(state.position);
@@ -2503,6 +2503,7 @@ export class WorldDataManager {
         this.onlineApi.checkpointNavigation({
           clientActionId: actionId,
           expectedRevision: current.ship.revision,
+          checkpointKind,
           ship: {
             position: nextState.position,
             rotation: nextState.rotation,

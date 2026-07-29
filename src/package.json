@@ -5,6 +5,7 @@
     "generate:world-template": "node scripts/generate-world-template.mjs",
     "check:admin-layout": "node scripts/check-admin-layout.mjs",
     "check:admin-navigation": "node scripts/check-admin-navigation.mjs",
+    "check:manual-settlement": "node scripts/check-manual-movement-settlement.mjs",
     "check:navigation": "node scripts/check-navigation-kinematics.mjs",
     "check:navigation-authority": "node scripts/check-navigation-authority.mjs"
   },
