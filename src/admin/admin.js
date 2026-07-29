@@ -7,6 +7,7 @@ const api = new OnlineApiClient({ identity });
 const elements = Object.fromEntries(
   [
     "adminIdentity",
+    "activeRouteMetric",
     "appShell",
     "authMessage",
     "authView",
@@ -23,6 +24,7 @@ const elements = Object.fromEntries(
     "entityTypeFilter",
     "errorBanner",
     "generatedValue",
+    "fieldShipMetric",
     "nextButton",
     "pageStatus",
     "previousButton",
@@ -36,6 +38,7 @@ const elements = Object.fromEntries(
     "seedValue",
     "signInButton",
     "signOutButton",
+    "shipRows",
     "storageMetric",
     "worldIdValue"
   ].map((id) => [id, document.getElementById(id)])
@@ -44,6 +47,7 @@ const elements = Object.fromEntries(
 const state = {
   admin: null,
   summary: null,
+  ships: [],
   entities: [],
   nextCursor: "",
   cursor: "",
@@ -122,8 +126,12 @@ async function refreshDashboard() {
   setLoading(true);
   clearError();
   try {
-    state.summary = await api.getAdminWorldSummary();
+    [state.summary, state.ships] = await Promise.all([
+      api.getAdminWorldSummary(),
+      api.listAdminNavigationShips()
+    ]);
     renderSummary();
+    renderShips();
     await resetAndLoadEntities();
     setConnectionStatus("온라인", true);
   } catch (error) {
@@ -159,12 +167,14 @@ async function loadEntities() {
 }
 
 function renderSummary() {
-  const { world, counts, sectors } = state.summary || {};
+  const { world, counts, sectors, navigation } = state.summary || {};
   elements.revisionMetric.textContent = formatNumber(world?.revision);
   elements.resourceMetric.textContent = formatNumber(counts?.resource_nodes);
   elements.buildingMetric.textContent = formatNumber(counts?.buildings);
   elements.betaVoidMetric.textContent = formatNumber(counts?.beta_voids);
   elements.storageMetric.textContent = formatNumber(counts?.world_storages);
+  elements.fieldShipMetric.textContent = formatNumber(navigation?.field_ships);
+  elements.activeRouteMetric.textContent = formatNumber(navigation?.active_movements);
   elements.worldIdValue.textContent = world?.world_id || "-";
   elements.seedValue.textContent = world?.seed || "-";
   elements.dataSourceValue.textContent = world?.data_source_key || "-";
@@ -193,6 +203,21 @@ function renderSummary() {
     elements.sectorFilter.value = previousValue;
   }
   updateRebuildButton();
+}
+
+function renderShips() {
+  elements.shipRows.replaceChildren(
+    ...state.ships.map((ship) => {
+      const row = document.createElement("tr");
+      appendCell(row, ship.display_name || ship.owner_character_id);
+      appendCell(row, ship.ship_definition_id);
+      appendCell(row, ship.spatial_mode);
+      appendCell(row, ship.sector_id || ship.chunk_id || "-");
+      appendCell(row, ship.phase || "-");
+      appendCell(row, ship.route_type || "-");
+      return row;
+    })
+  );
 }
 
 function renderEntities() {

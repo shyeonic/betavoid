@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { installFirebaseAuthMock } from "./_pw-firebase-auth-mock.mjs";
-import { withWorldAuthoritySnapshot } from "./_pw-world-authority-fixture.mjs";
+import {
+  createNavigationResponse,
+  withWorldAuthoritySnapshot
+} from "./_pw-world-authority-fixture.mjs";
 
 const baseUrl = process.env.BETA_VOID_TEST_BASE_URL || "http://127.0.0.1:4173";
 const now = Date.now();
@@ -82,6 +85,11 @@ let serverState = {
   docking: null,
   updated_at: now
 };
+let navigationResponse = createNavigationResponse({
+  characterId,
+  shipUid: activeShipUid,
+  serverTime: now
+});
 
 const browser = await chromium.launch({ headless: true });
 
@@ -90,7 +98,7 @@ try {
   const restored = await loadSecondSession();
 
   assert.equal(serverState.assets_revision, 2);
-  assert.equal(serverState.ship_revision, 1);
+  assert.equal(navigationResponse.navigation.ship.revision, 2);
   assert.equal(serverState.assets.profile.display_name, "Server Pilot");
   assert.equal(restored.displayName, "Server Pilot");
   assert.equal(restored.oreQuantity, 7);
@@ -172,6 +180,10 @@ async function handleApiRoute(route) {
   if (url.pathname === "/v1/player/state" && request.method() === "GET") {
     return respond({ ok: true, state: serverState, server_time: Date.now() });
   }
+  if (url.pathname === "/v1/navigation/state" && request.method() === "GET") {
+    navigationResponse.navigation.server_time = Date.now();
+    return respond(navigationResponse);
+  }
   if (url.pathname === "/v1/player/assets" && request.method() === "POST") {
     const body = request.postDataJSON();
     if (body.expected_revision !== serverState.assets_revision) {
@@ -186,20 +198,65 @@ async function handleApiRoute(route) {
     };
     return respond({ ok: true, state: serverState, server_time: Date.now() });
   }
-  if (url.pathname === "/v1/player/ship-state" && request.method() === "POST") {
+  if (url.pathname === "/v1/navigation/checkpoint" && request.method() === "POST") {
     const body = request.postDataJSON();
-    serverState = {
-      ...serverState,
-      ship_revision: serverState.ship_revision + 1,
-      ship_state: {
-        ...body.ship_state,
-        key: `playerShip:${characterId}`,
-        player_id: characterId,
-        updated_at: Date.now()
-      },
-      updated_at: Date.now()
-    };
-    return respond({ ok: true, state: serverState, server_time: Date.now() });
+    if (body.expected_revision !== navigationResponse.navigation.ship.revision) {
+      return respond({
+        ok: false,
+        error: "MOVEMENT_REVISION_CONFLICT",
+        message: "conflict"
+      }, 409);
+    }
+    const updatedAt = Date.now();
+    navigationResponse = createNavigationResponse({
+      characterId,
+      shipUid: activeShipUid,
+      position: body.ship.position,
+      rotation: body.ship.rotation,
+      revision: navigationResponse.navigation.ship.revision + 1,
+      serverTime: updatedAt
+    });
+    navigationResponse.navigation.ship.speed = body.ship.speed;
+    navigationResponse.navigation.ship.desired_speed = body.ship.desired_speed;
+    return respond({
+      ...navigationResponse,
+      navigation: {
+        ...navigationResponse.navigation,
+        server_time: updatedAt
+      }
+    });
+  }
+  if (url.pathname === "/v1/space/ships" && request.method() === "GET") {
+    return respond({
+      ok: true,
+      zone_id: url.searchParams.get("zone_id"),
+      server_time: Date.now(),
+      peers: []
+    });
+  }
+  if (url.pathname === "/v1/navigation/manual-override" && request.method() === "POST") {
+    return respond({
+      ...navigationResponse,
+      navigation: {
+        ...navigationResponse.navigation,
+        active_contract: null,
+        server_time: Date.now()
+      }
+    });
+  }
+  if (url.pathname === "/v1/navigation/start" && request.method() === "POST") {
+    return respond({
+      ok: false,
+      error: "TEST_NAVIGATION_UNEXPECTED",
+      message: "unexpected navigation start"
+    }, 400);
+  }
+  if (url.pathname === "/v1/player/ship-state" && request.method() === "POST") {
+    return respond({
+      ok: false,
+      error: "LEGACY_SHIP_STATE_FORBIDDEN",
+      message: "legacy ship state must not be used"
+    }, 400);
   }
   if (url.pathname === "/v1/profile" && request.method() === "POST") {
     const body = request.postDataJSON();

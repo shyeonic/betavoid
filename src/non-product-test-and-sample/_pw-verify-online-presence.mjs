@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { installFirebaseAuthMock } from "./_pw-firebase-auth-mock.mjs";
-import { withWorldAuthoritySnapshot } from "./_pw-world-authority-fixture.mjs";
+import {
+  createNavigationResponse,
+  withWorldAuthoritySnapshot
+} from "./_pw-world-authority-fixture.mjs";
 
 const baseUrl = process.env.BETA_VOID_TEST_BASE_URL || "http://127.0.0.1:4173";
 const now = Date.now();
@@ -91,6 +94,23 @@ async function run() {
     assert.equal(routeSnapshot.route.action_id, routeResult.actionId);
     assert.equal(routeSnapshot.route.route_type, "standard");
     assert.equal(hub.protocolChecks, 2);
+
+    await alpha.context.close();
+    alpha.closed = true;
+    hub.disconnect(users[0].characterId);
+    await beta.page.waitForFunction((characterId) => {
+      const manager = window.__betaVoidGame?.remotePlayerManager;
+      const state = manager?.peers?.get(characterId);
+      return manager?.getPeerCount() === 1
+        && Boolean(state?.fieldPeer)
+        && !state?.presencePeer
+        && Boolean(state?.root?.visible);
+    }, users[0].characterId, { timeout: 10_000 });
+    const persistent = await beta.page.evaluate((characterId) => (
+      window.__betaVoidGame.remotePlayerManager.getPeerSnapshot(characterId)
+    ), users[0].characterId);
+    assert.equal(persistent.visible, true);
+    assert.equal(persistent.shipId, "ship_01");
     console.log("online presence two-browser test passed");
   } catch (error) {
     const diagnostics = await Promise.all(sessions.map(async ({ page, user, errors }) => ({
@@ -111,7 +131,7 @@ async function run() {
     }, null, 2));
     throw error;
   } finally {
-    await Promise.all(sessions.map(({ context }) => context.close()));
+    await Promise.all(sessions.filter((session) => !session.closed).map(({ context }) => context.close()));
     await browser.close();
   }
 }
@@ -137,6 +157,11 @@ async function openSession(browser, hub, user) {
     (socket) => hub.connect(user, socket)
   );
   let state = createPlayerState(user);
+  let navigation = createNavigationResponse({
+    characterId: user.characterId,
+    displayName: user.displayName,
+    serverTime: now
+  });
   await page.route("https://beta-void-api.infira-2025.workers.dev/v1/**", async (route) => {
     const request = route.request();
     assert.equal(request.headers().authorization, `Bearer ${user.token}`);
@@ -153,14 +178,56 @@ async function openSession(browser, hub, user) {
     if (url.pathname === "/v1/player/state" && request.method() === "GET") {
       return respond({ ok: true, state, server_time: Date.now() });
     }
-    if (url.pathname === "/v1/player/ship-state" && request.method() === "POST") {
-      state = {
-        ...state,
-        ship_revision: state.ship_revision + 1,
-        ship_state: request.postDataJSON().ship_state,
-        updated_at: Date.now()
-      };
-      return respond({ ok: true, state, server_time: Date.now() });
+    if (url.pathname === "/v1/navigation/state" && request.method() === "GET") {
+      navigation.navigation.server_time = Date.now();
+      return respond(navigation);
+    }
+    if (
+      url.pathname === "/v1/navigation/start"
+      || url.pathname === "/v1/navigation/checkpoint"
+      || url.pathname === "/v1/navigation/manual-override"
+    ) {
+      navigation = createNavigationResponse({
+        characterId: user.characterId,
+        displayName: user.displayName,
+        position: navigation.navigation.ship.position,
+        rotation: navigation.navigation.ship.rotation,
+        revision: navigation.navigation.ship.revision + 1,
+        serverTime: Date.now()
+      });
+      return respond(navigation);
+    }
+    if (url.pathname === "/v1/space/ships" && request.method() === "GET") {
+      const other = users.find((candidate) => candidate.characterId !== user.characterId);
+      const otherNavigation = createNavigationResponse({
+        characterId: other.characterId,
+        displayName: other.displayName,
+        serverTime: Date.now()
+      }).navigation;
+      return respond({
+        ok: true,
+        zone_id: url.searchParams.get("zone_id"),
+        server_time: Date.now(),
+        peers: [{
+          character_id: other.characterId,
+          display_name: other.displayName,
+          ship_id: "ship_01",
+          ship_uid: otherNavigation.ship.ship_uid,
+          zone_id: url.searchParams.get("zone_id"),
+          updated_at: Date.now(),
+          source: "authority",
+          pose: {
+            seq: otherNavigation.ship.revision,
+            ship_id: "ship_01",
+            position: otherNavigation.ship.position,
+            rotation: otherNavigation.ship.rotation,
+            velocity: { x: 0, y: 0, z: 0 },
+            speed: 0,
+            server_at: Date.now()
+          },
+          route: null
+        }]
+      });
     }
     if (url.pathname === "/v1/player/assets" && request.method() === "POST") {
       const body = request.postDataJSON();
@@ -291,7 +358,8 @@ class MockPresenceHub {
       type: "hello",
       zone_id: "test",
       server_at: Date.now(),
-      peers: existing
+      peers: existing,
+      field_peers: []
     }));
     this.broadcast({
       type: "peer_joined",
@@ -357,6 +425,15 @@ class MockPresenceHub {
     for (const [characterId, client] of this.clients) {
       if (characterId !== excludedCharacterId) client.socket.send(message);
     }
+  }
+
+  disconnect(characterId) {
+    if (!this.clients.delete(characterId)) return;
+    this.broadcast({
+      type: "peer_left",
+      server_at: Date.now(),
+      character_id: characterId
+    }, characterId);
   }
 }
 

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { deriveMovementState } from "./navigationKinematics.js";
 
 const MANUAL_EXTRAPOLATION_LIMIT_SEC = 2;
 const POSITION_SMOOTHING_RATE = 8;
@@ -22,6 +23,8 @@ export class RemotePlayerManager {
     this.registerStylizedRenderTarget = registerStylizedRenderTarget;
     this.unregisterStylizedRenderTarget = unregisterStylizedRenderTarget;
     this.peers = new Map();
+    this.fieldPeerIds = new Set();
+    this.presencePeerIds = new Set();
     this.disposed = false;
     this.scratch = {
       dataPosition: new THREE.Vector3(),
@@ -37,11 +40,12 @@ export class RemotePlayerManager {
   handlePresenceMessage(message) {
     if (!message || typeof message !== "object") return;
     if (message.type === "hello") {
-      this.replacePeers(message.peers || []);
+      this.replaceFieldPeers(message.field_peers || []);
+      this.replacePresencePeers(message.peers || []);
       return;
     }
     if (message.type === "peer_left") {
-      this.removePeer(message.character_id);
+      this.removePeerSource(message.character_id, "presence");
       return;
     }
     if (
@@ -49,32 +53,53 @@ export class RemotePlayerManager {
       || message.type === "peer_pose"
       || message.type === "peer_route"
     ) {
-      this.upsertPeer(message.peer);
+      this.upsertPeer(message.peer, "presence");
     }
   }
 
   replacePeers(peers) {
-    const incomingIds = new Set(peers.map((peer) => peer?.character_id).filter(Boolean));
-    for (const characterId of this.peers.keys()) {
-      if (!incomingIds.has(characterId)) this.removePeer(characterId);
-    }
-    peers.forEach((peer) => this.upsertPeer(peer));
+    this.replacePresencePeers(peers);
   }
 
-  upsertPeer(peer) {
+  replacePresencePeers(peers) {
+    this.replacePeerSource(peers, "presence");
+  }
+
+  replaceFieldPeers(peers) {
+    this.replacePeerSource(peers, "field");
+  }
+
+  replacePeerSource(peers, source) {
+    const incomingIds = new Set(peers.map((peer) => peer?.character_id).filter(Boolean));
+    const sourceIds = source === "field" ? this.fieldPeerIds : this.presencePeerIds;
+    for (const characterId of [...sourceIds]) {
+      if (!incomingIds.has(characterId)) this.removePeerSource(characterId, source);
+    }
+    peers.forEach((peer) => this.upsertPeer(peer, source));
+  }
+
+  upsertPeer(peer, source = "presence") {
     const characterId = String(peer?.character_id || "");
     if (!characterId) return;
     const previous = this.peers.get(characterId);
-    if (previous && Number(peer.updated_at) < Number(previous.peer.updated_at)) return;
+    const sourceKey = source === "field" ? "fieldPeer" : "presencePeer";
+    if (
+      previous?.[sourceKey]
+      && Number(peer.updated_at) < Number(previous[sourceKey].updated_at)
+    ) {
+      return;
+    }
 
     const state = previous || this.createPeerState(characterId);
-    state.peer = {
-      ...(state.peer || {}),
+    state[sourceKey] = {
+      ...(state[sourceKey] || {}),
       ...peer,
-      pose: peer.pose ?? state.peer?.pose ?? null,
-      route: peer.route === null ? null : (peer.route ?? state.peer?.route ?? null)
+      pose: peer.pose ?? state[sourceKey]?.pose ?? null,
+      route: peer.route === null ? null : (peer.route ?? state[sourceKey]?.route ?? null)
     };
+    state.peer = this.selectEffectivePeer(state);
     this.peers.set(characterId, state);
+    (source === "field" ? this.fieldPeerIds : this.presencePeerIds).add(characterId);
 
     const shipId = this.resolveShipId(state.peer.ship_id);
     if (state.shipId !== shipId) {
@@ -88,6 +113,8 @@ export class RemotePlayerManager {
     return {
       characterId,
       peer: null,
+      fieldPeer: null,
+      presencePeer: null,
       root: null,
       model: null,
       label: null,
@@ -95,6 +122,16 @@ export class RemotePlayerManager {
       loadRevision: 0,
       initialized: false
     };
+  }
+
+  selectEffectivePeer(state) {
+    if (state.fieldPeer?.route?.authority) {
+      return {
+        ...(state.presencePeer || {}),
+        ...state.fieldPeer
+      };
+    }
+    return state.presencePeer || state.fieldPeer;
   }
 
   ensurePeerRoot(state) {
@@ -181,6 +218,45 @@ export class RemotePlayerManager {
   }
 
   deriveRouteTarget(route, fallbackPose, now) {
+    if (route.authority) {
+      const derived = deriveMovementState(route, now);
+      this.scratch.dataPosition.set(
+        Number(derived.position?.x) || 0,
+        Number(derived.position?.y) || 0,
+        Number(derived.position?.z) || 0
+      );
+      const position = this.toRenderVector(this.scratch.dataPosition);
+      const quaternion = this.scratch.targetQuaternion;
+      const heading = route.heading;
+      if (derived.phase !== "stopping" && heading) {
+        this.scratch.routeDirection.set(
+          Number(heading.x) || 0,
+          Number(heading.y) || 0,
+          Number(heading.z) || 0
+        );
+        if (this.scratch.routeDirection.lengthSq() > 1e-9) {
+          this.scratch.lookMatrix.lookAt(
+            this.scratch.routeDirection.normalize(),
+            this.scratch.origin,
+            this.scratch.up
+          );
+          quaternion.setFromRotationMatrix(this.scratch.lookMatrix).normalize();
+        } else {
+          quaternion.identity();
+        }
+      } else if (fallbackPose?.rotation) {
+        quaternion.set(
+          Number(fallbackPose.rotation.x) || 0,
+          Number(fallbackPose.rotation.y) || 0,
+          Number(fallbackPose.rotation.z) || 0,
+          Number.isFinite(Number(fallbackPose.rotation.w)) ? Number(fallbackPose.rotation.w) : 1
+        ).normalize();
+      } else {
+        quaternion.identity();
+      }
+      return { position, quaternion };
+    }
+
     const from = route.from_position || fallbackPose?.position;
     const target = route.target;
     if (!from || !target) return fallbackPose ? this.derivePeerTarget({ pose: fallbackPose }, now) : null;
@@ -235,6 +311,27 @@ export class RemotePlayerManager {
     }
     disposePlayerLabel(state.label);
     this.peers.delete(characterId);
+    this.fieldPeerIds.delete(characterId);
+    this.presencePeerIds.delete(characterId);
+  }
+
+  removePeerSource(characterId, source) {
+    const state = this.peers.get(characterId);
+    const sourceIds = source === "field" ? this.fieldPeerIds : this.presencePeerIds;
+    sourceIds.delete(characterId);
+    if (!state) return;
+    if (source === "field") state.fieldPeer = null;
+    else state.presencePeer = null;
+    state.peer = this.selectEffectivePeer(state);
+    if (!state.peer) {
+      this.removePeer(characterId);
+      return;
+    }
+    const shipId = this.resolveShipId(state.peer.ship_id);
+    if (state.shipId !== shipId) {
+      state.shipId = shipId;
+      void this.loadPeerModel(state);
+    }
   }
 
   clear() {

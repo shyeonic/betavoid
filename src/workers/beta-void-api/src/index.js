@@ -9,6 +9,15 @@ import {
   listWorldAdminEntities,
   rebuildWorldState
 } from "./world-state.js";
+import {
+  checkpointPlayerShip,
+  getNavigationAdminSummary,
+  getPlayerNavigationState,
+  listNavigationAdminShips,
+  listZoneShipPeers,
+  overridePlayerNavigation,
+  startPlayerNavigation
+} from "./navigation-state.js";
 export { PresenceShard } from "./presence-shard.js";
 
 const FIREBASE_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -61,8 +70,18 @@ export default {
 
       if (url.pathname === "/v1/admin/world/summary" && request.method === "GET") {
         requireAdmin(await requireFirebaseUser(request, env), env);
-        const summary = await getWorldAdminSummary(env.WORLD_DB);
+        const [summary, navigation] = await Promise.all([
+          getWorldAdminSummary(env.WORLD_DB),
+          getNavigationAdminSummary(env.WORLD_DB)
+        ]);
+        summary.navigation = navigation;
         return json({ ok: true, summary, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/admin/navigation/ships" && request.method === "GET") {
+        requireAdmin(await requireFirebaseUser(request, env), env);
+        const ships = await listNavigationAdminShips(env.WORLD_DB);
+        return json({ ok: true, ships, server_time: Date.now() }, { request, env });
       }
 
       if (url.pathname === "/v1/admin/world/entities" && request.method === "GET") {
@@ -100,6 +119,10 @@ export default {
         const profile = await getOrCreatePlayerProfile(env.LEGACY_DB, auth);
         const body = await readJsonBody(request);
         const state = await commitPlayerAssets(env.LEGACY_DB, auth, profile, body);
+        await getPlayerNavigationState(
+          env.WORLD_DB,
+          navigationContextFromPlayerState(profile, state)
+        );
         return json({ ok: true, state, server_time: Date.now() }, { request, env });
       }
 
@@ -109,6 +132,57 @@ export default {
         const body = await readJsonBody(request);
         const state = await savePlayerShipState(env.LEGACY_DB, auth, profile, body);
         return json({ ok: true, state, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/navigation/state" && request.method === "GET") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const navigation = await getPlayerNavigationState(env.WORLD_DB, context);
+        return json({ ok: true, navigation }, { request, env });
+      }
+
+      if (url.pathname === "/v1/navigation/start" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const navigation = await startPlayerNavigation(
+          env.WORLD_DB,
+          context,
+          await readJsonBody(request)
+        );
+        return json({ ok: true, navigation }, { request, env });
+      }
+
+      if (url.pathname === "/v1/navigation/manual-override" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const navigation = await overridePlayerNavigation(
+          env.WORLD_DB,
+          context,
+          await readJsonBody(request)
+        );
+        return json({ ok: true, navigation }, { request, env });
+      }
+
+      if (url.pathname === "/v1/navigation/checkpoint" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const navigation = await checkpointPlayerShip(
+          env.WORLD_DB,
+          context,
+          await readJsonBody(request)
+        );
+        return json({ ok: true, navigation }, { request, env });
+      }
+
+      if (url.pathname === "/v1/space/ships" && request.method === "GET") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const result = await listZoneShipPeers(
+          env.WORLD_DB,
+          url.searchParams.get("zone_id"),
+          { excludedCharacterId: context.characterId }
+        );
+        return json({ ok: true, ...result }, { request, env });
       }
 
       if (url.pathname === "/v1/presence/connect" && request.method === "GET") {
@@ -166,6 +240,23 @@ async function connectPresence(request, env, url) {
       "X-Beta-Void-Zone": zoneId
     }
   }));
+}
+
+async function getNavigationContext(env, auth) {
+  const profile = await getOrCreatePlayerProfile(env.LEGACY_DB, auth);
+  const state = await getOrCreatePlayerState(env.LEGACY_DB, auth, profile);
+  return navigationContextFromPlayerState(profile, state);
+}
+
+function navigationContextFromPlayerState(profile, state) {
+  return {
+    characterId: profile.character_id,
+    displayName: profile.display_name,
+    shipUid: state.assets?.profile?.active_ship_uid
+      || `ship-${profile.character_id}-ship_01-001`,
+    shipDefinitionId: state.assets?.profile?.selected_ship_id || "ship_01",
+    spatialMode: state.docking ? "DOCKED" : "FIELD"
+  };
 }
 
 async function requireFirebaseUser(request, env) {

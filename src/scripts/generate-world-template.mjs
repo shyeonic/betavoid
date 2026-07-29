@@ -102,6 +102,12 @@ try {
       seed: worldSeed,
       generatedAt
     });
+    const shipPhysics = Object.fromEntries(
+      Object.entries(gameData.shipDefinitions).map(([shipId, definition]) => [
+        shipId,
+        structuredClone(definition.specs)
+      ])
+    );
     return {
       schemaVersion: 1,
       templateEpoch: generatedAt,
@@ -113,7 +119,13 @@ try {
       buildings: generated.buildings,
       betaVoids: generated.betaVoids,
       resourceManager: generated.resourceManager,
-      buildingStorages: generated.stationInventories.buildingStorages
+      buildingStorages: generated.stationInventories.buildingStorages,
+      movementConfig: {
+        renderScale: gameData.worldConfig.renderScale,
+        chunkSize: gameData.worldConfig.chunkSize,
+        defaultShipId: gameData.defaultShipId,
+        shipPhysics
+      }
     };
   }, {
     generatedAt: WORLD_TEMPLATE_EPOCH,

@@ -83,10 +83,12 @@ export class WorldDataManager {
     gameData = null,
     onlineApi = null,
     playerState = null,
+    navigationState = null,
     worldBootstrap = null
   } = {}) {
     if (!gameData) throw new Error("WorldDataManager requires loaded gameData.");
     if (!onlineApi || !playerState) throw new Error("WorldDataManager requires server player state.");
+    if (!navigationState) throw new Error("WorldDataManager requires server navigation state.");
     if (!worldBootstrap) throw new Error("WorldDataManager requires a server world bootstrap.");
 
     this.gameData = gameData;
@@ -107,9 +109,11 @@ export class WorldDataManager {
     this.dataSourceKey = gameData.dataSourceKey || "game-data:unknown";
     this.onlineApi = onlineApi;
     this.playerServerState = normalizePlayerServerState(playerState);
+    this.navigationServerState = normalizeNavigationServerState(navigationState);
     this.worldBootstrap = normalizeWorldBootstrap(worldBootstrap);
     this.playerCacheHydrated = false;
     this.playerServerMutationChain = Promise.resolve();
+    this.navigationServerMutationChain = Promise.resolve();
     this.db = null;
     this.snapshot = null;
   }
@@ -2384,6 +2388,80 @@ export class WorldDataManager {
     return result;
   }
 
+  queueNavigationServerMutation(task) {
+    const result = this.navigationServerMutationChain.then(task);
+    this.navigationServerMutationChain = result.then(() => {}, () => {});
+    return result;
+  }
+
+  getNavigationState() {
+    return this.navigationServerState;
+  }
+
+  async refreshNavigationState() {
+    const state = normalizeNavigationServerState(await this.onlineApi.getNavigationState());
+    this.navigationServerState = state;
+    return state;
+  }
+
+  startNavigation({ clientActionId, routeType, target = null, observedShip }) {
+    return this.queueNavigationServerMutation(async () => {
+      const actionId = clientActionId || createClientActionId("nav");
+      const state = await this.runNavigationMutationWithRetry((current) => (
+        this.onlineApi.startNavigation({
+          clientActionId: actionId,
+          expectedRevision: current.ship.revision,
+          routeType,
+          target,
+          observedShip,
+          keepalive: routeType === "deactivation"
+        })
+      ));
+      this.navigationServerState = state;
+      return state;
+    });
+  }
+
+  manualOverrideNavigation({ clientActionId = null } = {}) {
+    return this.queueNavigationServerMutation(async () => {
+      const current = this.navigationServerState;
+      if (!current.activeContract) return current;
+      const actionId = clientActionId || createClientActionId("override");
+      const state = await this.runNavigationMutationWithRetry((latest) => {
+        if (!latest.activeContract) return latest;
+        return this.onlineApi.manualOverride({
+          clientActionId: actionId,
+          expectedRevision: latest.ship.revision,
+          contractId: latest.activeContract.contractId
+        });
+      });
+      this.navigationServerState = state;
+      return state;
+    });
+  }
+
+  async runNavigationMutationWithRetry(operation) {
+    const delays = [0, 1000, 3000];
+    let lastError = null;
+    for (let index = 0; index < delays.length; index += 1) {
+      if (delays[index] > 0) await wait(delays[index]);
+      try {
+        return normalizeNavigationServerState(await operation(this.navigationServerState));
+      } catch (error) {
+        lastError = error;
+        const retryable = error?.code === "MOVEMENT_REVISION_CONFLICT"
+          || error?.status >= 500
+          || !Number.isFinite(Number(error?.status))
+          || Number(error?.status) === 0;
+        if (!retryable || index === delays.length - 1) break;
+        if (error?.code === "MOVEMENT_REVISION_CONFLICT") {
+          await this.refreshNavigationState();
+        }
+      }
+    }
+    throw lastError || new Error("Navigation command failed.");
+  }
+
   assertServerCharacter(characterId) {
     if (characterId !== this.playerServerState.characterId) {
       throw new Error("Player state character does not match the authenticated character.");
@@ -2393,17 +2471,8 @@ export class WorldDataManager {
   async loadOrCreatePlayerShipState(characterId = DEFAULT_CHARACTER_ID) {
     this.assertServerCharacter(characterId);
     if (!this.playerCacheHydrated) await this.applyPlayerServerStateToCache(this.playerServerState);
-    const key = this.createPlayerShipStateKey(characterId);
-    let state = await this.getStoreValue("playerShip", key);
-    if (!state) {
-      state = this.createDefaultPlayerShipState(
-        this.playerServerState.serverTime || Date.now(),
-        this.snapshot?.sectors || [],
-        characterId
-      );
-      await this.savePlayerShipState(state);
-    }
-
+    const state = this.navigationStateToPlayerShipState(this.navigationServerState);
+    await this.putStoreValue("playerShip", state);
     return state;
   }
 
@@ -2427,13 +2496,46 @@ export class WorldDataManager {
       updated_at: Date.now()
     };
 
-    return this.queuePlayerServerMutation(async () => {
-      const serverState = normalizePlayerServerState(await this.onlineApi.savePlayerShipState(nextState));
-      this.playerServerState = serverState;
-      const savedState = serverState.shipState || nextState;
+    return this.queueNavigationServerMutation(async () => {
+      const actionId = createClientActionId("checkpoint");
+      const renderScale = Number(this.config.renderScale) || 0.01;
+      const serverState = await this.runNavigationMutationWithRetry((current) => (
+        this.onlineApi.checkpointNavigation({
+          clientActionId: actionId,
+          expectedRevision: current.ship.revision,
+          ship: {
+            position: nextState.position,
+            rotation: nextState.rotation,
+            speed: nextState.speed / renderScale,
+            desired_speed: nextState.desiredSpeed / renderScale
+          }
+        })
+      ));
+      this.navigationServerState = serverState;
+      const savedState = this.navigationStateToPlayerShipState(serverState);
       await this.putStoreValue("playerShip", savedState);
       return savedState;
     });
+  }
+
+  navigationStateToPlayerShipState(state) {
+    const navigation = normalizeNavigationServerState(state);
+    const ship = navigation.ship;
+    const renderScale = Number(this.config.renderScale) || 0.01;
+    return {
+      key: this.createPlayerShipStateKey(navigation.characterId),
+      ship_id: ship.shipUid,
+      player_id: navigation.characterId,
+      position: { ...ship.position },
+      rotation: { ...ship.rotation },
+      chunk_id: ship.chunkId,
+      chunk: this.getChunkDataAtPosition(ship.position).chunk,
+      sector_id: ship.sectorId,
+      speed: ship.speed * renderScale,
+      desiredSpeed: ship.desiredSpeed * renderScale,
+      created_at: ship.checkpointAt || ship.updatedAt || navigation.serverTime,
+      updated_at: navigation.serverTime
+    };
   }
 
   async replaceWorldCache({ sectors, chunks, resourceNodes, buildings, betaVoids = [], meta, resourceManager, stationInventories = null }) {
@@ -3137,6 +3239,73 @@ function normalizePlayerServerState(value) {
   };
 }
 
+function normalizeNavigationServerState(value) {
+  const characterId = String(value?.characterId || "");
+  const ship = value?.ship;
+  const revision = Number(ship?.revision);
+  if (
+    !characterId
+    || !ship
+    || ship.ownerCharacterId !== characterId
+    || !ship.shipUid
+    || !Number.isInteger(revision)
+    || revision < 1
+  ) {
+    throw new Error("WorldDataManager received an invalid server navigation state.");
+  }
+  return {
+    characterId,
+    ship: {
+      ...ship,
+      position: normalizePlainVector(ship.position),
+      rotation: normalizePlainQuaternion(ship.rotation),
+      speed: Number(ship.speed) || 0,
+      desiredSpeed: Number(ship.desiredSpeed) || 0,
+      revision
+    },
+    activeContract: value.activeContract
+      ? {
+          ...value.activeContract,
+          startPosition: normalizePlainVector(value.activeContract.startPosition),
+          startHeading: normalizePlainVector(value.activeContract.startHeading),
+          fromPosition: normalizePlainVector(value.activeContract.fromPosition),
+          target: normalizePlainVector(value.activeContract.target),
+          heading: normalizePlainVector(value.activeContract.heading)
+        }
+      : null,
+    serverTime: Number(value.serverTime) || Date.now()
+  };
+}
+
+function normalizePlainVector(value) {
+  return {
+    x: Number(value?.x) || 0,
+    y: Number(value?.y) || 0,
+    z: Number(value?.z) || 0
+  };
+}
+
+function normalizePlainQuaternion(value) {
+  const quaternion = {
+    x: Number(value?.x) || 0,
+    y: Number(value?.y) || 0,
+    z: Number(value?.z) || 0,
+    w: Number.isFinite(Number(value?.w)) ? Number(value.w) : 1
+  };
+  const magnitude = Math.hypot(
+    quaternion.x,
+    quaternion.y,
+    quaternion.z,
+    quaternion.w
+  ) || 1;
+  return {
+    x: quaternion.x / magnitude,
+    y: quaternion.y / magnitude,
+    z: quaternion.z / magnitude,
+    w: quaternion.w / magnitude
+  };
+}
+
 function normalizeWorldBootstrap(value) {
   const source = value?.snapshot;
   const snapshot = {
@@ -3179,6 +3348,16 @@ function transactionDone(transaction) {
     transaction.onerror = () => reject(transaction.error || new Error("IndexedDB transaction failed."));
     transaction.onabort = () => reject(transaction.error || new Error("IndexedDB transaction aborted."));
   });
+}
+
+function createClientActionId(prefix) {
+  const suffix = globalThis.crypto?.randomUUID?.()
+    || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${suffix}`;
+}
+
+function wait(durationMs) {
+  return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
 function deleteIndexedDbByName(name) {

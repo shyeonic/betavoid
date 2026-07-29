@@ -74,10 +74,11 @@ async function startAuthenticatedGame() {
 
     try {
       gameDataPromise ||= loadGameData();
-      const [gameData, worldBootstrap, playerState] = await Promise.all([
+      const [gameData, worldBootstrap, playerState, navigationState] = await Promise.all([
         gameDataPromise,
         onlineApi.getWorldBootstrap(),
-        onlineApi.getPlayerState()
+        onlineApi.getPlayerState(),
+        onlineApi.getNavigationState()
       ]);
       console.info(`[game-data] loaded ${gameData.enabledChunks.length} enabled chunks from ${gameData.dataSetName}`);
 
@@ -87,6 +88,7 @@ async function startAuthenticatedGame() {
         identity,
         onlineApi,
         playerState,
+        navigationState,
         worldBootstrap
       });
       activeUid = identity.identity.uid;

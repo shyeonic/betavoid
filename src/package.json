@@ -3,7 +3,9 @@
   "scripts": {
     "build:pages": "node scripts/build-pages.mjs",
     "generate:world-template": "node scripts/generate-world-template.mjs",
-    "check:admin-layout": "node scripts/check-admin-layout.mjs"
+    "check:admin-layout": "node scripts/check-admin-layout.mjs",
+    "check:navigation": "node scripts/check-navigation-kinematics.mjs",
+    "check:navigation-authority": "node scripts/check-navigation-authority.mjs"
   },
   "devDependencies": {
     "playwright": "^1.60.0"

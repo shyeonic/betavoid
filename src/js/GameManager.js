@@ -6,6 +6,7 @@ import { DialogueManager } from "./DialogueManager.js";
 import { HyperdriveWarpLayer } from "./HyperdriveWarpLayer.js";
 import { CONFIG, CONTROL_SETTINGS, DEFAULT_KEY_BINDINGS, KEY_BINDING_GROUPS } from "./config.js";
 import { MinimapManager } from "./MinimapManager.js";
+import { deriveMovementState } from "./navigationKinematics.js";
 import { OnlinePresenceClient } from "./OnlinePresenceClient.js";
 import { RemotePlayerManager } from "./RemotePlayerManager.js";
 import { ResourceManager } from "./ResourceManager.js";
@@ -111,10 +112,12 @@ export class GameManager {
     identity = null,
     onlineApi = null,
     playerState = null,
+    navigationState = null,
     worldBootstrap = null
   }) {
     if (!gameData) throw new Error("GameManager requires loaded gameData.");
     if (!onlineApi || !playerState) throw new Error("GameManager requires server player state.");
+    if (!navigationState) throw new Error("GameManager requires server navigation state.");
     if (!worldBootstrap) throw new Error("GameManager requires a server world bootstrap.");
 
     this.root = root;
@@ -212,6 +215,7 @@ export class GameManager {
       gameData,
       onlineApi,
       playerState,
+      navigationState,
       worldBootstrap
     });
     this.betaSpaceManager = new BetaSpaceManager({
@@ -226,7 +230,7 @@ export class GameManager {
       identity: onlineApi.identity,
       onMessage: (message) => this.remotePlayerManager?.handlePresenceMessage(message),
       onStateChange: (state) => {
-        if (state === "disconnected") this.remotePlayerManager?.clear();
+        if (state === "disconnected") this.remotePlayerManager?.replacePresencePeers([]);
       }
     });
     this.presenceZoneId = null;
@@ -236,6 +240,9 @@ export class GameManager {
     this.presenceLastSample = null;
     this.presencePublishInterval = 1000;
     this.presenceIdlePublishInterval = 15000;
+    this.fieldShipRefreshInterval = 5000;
+    this.fieldShipLastRefreshedAt = 0;
+    this.fieldShipRefreshPending = false;
     this.targetingOverlay = new TargetingOverlay({
       canvas: this.ui.elements.targetingCanvas,
       frameStyle: this.getEnvironmentPreset().targeting.frame
@@ -2182,6 +2189,13 @@ export class GameManager {
   }
 
   async restorePlayerShipState() {
+    const authoritativeState = this.worldDataManager.getNavigationState();
+    if (!this.isDocked() && authoritativeState) {
+      this.applyAuthoritativeNavigationState(authoritativeState);
+      this.resetInitialCamera();
+      return;
+    }
+
     const [playerShipState, navLogs] = await Promise.all([
       this.worldDataManager.loadOrCreatePlayerShipState(this.characterId),
       this.worldDataManager.getNavLogs(10)
@@ -2391,6 +2405,115 @@ export class GameManager {
     this._snapToActiveNavLog();
 
     this.resetInitialCamera();
+  }
+
+  applyAuthoritativeNavigationState(navigationState, {
+    expectedClientActionId = null
+  } = {}) {
+    const state = navigationState;
+    const contract = state?.activeContract || null;
+    if (
+      expectedClientActionId
+      && contract?.clientActionId !== expectedClientActionId
+    ) {
+      return false;
+    }
+    if (
+      expectedClientActionId
+      && this.activeNavLogId !== expectedClientActionId
+      && this.hyperdriveLogId !== expectedClientActionId
+    ) {
+      return false;
+    }
+
+    const renderScale = Number(this.worldConfig.renderScale) || 0.01;
+    const derived = contract
+      ? deriveMovementState(contract, state.serverTime)
+      : {
+          position: state.ship.position,
+          speed: state.ship.speed,
+          desiredSpeed: state.ship.desiredSpeed,
+          phase: state.ship.phase
+        };
+    const position = this.worldMapManager.toRenderVector(derived.position);
+    this.ship.position.copy(position);
+    this.ship.quaternion.set(
+      Number(state.ship.rotation?.x) || 0,
+      Number(state.ship.rotation?.y) || 0,
+      Number(state.ship.rotation?.z) || 0,
+      Number.isFinite(Number(state.ship.rotation?.w)) ? Number(state.ship.rotation.w) : 1
+    ).normalize();
+    this.state.speed = (Number(derived.speed) || 0) * renderScale;
+    this.state.desiredSpeed = (Number(derived.desiredSpeed) || 0) * renderScale;
+    this.state.autopilotPhase = null;
+    this.state.autopilotPeakSpeed = 0;
+    this.navTarget = null;
+    this.activeNavLogId = null;
+    this.activeNavLog = null;
+    this.hyperdriveLogId = null;
+    this.hyperdriveLog = null;
+    this.isHyperdrive = false;
+    this.targetMarker.visible = false;
+
+    if (!contract) return true;
+
+    const localTimeOffset = Date.now() - Number(state.serverTime || Date.now());
+    const from = this.worldMapManager.toRenderVector(contract.fromPosition);
+    const target = this.worldMapManager.toRenderVector(contract.target);
+    const toLocalTime = (timestamp) => Number(timestamp || 0) + localTimeOffset;
+    this.navTarget = target;
+    this.targetMarker.visible = true;
+    this.targetMarker.position.copy(target);
+
+    if (contract.routeType === "standard") {
+      this.activeNavLogId = contract.clientActionId || contract.contractId;
+      this.activeNavLog = {
+        type: "standard",
+        from_position: { x: from.x, y: from.y, z: from.z },
+        target: { x: target.x, y: target.y, z: target.z },
+        flight_start_at: toLocalTime(contract.flightAt),
+        peak_speed: contract.peakSpeed * renderScale,
+        flight_duration: contract.flightDuration
+      };
+      this.state.autopilotPeakSpeed = contract.peakSpeed * renderScale;
+      this.state.autopilotPhase = derived.phase;
+      return true;
+    }
+
+    if (contract.routeType === "hyperdrive") {
+      const heading = contract.heading || { x: 0, y: 0, z: 1 };
+      this.hyperdriveLogId = contract.clientActionId || contract.contractId;
+      this.hyperdriveLog = {
+        type: "hyperdrive",
+        issued_at: toLocalTime(contract.issuedAt),
+        from_position: { x: from.x, y: from.y, z: from.z },
+        target: { x: target.x, y: target.y, z: target.z },
+        heading_at_jump: { ...heading },
+        stop_start_at: toLocalTime(contract.stopStartAt),
+        align_start_at: toLocalTime(contract.alignStartAt),
+        cooldown_start_at: toLocalTime(contract.cooldownStartAt),
+        jump_start_at: toLocalTime(contract.flightAt),
+        stop_duration: contract.stopDuration,
+        align_duration: contract.alignDuration,
+        cooldown_duration: contract.cooldownDuration,
+        warp_entry_duration: contract.warpEntryDuration,
+        warp_cruise_duration: contract.warpCruiseDuration,
+        warp_exit_duration: contract.warpExitDuration,
+        flight_duration: contract.flightDuration,
+        committed: state.serverTime >= contract.flightAt,
+        status: "active"
+      };
+      this.isHyperdrive = true;
+      this.state.autopilotPhase = derived.phase;
+      return true;
+    }
+
+    // v3.2 reconnect rule: resolve deterministic deactivation to the server time,
+    // then resume manual control from that exact server-derived point.
+    this.state.desiredSpeed = 0;
+    void this.worldDataManager.manualOverrideNavigation()
+      .catch((error) => this.handleNavigationRecordFailure(error));
+    return true;
   }
 
   waitForMinimumLoadingTime(startedAt) {
@@ -3007,7 +3130,11 @@ export class GameManager {
         flight_duration: flightDuration
       });
 
-      this.savePlayerShipState({ force: true });
+      this.recordAuthoritativeNavigationStart(
+        "standard",
+        { x, y, z },
+        this.activeNavLogId
+      );
       this.updateOnlinePresence({ force: true });
     }
   }
@@ -3016,6 +3143,9 @@ export class GameManager {
     const now = Date.now();
     const inBetaSpace = this.isBetaSpaceActive();
     const wasHyperdrive = this.isHyperdrive || !!this.hyperdriveLogId;
+    const shouldOverrideServer = !inBetaSpace
+      && !completed
+      && Boolean(this.hyperdriveLogId || this.activeNavLogId);
     if (this.hyperdriveLogId) {
       if (inBetaSpace) {
         this.betaSpaceManager.updateNavLog(this.betaSpaceSession, this.hyperdriveLogId, completed
@@ -3056,7 +3186,14 @@ export class GameManager {
     if (message && !(wasHyperdrive && message === "arrived")) this.ui.showToast(message);
     // Warp ended (arrival or cancel): revert from warp ambience to the destination's location BGM.
     if (wasHyperdrive) this.refreshBgm();
-    if (!inBetaSpace) this.savePlayerShipState({ force: true });
+    if (shouldOverrideServer) this.recordAuthoritativeManualOverride();
+    if (!inBetaSpace && !completed) this.savePlayerShipState({ force: true });
+    if (!inBetaSpace && completed) {
+      setTimeout(() => {
+        void this.worldDataManager.refreshNavigationState()
+          .catch((error) => this.handleNavigationRecordFailure(error));
+      }, 100);
+    }
     if (!inBetaSpace) this.updateOnlinePresence({ force: true });
   }
 
@@ -3077,7 +3214,10 @@ export class GameManager {
     this.navTarget = null;
     this.activeNavLog = null;
     this.targetMarker.visible = false;
-    if (!this.isBetaSpaceActive()) this.updateOnlinePresence({ force: true });
+    if (!this.isBetaSpaceActive()) {
+      this.recordAuthoritativeManualOverride();
+      this.updateOnlinePresence({ force: true });
+    }
   }
 
   initiateHyperdrive({ x, y, z }) {
@@ -3163,7 +3303,11 @@ export class GameManager {
     this.hyperdriveLog = log;
     this.hyperdriveLogId = this.worldDataManager.createHyperdriveNavLog(log);
 
-    this.savePlayerShipState({ force: true });
+    this.recordAuthoritativeNavigationStart(
+      "hyperdrive",
+      { x, y, z },
+      this.hyperdriveLogId
+    );
     this.updateOnlinePresence({ force: true });
   }
 
@@ -3654,6 +3798,12 @@ export class GameManager {
 
     const id = this.worldDataManager.createNavLog(log);
     this._deactivationLog = { ...log, id };
+    this.recordAuthoritativeNavigationStart(
+      "deactivation",
+      null,
+      id,
+      { desiredSpeed: vd }
+    );
   }
 
   _resolveDeactivationNavLog() {
@@ -3693,6 +3843,7 @@ export class GameManager {
     }
 
     void this.worldDataManager.updateNavLog(log.id, { status: "cancelled", cancelled_at: Date.now() });
+    this.recordAuthoritativeManualOverride();
   }
 
   _snapToActiveNavLog() {
@@ -4347,6 +4498,81 @@ export class GameManager {
     };
   }
 
+  buildObservedNavigationShip() {
+    const state = this.buildPlayerShipSavePayload();
+    const renderScale = Number(this.worldConfig.renderScale) || 0.01;
+    return {
+      position: state.position,
+      rotation: state.rotation,
+      speed: state.speed / renderScale,
+      desired_speed: state.desiredSpeed / renderScale
+    };
+  }
+
+  recordAuthoritativeNavigationStart(
+    routeType,
+    target,
+    clientActionId,
+    { desiredSpeed = null } = {}
+  ) {
+    const dataTarget = target
+      ? this.worldMapManager.toDataVector(new THREE.Vector3(
+          Number(target.x) || 0,
+          Number(target.y) || 0,
+          Number(target.z) || 0
+        ))
+      : null;
+    const observedShip = this.buildObservedNavigationShip();
+    if (desiredSpeed != null) {
+      const renderScale = Number(this.worldConfig.renderScale) || 0.01;
+      observedShip.desired_speed = Number(desiredSpeed) / renderScale;
+    }
+    void this.worldDataManager.startNavigation({
+      clientActionId,
+      routeType,
+      target: dataTarget
+        ? { x: dataTarget.x, y: dataTarget.y, z: dataTarget.z }
+        : null,
+      observedShip
+    }).then((state) => {
+      if (routeType !== "deactivation") {
+        this.applyAuthoritativeNavigationState(state, {
+          expectedClientActionId: clientActionId
+        });
+      }
+      this.navigationRecordFailed = false;
+    }).catch((error) => this.handleNavigationRecordFailure(error));
+  }
+
+  recordAuthoritativeManualOverride() {
+    void this.worldDataManager.manualOverrideNavigation()
+      .then(() => {
+        this.navigationRecordFailed = false;
+      })
+      .catch((error) => this.handleNavigationRecordFailure(error));
+  }
+
+  handleNavigationRecordFailure(error) {
+    console.error("[navigation] authoritative command failed.", error);
+    if (!this.navigationRecordFailed) {
+      this.ui.showErrorToast("navigation server record failed; offline state");
+    }
+    this.navigationRecordFailed = true;
+    clearTimeout(this.navigationRebaseTimer);
+    this.navigationRebaseTimer = setTimeout(async () => {
+      if (this.disposed) return;
+      try {
+        const state = await this.worldDataManager.refreshNavigationState();
+        this.applyAuthoritativeNavigationState(state);
+        this.navigationRecordFailed = false;
+        this.ui.showToast("navigation server reconnected");
+        this.updateOnlinePresence({ force: true });
+      } catch (reconnectError) {
+        console.warn("[navigation] server rebase retry failed.", reconnectError);
+      }
+    }, 10000);
+  }
+
   updateOnlinePresence({ force = false } = {}) {
     if (!this.presenceClient || !this.remotePlayerManager || !this.worldMapManager?.snapshot) return;
     if (this.isDocked() || this.isBetaSpaceActive() || this.worldDataResetting) {
@@ -4372,6 +4598,7 @@ export class GameManager {
         worldId: this.worldBootstrap.worldId
       });
     }
+    this.refreshAuthorityFieldShips(zoneId, { force: zoneChanged });
 
     const route = this.buildPresenceRoute(dataPosition, now);
     if (route) {
@@ -4450,6 +4677,29 @@ export class GameManager {
     return this.worldDataManager.getChunkDataAtPosition(dataPosition).chunk_id || null;
   }
 
+  refreshAuthorityFieldShips(zoneId, { force = false } = {}) {
+    const now = Date.now();
+    if (
+      this.fieldShipRefreshPending
+      || (!force && now - this.fieldShipLastRefreshedAt < this.fieldShipRefreshInterval)
+    ) {
+      return;
+    }
+    this.fieldShipRefreshPending = true;
+    this.fieldShipLastRefreshedAt = now;
+    void this.onlineApi.listZoneShips(zoneId)
+      .then((result) => {
+        if (this.presenceZoneId !== zoneId) return;
+        this.remotePlayerManager?.replaceFieldPeers(result.peers);
+      })
+      .catch((error) => {
+        console.warn("[navigation] field ship snapshot unavailable.", error);
+      })
+      .finally(() => {
+        this.fieldShipRefreshPending = false;
+      });
+  }
+
   buildPresenceRoute(dataPosition, now = Date.now()) {
     const hyperdrive = this.isHyperdrive && this.hyperdriveLog && this.hyperdriveLogId
       ? {
@@ -4499,12 +4749,14 @@ export class GameManager {
     this.presenceZoneId = null;
     this.presenceRouteSignature = null;
     this.presenceLastSample = null;
+    this.fieldShipLastRefreshedAt = 0;
     this.presenceClient?.disconnect();
     this.remotePlayerManager?.clear();
   }
 
   async savePlayerShipState({ force = false } = {}) {
     if (this.isBetaSpaceActive() || this.isDocked()) return;
+    if (this._deactivationLog) return;
     if (!force && this.state.autopilotPhase !== null) return;
     if (!this.worldDataManager.db || this.playerShipSavePending || this.worldDataResetting) return;
 
@@ -6965,6 +7217,7 @@ export class GameManager {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
+    clearTimeout(this.navigationRebaseTimer);
 
     if (this.boundEvents) {
       this.renderer.domElement.removeEventListener("pointerdown", this.boundEvents.pointerdown);

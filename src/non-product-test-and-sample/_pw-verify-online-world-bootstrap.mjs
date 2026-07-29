@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
-import { withWorldAuthoritySnapshot } from "./_pw-world-authority-fixture.mjs";
+import {
+  createNavigationResponse,
+  withWorldAuthoritySnapshot
+} from "./_pw-world-authority-fixture.mjs";
 
 const baseUrl = process.env.BETA_VOID_TEST_BASE_URL || "http://127.0.0.1:4173";
 const generatedAt = Date.now();
@@ -47,6 +50,12 @@ const playerStateResponse = {
   },
   server_time: generatedAt
 };
+const navigationResponse = createNavigationResponse({
+  characterId,
+  displayName: "Bootstrap Pilot",
+  shipUid: activeShipUid,
+  serverTime: generatedAt
+});
 
 const firebaseAppModule = `
   export function initializeApp(config) {
@@ -122,10 +131,31 @@ async function loadWorldInFreshContext({ preserveSetting = false } = {}) {
       body: JSON.stringify(playerStateResponse)
     });
   });
+  await context.route("https://beta-void-api.infira-2025.workers.dev/v1/navigation/state", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(navigationResponse)
+    });
+  });
 
   const page = await context.newPage();
+  const pageErrors = [];
+  page.on("response", (response) => {
+    if (response.status() >= 400) {
+      pageErrors.push(`${response.status()} ${response.url()}`);
+    }
+  });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") pageErrors.push(message.text());
+  });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => Boolean(window.__betaVoidGame), null, { timeout: 30_000 });
+  try {
+    await page.waitForFunction(() => Boolean(window.__betaVoidGame), null, { timeout: 30_000 });
+  } catch (error) {
+    console.error(JSON.stringify({ pageErrors }, null, 2));
+    throw error;
+  }
 
   const result = await page.evaluate(async ({ preserveSetting }) => {
     const manager = window.__betaVoidGame.worldDataManager;

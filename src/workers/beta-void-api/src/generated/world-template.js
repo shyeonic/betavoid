@@ -3552,5 +3552,58 @@ export const WORLD_TEMPLATE = {
       "created_at": 1767225600000,
       "updated_at": 1767225600000
     }
-  ]
+  ],
+  "movementConfig": {
+    "renderScale": 0.01,
+    "chunkSize": {
+      "x": 400000,
+      "y": 400000,
+      "z": 400000
+    },
+    "defaultShipId": "ship_01",
+    "shipPhysics": {
+      "ship_01": {
+        "maxSpeed": 100,
+        "minSpeed": -20,
+        "accelerationRate": 24,
+        "decelerationRate": 32,
+        "throttleAdjustRate": 36,
+        "arrivalRadius": 10,
+        "deactivationCoastDuration": 600,
+        "pitchRate": 1.45,
+        "yawRate": 1.55,
+        "rollRate": 1.8,
+        "strafeRate": 45,
+        "verticalRate": 45,
+        "hyperdriveSpecs": {
+          "cooldownDuration": 5,
+          "warpEntryDuration": 0.6,
+          "warpExitDuration": 0.6,
+          "warpMinFlightDuration": 5,
+          "warpFlightSpeed": 4000
+        }
+      },
+      "ship_02": {
+        "maxSpeed": 100,
+        "minSpeed": -20,
+        "accelerationRate": 24,
+        "decelerationRate": 32,
+        "throttleAdjustRate": 36,
+        "arrivalRadius": 10,
+        "deactivationCoastDuration": 600,
+        "pitchRate": 1.45,
+        "yawRate": 1.55,
+        "rollRate": 1.8,
+        "strafeRate": 45,
+        "verticalRate": 45,
+        "hyperdriveSpecs": {
+          "cooldownDuration": 5,
+          "warpEntryDuration": 0.6,
+          "warpExitDuration": 0.6,
+          "warpMinFlightDuration": 5,
+          "warpFlightSpeed": 4000
+        }
+      }
+    }
+  }
 };

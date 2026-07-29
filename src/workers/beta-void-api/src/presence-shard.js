@@ -1,3 +1,5 @@
+import { listZoneShipPeers } from "./navigation-state.js";
+
 const PROTOCOL = "beta-void.v1";
 const MAX_MESSAGE_BYTES = 8 * 1024;
 const MIN_POSE_INTERVAL_MS = 250;
@@ -41,12 +43,19 @@ export class PresenceShard {
     server.serializeAttachment(attachment);
 
     const peers = this.currentPeers(characterId);
+    const fieldPeers = this.env.WORLD_DB
+      ? (await listZoneShipPeers(this.env.WORLD_DB, zoneId, {
+          excludedCharacterId: characterId,
+          now
+        })).peers
+      : [];
     server.send(JSON.stringify({
       type: "hello",
       protocol: PROTOCOL,
       zone_id: zoneId,
       server_at: now,
-      peers
+      peers,
+      field_peers: fieldPeers
     }));
     this.broadcast({
       type: "peer_joined",

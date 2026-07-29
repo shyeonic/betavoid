@@ -43,6 +43,8 @@ function renderFixture() {
     buildingMetric: "31",
     betaVoidMetric: "10",
     storageMetric: "31",
+    fieldShipMetric: "24",
+    activeRouteMetric: "7",
     worldIdValue: "primary",
     seedValue: "beta-void-primary-v1",
     dataSourceValue: "v3.2-current-data",
@@ -68,6 +70,18 @@ function renderFixture() {
       `chunk-${index}`,
       "1",
       "2026. 7. 30."
+    ]));
+  }
+
+  const shipRows = document.getElementById("shipRows");
+  for (let index = 1; index <= 8; index += 1) {
+    shipRows.append(createRow([
+      `Pilot ${index}`,
+      "ship_01",
+      "FIELD",
+      `SEC-${String(index).padStart(3, "0")}`,
+      index % 2 ? "cruising" : "manual",
+      index % 2 ? "standard" : "-"
     ]));
   }
 

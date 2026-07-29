@@ -4,14 +4,7 @@ const PRIMARY_WORLD_ID = "primary";
 const TIMESTAMP_FLOOR = 1_000_000_000_000;
 
 export async function getOrCreateWorldState(db) {
-  if (!db) throw worldError(500, "WORLD_DB_UNAVAILABLE", "World database is unavailable.");
-
-  let worldRow = await selectWorld(db, PRIMARY_WORLD_ID);
-  if (!worldRow) {
-    await initializeWorld(db, Date.now());
-    worldRow = await selectWorld(db, PRIMARY_WORLD_ID);
-  }
-  if (!worldRow) throw worldError(500, "WORLD_BOOTSTRAP_UNAVAILABLE", "World bootstrap unavailable.");
+  const worldRow = await ensureWorldInitialized(db);
 
   const [entityResult, storageResult, metaResult] = await db.batch([
     db.prepare(`
@@ -33,7 +26,6 @@ export async function getOrCreateWorldState(db) {
       ORDER BY meta_key
     `).bind(PRIMARY_WORLD_ID)
   ]);
-
   const entities = {
     sector: [],
     resource_node: [],
@@ -66,6 +58,18 @@ export async function getOrCreateWorldState(db) {
       building_storages: (storageResult?.results || []).map((row) => parseState(row.state_json))
     }
   };
+}
+
+export async function ensureWorldInitialized(db) {
+  if (!db) throw worldError(500, "WORLD_DB_UNAVAILABLE", "World database is unavailable.");
+
+  let worldRow = await selectWorld(db, PRIMARY_WORLD_ID);
+  if (!worldRow) {
+    await initializeWorld(db, Date.now());
+    worldRow = await selectWorld(db, PRIMARY_WORLD_ID);
+  }
+  if (!worldRow) throw worldError(500, "WORLD_BOOTSTRAP_UNAVAILABLE", "World bootstrap unavailable.");
+  return worldRow;
 }
 
 export async function getWorldAdminSummary(db) {
