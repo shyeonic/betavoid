@@ -4,11 +4,17 @@ compatibility_date = "2025-06-01"
 
 [vars]
 FIREBASE_PROJECT_ID = "beta-void"
+BETA_VOID_ADMIN_EMAILS = "shyeon@infira.net,infira.2025@gmail.com"
 
 [[d1_databases]]
-binding = "DB"
+binding = "LEGACY_DB"
 database_name = "beta-void-dev"
 database_id = "2b8bfd4b-dbe4-4aa9-b624-b41008c5d963"
+
+[[d1_databases]]
+binding = "WORLD_DB"
+database_name = "beta-void-world-authority"
+database_id = "19ebae77-b775-48ef-8afd-6cc752239f61"
 
 [[durable_objects.bindings]]
 name = "PRESENCE"

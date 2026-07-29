@@ -30,6 +30,15 @@ const WORLD_STORES = Object.keys(WORLD_STORE_KEYPATHS);
 const PLAYER_STORES = Object.keys(PLAYER_STORE_KEYPATHS);
 const WORLD_STORE_SET = new Set(WORLD_STORES);
 const ALL_STORES = [...WORLD_STORES, ...PLAYER_STORES];
+const WORLD_CACHE_STORES = [
+  "sectors",
+  "chunks",
+  "resourceNodes",
+  "buildings",
+  "betaVoids",
+  "meta",
+  "buildingStorages"
+];
 // Narrow scope: player-asset stores touched by snapshot/mutation transactions.
 const PLAYER_ASSET_STORES = ["characterProfiles", "storageLocations", "quantityItems", "uniqueItems", "slotAssignments"];
 const PREVIOUS_PROJECT_NAMESPACE = ["void", "zero"].join("-");
@@ -152,13 +161,9 @@ export class WorldDataManager {
   }
 
   async loadOrCreateWorld() {
-    const meta = await this.getStoreValue("meta", "world");
-    if (!this.isWorldCacheCurrent(meta)) return this.createWorldCache();
-
-    await this.checkAndSpawnResources();
-    await this.processBetaVoidLifecycle();
-    this.snapshot = await this.getWorldSnapshot();
-    return this.snapshot;
+    // The authenticated server snapshot is the source. Rebuild the disposable
+    // browser cache on each session so stale local world mutations cannot win.
+    return this.createWorldCache();
   }
 
   isWorldCacheCurrent(meta) {
@@ -174,9 +179,50 @@ export class WorldDataManager {
 
   async createWorldCache() {
     const bootstrap = this.worldBootstrap;
-    const seed = bootstrap.seed;
-    const rng = createSeededRandom(seed);
+    const source = bootstrap.snapshot;
     const now = bootstrap.generatedAt;
+    const chunks = this.createWorldChunks(now);
+    const sectors = structuredClone(source.sectors);
+    const resourceNodes = structuredClone(source.resourceNodes);
+    const buildings = structuredClone(source.buildings);
+    const betaVoids = structuredClone(source.betaVoids);
+    const resourceManager = structuredClone(source.resourceManager);
+    const stationInventories = {
+      buildingStorages: structuredClone(source.buildingStorages)
+    };
+
+    this.assignObjectCounts(chunks, [...resourceNodes, ...buildings]);
+    const meta = {
+      key: "world",
+      seed: bootstrap.seed,
+      data_source_key: this.dataSourceKey,
+      data_source_name: this.gameData?.dataSetName || "static",
+      server_world_id: bootstrap.worldId,
+      server_data_source_key: bootstrap.dataSourceKey,
+      server_revision: bootstrap.revision,
+      generated_at: now
+    };
+
+    await this.replaceWorldCache({
+      sectors,
+      chunks,
+      resourceNodes,
+      buildings,
+      betaVoids,
+      meta,
+      resourceManager,
+      stationInventories
+    });
+    this.snapshot = await this.getWorldSnapshot();
+    return this.snapshot;
+  }
+
+  createGeneratedWorld({
+    seed = this.worldBootstrap.seed,
+    generatedAt = this.worldBootstrap.generatedAt
+  } = {}) {
+    const rng = createSeededRandom(seed);
+    const now = generatedAt;
     const chunks = this.createWorldChunks(now);
     const sectors = this.createSectors(now, rng, chunks);
     const placedObjects = [];
@@ -212,14 +258,10 @@ export class WorldDataManager {
       seed,
       data_source_key: this.dataSourceKey,
       data_source_name: this.gameData?.dataSetName || "static",
-      server_world_id: bootstrap.worldId,
-      server_data_source_key: bootstrap.dataSourceKey,
-      server_revision: bootstrap.revision,
       generated_at: now
     };
     const stationInventories = this.createInitialStationInventories(buildings, now);
-
-    await this.replaceWorldCache({
+    return {
       sectors,
       chunks,
       resourceNodes,
@@ -228,9 +270,7 @@ export class WorldDataManager {
       meta,
       resourceManager,
       stationInventories
-    });
-    this.snapshot = await this.getWorldSnapshot();
-    return this.snapshot;
+    };
   }
 
   createWorldChunks(createdAt) {
@@ -2398,8 +2438,8 @@ export class WorldDataManager {
 
   async replaceWorldCache({ sectors, chunks, resourceNodes, buildings, betaVoids = [], meta, resourceManager, stationInventories = null }) {
     // Rebuild only the server-derived world cache. Player preferences survive revisions.
-    const { transaction, stores } = this.openTx(WORLD_STORES, "readwrite");
-    WORLD_STORES.forEach((name) => stores[name].clear());
+    const { transaction, stores } = this.openTx(WORLD_CACHE_STORES, "readwrite");
+    WORLD_CACHE_STORES.forEach((name) => stores[name].clear());
     // worlds_*
     sectors.forEach((sector) => stores.sectors.put(sector));
     chunks.forEach((chunk) => stores.chunks.put(chunk));
@@ -3098,12 +3138,22 @@ function normalizePlayerServerState(value) {
 }
 
 function normalizeWorldBootstrap(value) {
+  const source = value?.snapshot;
+  const snapshot = {
+    sectors: Array.isArray(source?.sectors) ? source.sectors : [],
+    resourceNodes: Array.isArray(source?.resourceNodes) ? source.resourceNodes : [],
+    buildings: Array.isArray(source?.buildings) ? source.buildings : [],
+    betaVoids: Array.isArray(source?.betaVoids) ? source.betaVoids : [],
+    resourceManager: source?.resourceManager || null,
+    buildingStorages: Array.isArray(source?.buildingStorages) ? source.buildingStorages : []
+  };
   const normalized = {
     worldId: String(value?.worldId || ""),
     seed: String(value?.seed || ""),
     dataSourceKey: String(value?.dataSourceKey || ""),
     revision: Number(value?.revision),
-    generatedAt: Number(value?.generatedAt)
+    generatedAt: Number(value?.generatedAt),
+    snapshot
   };
 
   if (
@@ -3114,6 +3164,8 @@ function normalizeWorldBootstrap(value) {
     || normalized.revision < 1
     || !Number.isFinite(normalized.generatedAt)
     || normalized.generatedAt <= 0
+    || snapshot.sectors.length === 0
+    || !snapshot.resourceManager
   ) {
     throw new Error("WorldDataManager received an invalid server world bootstrap.");
   }

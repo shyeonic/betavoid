@@ -3,12 +3,17 @@ import {
   getOrCreatePlayerState,
   savePlayerShipState
 } from "./player-state.js";
+import {
+  getOrCreateWorldState,
+  getWorldAdminSummary,
+  listWorldAdminEntities,
+  rebuildWorldState
+} from "./world-state.js";
 export { PresenceShard } from "./presence-shard.js";
 
 const FIREBASE_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const KEY_CACHE_TTL_MS = 55 * 60 * 1000;
 const PRIMARY_WORLD_ID = "primary";
-const WORLD_DATA_SOURCE_KEY = "beta-void-world-v1";
 
 let keyCache = {
   expiresAt: 0,
@@ -30,36 +35,79 @@ export default {
 
       if (url.pathname === "/v1/me" && request.method === "GET") {
         const auth = await requireFirebaseUser(request, env);
-        const profile = await getOrCreatePlayerProfile(env.DB, auth);
+        const profile = await getOrCreatePlayerProfile(env.LEGACY_DB, auth);
         return json({ ok: true, auth, profile }, { request, env });
       }
 
       if (url.pathname === "/v1/world/bootstrap" && request.method === "GET") {
         await requireFirebaseUser(request, env);
-        const world = await getOrCreateWorldBootstrap(env.DB);
+        const world = await getOrCreateWorldState(env.WORLD_DB);
+        return json({ ok: true, world, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/admin/session" && request.method === "GET") {
+        const auth = requireAdmin(await requireFirebaseUser(request, env), env);
+        return json({
+          ok: true,
+          admin: {
+            uid: auth.uid,
+            email: auth.email,
+            name: auth.name,
+            picture: auth.picture
+          },
+          server_time: Date.now()
+        }, { request, env });
+      }
+
+      if (url.pathname === "/v1/admin/world/summary" && request.method === "GET") {
+        requireAdmin(await requireFirebaseUser(request, env), env);
+        const summary = await getWorldAdminSummary(env.WORLD_DB);
+        return json({ ok: true, summary, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/admin/world/entities" && request.method === "GET") {
+        requireAdmin(await requireFirebaseUser(request, env), env);
+        const result = await listWorldAdminEntities(env.WORLD_DB, {
+          entityType: url.searchParams.get("type"),
+          sectorId: url.searchParams.get("sector_id"),
+          cursor: url.searchParams.get("cursor"),
+          limit: url.searchParams.get("limit")
+        });
+        return json({ ok: true, ...result, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/admin/world/rebuild" && request.method === "POST") {
+        requireAdmin(await requireFirebaseUser(request, env), env);
+        const body = await readJsonBody(request);
+        if (body?.confirmation !== "REBUILD PRIMARY WORLD") {
+          throw httpError(400, "WORLD_REBUILD_CONFIRMATION_REQUIRED", "World rebuild confirmation is invalid.");
+        }
+        const world = await rebuildWorldState(env.WORLD_DB, {
+          expectedRevision: body?.expected_revision
+        });
         return json({ ok: true, world, server_time: Date.now() }, { request, env });
       }
 
       if (url.pathname === "/v1/player/state" && request.method === "GET") {
         const auth = await requireFirebaseUser(request, env);
-        const profile = await getOrCreatePlayerProfile(env.DB, auth);
-        const state = await getOrCreatePlayerState(env.DB, auth, profile);
+        const profile = await getOrCreatePlayerProfile(env.LEGACY_DB, auth);
+        const state = await getOrCreatePlayerState(env.LEGACY_DB, auth, profile);
         return json({ ok: true, state, server_time: Date.now() }, { request, env });
       }
 
       if (url.pathname === "/v1/player/assets" && request.method === "POST") {
         const auth = await requireFirebaseUser(request, env);
-        const profile = await getOrCreatePlayerProfile(env.DB, auth);
+        const profile = await getOrCreatePlayerProfile(env.LEGACY_DB, auth);
         const body = await readJsonBody(request);
-        const state = await commitPlayerAssets(env.DB, auth, profile, body);
+        const state = await commitPlayerAssets(env.LEGACY_DB, auth, profile, body);
         return json({ ok: true, state, server_time: Date.now() }, { request, env });
       }
 
       if (url.pathname === "/v1/player/ship-state" && request.method === "POST") {
         const auth = await requireFirebaseUser(request, env);
-        const profile = await getOrCreatePlayerProfile(env.DB, auth);
+        const profile = await getOrCreatePlayerProfile(env.LEGACY_DB, auth);
         const body = await readJsonBody(request);
-        const state = await savePlayerShipState(env.DB, auth, profile, body);
+        const state = await savePlayerShipState(env.LEGACY_DB, auth, profile, body);
         return json({ ok: true, state, server_time: Date.now() }, { request, env });
       }
 
@@ -70,7 +118,7 @@ export default {
       if (url.pathname === "/v1/profile" && request.method === "POST") {
         const auth = await requireFirebaseUser(request, env);
         const body = await readJsonBody(request);
-        const profile = await upsertPlayerProfile(env.DB, auth, {
+        const profile = await upsertPlayerProfile(env.LEGACY_DB, auth, {
           displayName: normalizeDisplayName(body?.displayName)
         });
         return json({ ok: true, profile }, { request, env });
@@ -97,8 +145,8 @@ async function connectPresence(request, env, url) {
   }
 
   const auth = await requireFirebaseWebSocketUser(request, env);
-  const profile = await getOrCreatePlayerProfile(env.DB, auth);
-  const state = await getOrCreatePlayerState(env.DB, auth, profile);
+  const profile = await getOrCreatePlayerProfile(env.LEGACY_DB, auth);
+  const state = await getOrCreatePlayerState(env.LEGACY_DB, auth, profile);
   const worldId = normalizePresenceId(url.searchParams.get("world_id") || PRIMARY_WORLD_ID, "world");
   const zoneId = normalizePresenceId(url.searchParams.get("zone_id"), "zone");
   const shipId = normalizePresenceId(
@@ -191,6 +239,7 @@ async function verifyFirebaseIdToken(token, projectId) {
     email: payload.email || null,
     name: payload.name || null,
     picture: payload.picture || null,
+    emailVerified: payload.email_verified === true,
     isAnonymous: payload.firebase?.sign_in_provider === "anonymous"
   };
 }
@@ -231,34 +280,6 @@ async function getOrCreatePlayerProfile(db, auth) {
   return upsertPlayerProfile(db, auth, { displayName: auth.name || "Pilot" });
 }
 
-async function getOrCreateWorldBootstrap(db) {
-  const now = Date.now();
-  const seed = crypto.randomUUID();
-  const [, selected] = await db.batch([
-    db.prepare(`
-      INSERT OR IGNORE INTO world_instances (
-        world_id,
-        seed,
-        data_source_key,
-        revision,
-        generated_at,
-        created_at,
-        updated_at
-      )
-      VALUES (?, ?, ?, 1, ?, ?, ?)
-    `).bind(PRIMARY_WORLD_ID, seed, WORLD_DATA_SOURCE_KEY, now, now, now),
-    db.prepare(`
-      SELECT world_id, seed, data_source_key, revision, generated_at, created_at, updated_at
-      FROM world_instances
-      WHERE world_id = ?
-    `).bind(PRIMARY_WORLD_ID)
-  ]);
-
-  const row = selected?.results?.[0];
-  if (!row) throw httpError(500, "WORLD_BOOTSTRAP_UNAVAILABLE", "World bootstrap unavailable.");
-  return normalizeWorldRow(row);
-}
-
 async function upsertPlayerProfile(db, auth, { displayName }) {
   const now = Date.now();
   const characterId = characterIdFromUid(auth.uid);
@@ -292,6 +313,20 @@ function normalizePresenceId(value, label) {
     throw httpError(400, "PRESENCE_ZONE_INVALID", `Invalid presence ${label}.`);
   }
   return text;
+}
+
+function requireAdmin(auth, env) {
+  const allowedEmails = new Set(
+    String(env?.BETA_VOID_ADMIN_EMAILS || "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const email = String(auth?.email || "").trim().toLowerCase();
+  if (!email || !auth.emailVerified || !allowedEmails.has(email)) {
+    throw httpError(403, "ADMIN_REQUIRED", "Administrator access is required.");
+  }
+  return auth;
 }
 
 async function readJsonBody(request) {
@@ -348,18 +383,6 @@ function normalizeProfileRow(row) {
     is_anonymous: Boolean(row.is_anonymous),
     created_at: row.created_at,
     updated_at: row.updated_at
-  };
-}
-
-function normalizeWorldRow(row) {
-  return {
-    world_id: row.world_id,
-    seed: row.seed,
-    data_source_key: row.data_source_key,
-    revision: Number(row.revision),
-    generated_at: Number(row.generated_at),
-    created_at: Number(row.created_at),
-    updated_at: Number(row.updated_at)
   };
 }
 

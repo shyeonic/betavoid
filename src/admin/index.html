@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>beta-void Operations</title>
+  <link rel="icon" href="../rss/svg/logo_beta_void.svg">
+  <link rel="stylesheet" href="./admin.css">
+</head>
+<body data-state="checking">
+  <main id="authView" class="auth-view">
+    <div class="auth-panel">
+      <img class="auth-logo" src="../rss/svg/logo_beta_void.svg" alt="beta-void">
+      <h1>Operations</h1>
+      <p id="authMessage" class="auth-message">관리자 세션 확인 중</p>
+      <button id="signInButton" class="button primary" type="button" hidden>
+        Google 로그인
+      </button>
+    </div>
+  </main>
+
+  <div id="appShell" class="app-shell" hidden>
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="beta-void Operations">
+        <img src="../rss/svg/logo_beta_void.svg" alt="">
+        <span>Operations</span>
+      </a>
+      <div class="topbar-actions">
+        <span id="connectionStatus" class="connection-status">연결 중</span>
+        <span id="adminIdentity" class="admin-identity"></span>
+        <button id="signOutButton" class="icon-button" type="button" title="로그아웃" aria-label="로그아웃">
+          <img src="../rss/svg/ui_power.svg" alt="">
+        </button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <div id="errorBanner" class="error-banner" role="alert" hidden></div>
+
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">WORLD AUTHORITY</p>
+          <h1>Primary World</h1>
+        </div>
+        <button id="refreshButton" class="button secondary" type="button">
+          <img src="../rss/svg/ui_scan.svg" alt="">
+          새로고침
+        </button>
+      </header>
+
+      <section class="metric-grid" aria-label="월드 요약">
+        <article class="metric">
+          <span>Revision</span>
+          <strong id="revisionMetric">-</strong>
+        </article>
+        <article class="metric">
+          <span>Resources</span>
+          <strong id="resourceMetric">-</strong>
+        </article>
+        <article class="metric">
+          <span>Buildings</span>
+          <strong id="buildingMetric">-</strong>
+        </article>
+        <article class="metric">
+          <span>Beta Voids</span>
+          <strong id="betaVoidMetric">-</strong>
+        </article>
+        <article class="metric">
+          <span>Storages</span>
+          <strong id="storageMetric">-</strong>
+        </article>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">SOURCE</p>
+            <h2>월드 기준점</h2>
+          </div>
+        </div>
+        <dl class="metadata-grid">
+          <div>
+            <dt>World ID</dt>
+            <dd id="worldIdValue">-</dd>
+          </div>
+          <div>
+            <dt>Seed</dt>
+            <dd id="seedValue">-</dd>
+          </div>
+          <div>
+            <dt>Data source</dt>
+            <dd id="dataSourceValue">-</dd>
+          </div>
+          <div>
+            <dt>Generated</dt>
+            <dd id="generatedValue">-</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">SECTORS</p>
+            <h2>섹터 분포</h2>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Sector</th>
+                <th>Resources</th>
+                <th>Buildings</th>
+                <th>Beta Voids</th>
+              </tr>
+            </thead>
+            <tbody id="sectorRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading entity-heading">
+          <div>
+            <p class="eyebrow">ENTITIES</p>
+            <h2>권위 객체</h2>
+          </div>
+          <div class="filters">
+            <label>
+              <span>Type</span>
+              <select id="entityTypeFilter">
+                <option value="">전체</option>
+                <option value="sector">Sector</option>
+                <option value="resource_node">Resource</option>
+                <option value="building">Building</option>
+                <option value="beta_void">Beta Void</option>
+              </select>
+            </label>
+            <label>
+              <span>Sector</span>
+              <select id="sectorFilter">
+                <option value="">전체</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="table-scroll entity-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>ID</th>
+                <th>Sector</th>
+                <th>Chunk</th>
+                <th>Rev.</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody id="entityRows"></tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <button id="previousButton" class="button secondary" type="button" disabled>이전</button>
+          <span id="pageStatus">0개</span>
+          <button id="nextButton" class="button secondary" type="button" disabled>다음</button>
+        </div>
+      </section>
+
+      <section class="section danger-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow danger">DESTRUCTIVE</p>
+            <h2>월드 재생성</h2>
+          </div>
+        </div>
+        <div class="danger-controls">
+          <label>
+            <span>Confirmation</span>
+            <input id="rebuildConfirmation" type="text" autocomplete="off" placeholder="REBUILD PRIMARY WORLD">
+          </label>
+          <button id="rebuildButton" class="button danger-button" type="button" disabled>
+            월드 재생성
+          </button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="entityDialog" class="entity-dialog">
+    <header>
+      <div>
+        <p id="dialogType" class="eyebrow">ENTITY</p>
+        <h2 id="dialogTitle">-</h2>
+      </div>
+      <button id="dialogCloseButton" class="icon-button" type="button" title="닫기" aria-label="닫기">
+        <img src="../rss/svg/ui_close.svg" alt="">
+      </button>
+    </header>
+    <pre id="dialogJson"></pre>
+  </dialog>
+
+  <script type="module" src="./admin.js"></script>
+</body>
+</html>

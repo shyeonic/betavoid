@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { installFirebaseAuthMock } from "./_pw-firebase-auth-mock.mjs";
+import { withWorldAuthoritySnapshot } from "./_pw-world-authority-fixture.mjs";
 
 const baseUrl = process.env.BETA_VOID_TEST_BASE_URL || "http://127.0.0.1:4173";
 const now = Date.now();
-const world = {
+const world = withWorldAuthoritySnapshot({
   world_id: "primary",
   seed: "presence-test-seed",
   data_source_key: "beta-void-world-v1",
@@ -12,7 +13,7 @@ const world = {
   generated_at: now,
   created_at: now,
   updated_at: now
-};
+});
 const users = [
   {
     uid: "presence-user-a",

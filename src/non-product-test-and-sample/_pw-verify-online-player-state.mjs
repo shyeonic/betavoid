@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { installFirebaseAuthMock } from "./_pw-firebase-auth-mock.mjs";
+import { withWorldAuthoritySnapshot } from "./_pw-world-authority-fixture.mjs";
 
 const baseUrl = process.env.BETA_VOID_TEST_BASE_URL || "http://127.0.0.1:4173";
 const now = Date.now();
@@ -8,7 +9,7 @@ const characterId = "firebase-playwright-google-user";
 const activeShipUid = `ship-${characterId}-ship_01-001`;
 const activeStorageId = `storage-${activeShipUid}-active`;
 const cargoStorageId = `storage-${activeShipUid}-cargo`;
-const world = {
+const world = withWorldAuthoritySnapshot({
   world_id: "primary",
   seed: "player-state-test-seed",
   data_source_key: "beta-void-world-v1",
@@ -16,7 +17,7 @@ const world = {
   generated_at: now,
   created_at: now,
   updated_at: now
-};
+});
 let serverState = {
   character_id: characterId,
   schema_version: 1,

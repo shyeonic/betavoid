@@ -51,6 +51,45 @@ export class OnlineApiClient {
     return payload?.profile || null;
   }
 
+  async getAdminSession() {
+    const payload = await this.request("/v1/admin/session");
+    return payload?.admin || null;
+  }
+
+  async getAdminWorldSummary() {
+    const payload = await this.request("/v1/admin/world/summary");
+    return payload?.summary || null;
+  }
+
+  async listAdminWorldEntities({
+    entityType = "",
+    sectorId = "",
+    cursor = "",
+    limit = 50
+  } = {}) {
+    const query = new URLSearchParams();
+    if (entityType) query.set("type", entityType);
+    if (sectorId) query.set("sector_id", sectorId);
+    if (cursor) query.set("cursor", cursor);
+    query.set("limit", String(limit));
+    const payload = await this.request(`/v1/admin/world/entities?${query}`);
+    return {
+      entities: Array.isArray(payload?.entities) ? payload.entities : [],
+      nextCursor: String(payload?.next_cursor || "")
+    };
+  }
+
+  async rebuildAdminWorld({ expectedRevision, confirmation }) {
+    const payload = await this.request("/v1/admin/world/rebuild", {
+      method: "POST",
+      body: {
+        expected_revision: expectedRevision,
+        confirmation
+      }
+    });
+    return normalizeWorldBootstrap(payload?.world, payload?.server_time);
+  }
+
   async request(path, {
     method = "GET",
     body = null,
@@ -113,13 +152,23 @@ async function readJsonResponse(response) {
 function normalizeWorldBootstrap(world, serverTime) {
   const revision = Number(world?.revision);
   const generatedAt = Number(world?.generated_at);
+  const source = world?.snapshot;
+  const snapshot = {
+    sectors: Array.isArray(source?.sectors) ? source.sectors : [],
+    resourceNodes: Array.isArray(source?.resource_nodes) ? source.resource_nodes : [],
+    buildings: Array.isArray(source?.buildings) ? source.buildings : [],
+    betaVoids: Array.isArray(source?.beta_voids) ? source.beta_voids : [],
+    resourceManager: source?.resource_manager || null,
+    buildingStorages: Array.isArray(source?.building_storages) ? source.building_storages : []
+  };
   const normalized = {
     worldId: String(world?.world_id || ""),
     seed: String(world?.seed || ""),
     dataSourceKey: String(world?.data_source_key || ""),
     revision,
     generatedAt,
-    serverTime: Number(serverTime)
+    serverTime: Number(serverTime),
+    snapshot
   };
 
   if (
@@ -130,6 +179,8 @@ function normalizeWorldBootstrap(world, serverTime) {
     || revision < 1
     || !Number.isFinite(generatedAt)
     || generatedAt <= 0
+    || snapshot.sectors.length === 0
+    || !snapshot.resourceManager
   ) {
     throw new OnlineApiError("WORLD_BOOTSTRAP_INVALID", "Server returned an invalid world bootstrap.");
   }

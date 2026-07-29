@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
+import { withWorldAuthoritySnapshot } from "./_pw-world-authority-fixture.mjs";
 
 const baseUrl = process.env.BETA_VOID_TEST_BASE_URL || "http://127.0.0.1:4173";
 const generatedAt = Date.now();
 const bootstrapResponse = {
   ok: true,
-  world: {
+  world: withWorldAuthoritySnapshot({
     world_id: "primary",
     seed: "server-test-seed",
     data_source_key: "beta-void-world-v1",
@@ -13,7 +14,7 @@ const bootstrapResponse = {
     generated_at: generatedAt,
     created_at: generatedAt,
     updated_at: generatedAt
-  },
+  }),
   server_time: generatedAt
 };
 const characterId = "firebase-online-bootstrap-test-user";

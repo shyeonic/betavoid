@@ -1,0 +1,9 @@
+name = "beta-void-world-state-test"
+main = "workers/beta-void-api/test/world-state-harness.js"
+compatibility_date = "2026-03-01"
+
+[[d1_databases]]
+binding = "WORLD_DB"
+database_name = "beta-void-world-authority"
+database_id = "19ebae77-b775-48ef-8afd-6cc752239f61"
+migrations_dir = "migrations/core"

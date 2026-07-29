@@ -1,0 +1,11 @@
+{
+  "type": "module",
+  "scripts": {
+    "build:pages": "node scripts/build-pages.mjs",
+    "generate:world-template": "node scripts/generate-world-template.mjs",
+    "check:admin-layout": "node scripts/check-admin-layout.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}
