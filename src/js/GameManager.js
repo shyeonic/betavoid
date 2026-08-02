@@ -3141,10 +3141,17 @@ export class GameManager {
     if (wasHyperdrive) this.refreshBgm();
     if (shouldOverrideServer && recordServer) this.recordAuthoritativeManualOverride();
     if (completed) {
-      setTimeout(() => {
-        void this.worldDataManager.refreshNavigationState()
-          .catch((error) => this.handleNavigationRecordFailure(error));
-      }, 100);
+      this.state.speed = 0;
+      this.state.desiredSpeed = 0;
+      this.manualSettlementTracker.reset();
+      void this.worldDataManager.reconcileNavigationArrival()
+        .then((state) => {
+          if (this.disposed) return;
+          this.applyAuthoritativeNavigationState(state);
+          this.navigationRecordFailed = false;
+          this.updateOnlinePresence({ force: true });
+        })
+        .catch((error) => this.handleNavigationRecordFailure(error));
     }
     this.updateOnlinePresence({ force: true });
   }

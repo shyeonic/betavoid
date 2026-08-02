@@ -34,12 +34,31 @@ function navigationState(revision = 1) {
 function managerWith(api) {
   const manager = Object.create(WorldDataManager.prototype);
   manager.onlineApi = api;
+  manager.navigationServerMutationChain = Promise.resolve();
   manager.navigationServerState = navigationState();
   manager.navigationServerReceivedAt = Date.now();
   manager.navigationServerClockOffsetMs = 0;
   manager.onNavigationCommandStatus = null;
   manager.refreshNavigationState = async () => manager.navigationServerState;
   return manager;
+}
+
+{
+  const order = [];
+  const manager = managerWith({});
+  manager.refreshNavigationState = async () => {
+    order.push("arrival-refresh");
+    manager.navigationServerState = navigationState(2);
+    return manager.navigationServerState;
+  };
+  const reconciliation = manager.reconcileNavigationArrival({ delayMs: 0 });
+  const followingCommand = manager.queueNavigationServerMutation(async () => {
+    order.push("following-command");
+    return manager.navigationServerState.ship.revision;
+  });
+  assert.equal((await reconciliation).ship.revision, 2);
+  assert.equal(await followingCommand, 2);
+  assert.deepEqual(order, ["arrival-refresh", "following-command"]);
 }
 
 {

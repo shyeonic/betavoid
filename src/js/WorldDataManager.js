@@ -2420,6 +2420,13 @@ export class WorldDataManager {
     return state;
   }
 
+  reconcileNavigationArrival({ delayMs = 100 } = {}) {
+    return this.queueNavigationServerMutation(async () => {
+      if (delayMs > 0) await wait(delayMs);
+      return this.refreshNavigationState();
+    });
+  }
+
   recordNavigationClockSample(serverTime, requestStartedAt, receivedAt = Date.now()) {
     const serverAt = Number(serverTime);
     const startedAt = Number(requestStartedAt);
