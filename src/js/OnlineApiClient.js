@@ -109,31 +109,6 @@ export class OnlineApiClient {
     return normalizeNavigationState(payload?.navigation);
   }
 
-  async checkpointNavigation({
-    clientActionId,
-    expectedRevision,
-    issuedAt,
-    expiresAt,
-    checkpointKind = "SNAPSHOT",
-    ship,
-    keepalive = false
-  }) {
-    const payload = await this.request("/v1/navigation/checkpoint", {
-      method: "POST",
-      body: {
-        client_action_id: clientActionId,
-        expected_revision: expectedRevision,
-        issued_at: issuedAt,
-        expires_at: expiresAt,
-        checkpoint_kind: checkpointKind,
-        ship
-      },
-      keepalive,
-      timeoutMs: 4_000
-    });
-    return normalizeNavigationState(payload?.navigation);
-  }
-
   async dockShip({
     clientActionId,
     expectedRevision,
@@ -225,14 +200,26 @@ export class OnlineApiClient {
     };
   }
 
-  async listZoneShips(zoneId) {
-    const query = new URLSearchParams({ zone_id: String(zoneId || "") });
-    const payload = await this.request(`/v1/space/ships?${query}`);
+  async observeSpace({ zoneId = null, characterId = null, shipUid = null, limit = 64 } = {}) {
+    const query = new URLSearchParams();
+    if (zoneId) query.set("zone_id", String(zoneId));
+    if (characterId) query.set("character_id", String(characterId));
+    if (shipUid) query.set("ship_uid", String(shipUid));
+    query.set("limit", String(limit));
+    const payload = await this.request(`/v1/space/observe?${query}`);
     return {
+      scope: payload?.scope === "ship" ? "ship" : "zone",
       zoneId: String(payload?.zone_id || ""),
+      selector: payload?.selector && typeof payload.selector === "object"
+        ? payload.selector
+        : null,
       serverTime: Number(payload?.server_time) || Date.now(),
       peers: Array.isArray(payload?.peers) ? payload.peers : []
     };
+  }
+
+  listZoneShips(zoneId) {
+    return this.observeSpace({ zoneId });
   }
 
   async commitPlayerAssets({ expectedRevision, assets, docking = null, reason }) {
@@ -244,14 +231,6 @@ export class OnlineApiClient {
         docking,
         reason
       }
-    });
-    return normalizePlayerState(payload?.state, payload?.server_time);
-  }
-
-  async savePlayerShipState(shipState) {
-    const payload = await this.request("/v1/player/ship-state", {
-      method: "POST",
-      body: { ship_state: shipState }
     });
     return normalizePlayerState(payload?.state, payload?.server_time);
   }

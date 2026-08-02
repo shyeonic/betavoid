@@ -1,7 +1,6 @@
 import {
   commitPlayerAssets,
-  getOrCreatePlayerState,
-  savePlayerShipState
+  getOrCreatePlayerState
 } from "./player-state.js";
 import {
   getOrCreateWorldState,
@@ -11,7 +10,6 @@ import {
   rebuildWorldState
 } from "./world-state.js";
 import {
-  checkpointPlayerShip,
   dockPlayerShip,
   enterPlayerBetaSpace,
   exitPlayerBetaSpace,
@@ -21,6 +19,7 @@ import {
   listNavigationAdminHistory,
   listNavigationAdminShips,
   listZoneShipPeers,
+  observeSpaceShips,
   overridePlayerNavigation,
   startPlayerNavigation,
   undockPlayerShip
@@ -177,14 +176,6 @@ export default {
         return json({ ok: true, state, server_time: Date.now() }, { request, env });
       }
 
-      if (url.pathname === "/v1/player/ship-state" && request.method === "POST") {
-        const auth = await requireFirebaseUser(request, env);
-        const profile = await getOrCreatePlayerProfile(env.LEGACY_DB, auth);
-        const body = await readJsonBody(request);
-        const state = await savePlayerShipState(env.LEGACY_DB, auth, profile, body);
-        return json({ ok: true, state, server_time: Date.now() }, { request, env });
-      }
-
       if (url.pathname === "/v1/navigation/state" && request.method === "GET") {
         const auth = await requireFirebaseUser(request, env);
         const context = await getNavigationContext(env, auth);
@@ -207,17 +198,6 @@ export default {
         const auth = await requireFirebaseUser(request, env);
         const context = await getNavigationContext(env, auth);
         const navigation = await overridePlayerNavigation(
-          env.WORLD_DB,
-          context,
-          await readJsonBody(request)
-        );
-        return json({ ok: true, navigation }, { request, env });
-      }
-
-      if (url.pathname === "/v1/navigation/checkpoint" && request.method === "POST") {
-        const auth = await requireFirebaseUser(request, env);
-        const context = await getNavigationContext(env, auth);
-        const navigation = await checkpointPlayerShip(
           env.WORLD_DB,
           context,
           await readJsonBody(request)
@@ -292,6 +272,19 @@ export default {
           url.searchParams.get("zone_id"),
           { excludedCharacterId: context.characterId }
         );
+        return json({ ok: true, ...result }, { request, env });
+      }
+
+      if (url.pathname === "/v1/space/observe" && request.method === "GET") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const result = await observeSpaceShips(env.WORLD_DB, {
+          zoneId: url.searchParams.get("zone_id"),
+          characterId: url.searchParams.get("character_id"),
+          shipUid: url.searchParams.get("ship_uid"),
+          excludedCharacterId: context.characterId,
+          limit: url.searchParams.get("limit")
+        });
         return json({ ok: true, ...result }, { request, env });
       }
 

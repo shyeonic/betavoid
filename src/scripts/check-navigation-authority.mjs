@@ -65,39 +65,57 @@ assert.equal(initial.character_id, characterId);
 assert.equal(initial.ship.spatial_mode, "FIELD");
 assert.equal(initial.active_contract, null);
 
-const checkpointAt = Date.now();
-const checkpointAction = `checkpoint-${characterId}`;
-const checkpoint = await request("/navigation/checkpoint", {
-  method: "POST",
-  body: {
-    character_id: characterId,
-    client_action_id: checkpointAction,
-    expected_revision: initial.ship.revision,
-    checkpoint_kind: "MANUAL_STOPPED",
-    ship: {
-      position: initial.ship.position,
-      rotation: initial.ship.rotation,
-      speed: 500,
-      desired_speed: -500
-    },
-    ...commandWindow(checkpointAt)
-  }
-});
-assert.equal(checkpoint.ship.speed, 0);
-assert.equal(checkpoint.ship.desired_speed, 0);
+const targetedInitial = await request(
+  `/observe-space?character_id=${characterId}&limit=1&server_now=${initial.server_time}`
+);
+assert.equal(targetedInitial.scope, "ship");
+assert.equal(targetedInitial.peers.length, 1);
+assert.equal(targetedInitial.peers[0].character_id, characterId);
+assertVector(targetedInitial.peers[0].pose.position, initial.ship.position);
+
+const impossibleCharacterId = `impossible-action-${Date.now()}`;
+const impossibleInitial = await request(`/navigation?character_id=${impossibleCharacterId}`);
+const impossibleNow = impossibleInitial.ship.checkpoint_at + 1_000;
+await assert.rejects(
+  request("/navigation/start", {
+    method: "POST",
+    body: {
+      character_id: impossibleCharacterId,
+      client_action_id: `impossible-${impossibleCharacterId}`,
+      expected_revision: impossibleInitial.ship.revision,
+      route_type: "standard",
+      target: impossibleInitial.ship.position,
+      observed_ship: {
+        position: {
+          x: impossibleInitial.ship.position.x + (
+            impossibleInitial.ship.position.x > 0 ? -100_000_000 : 100_000_000
+          ),
+          y: impossibleInitial.ship.position.y,
+          z: impossibleInitial.ship.position.z
+        },
+        rotation: impossibleInitial.ship.rotation,
+        speed: 0,
+        desired_speed: 0
+      },
+      ...commandWindow(impossibleNow)
+    }
+  }),
+  (error) => error?.code === "MANUAL_POSITION_OUT_OF_RANGE"
+);
 
 const expiredAt = Date.now();
 await assert.rejects(
-  request("/navigation/checkpoint", {
+  request("/navigation/start", {
     method: "POST",
     body: {
       character_id: characterId,
       client_action_id: `expired-${characterId}`,
-      expected_revision: checkpoint.ship.revision,
-      checkpoint_kind: "MANUAL_STOPPED",
-      ship: {
-        position: checkpoint.ship.position,
-        rotation: checkpoint.ship.rotation,
+      expected_revision: initial.ship.revision,
+      route_type: "standard",
+      target: initial.ship.position,
+      observed_ship: {
+        position: initial.ship.position,
+        rotation: initial.ship.rotation,
         speed: 0,
         desired_speed: 0
       },
@@ -135,42 +153,47 @@ const arrivalRaceStarted = await request("/navigation/start", {
     ...commandWindow(arrivalRaceStartAt)
   }
 });
-const arrivalRaceCheckpointAt = arrivalRaceStarted.active_contract.arrive_at + 1;
-const arrivalRaceCheckpoint = await request("/navigation/checkpoint", {
+const arrivalRaceNextAt = arrivalRaceStarted.active_contract.arrive_at + 1;
+const arrivalRaceNextTarget = {
+  ...arrivalRaceTarget,
+  x: arrivalRaceTarget.x + 1_000
+};
+const arrivalRaceNext = await request("/navigation/start", {
   method: "POST",
   body: {
     character_id: arrivalRaceCharacterId,
-    client_action_id: `arrival-race-stop-${arrivalRaceCharacterId}`,
+    client_action_id: `arrival-race-next-${arrivalRaceCharacterId}`,
     expected_revision: arrivalRaceStarted.ship.revision,
-    checkpoint_kind: "MANUAL_STOPPED",
-    ship: {
+    route_type: "standard",
+    target: arrivalRaceNextTarget,
+    observed_ship: {
       position: arrivalRaceTarget,
       rotation: arrivalRaceStarted.ship.rotation,
       speed: 0,
       desired_speed: 0
     },
-    ...commandWindow(arrivalRaceCheckpointAt)
+    ...commandWindow(arrivalRaceNextAt)
   }
 });
-assert.equal(arrivalRaceCheckpoint.active_contract, null);
-assert.equal(arrivalRaceCheckpoint.ship.phase, "manual");
-assert.equal(arrivalRaceCheckpoint.ship.revision, arrivalRaceStarted.ship.revision + 2);
-assertVector(arrivalRaceCheckpoint.ship.position, arrivalRaceTarget);
+assert.ok(arrivalRaceNext.active_contract);
+assert.equal(arrivalRaceNext.ship.revision, arrivalRaceStarted.ship.revision + 2);
+assertVector(arrivalRaceNext.active_contract.start_position, arrivalRaceTarget);
 await assert.rejects(
-  request("/navigation/checkpoint", {
+  request("/navigation/start", {
     method: "POST",
     body: {
       character_id: arrivalRaceCharacterId,
       client_action_id: `arrival-race-stale-${arrivalRaceCharacterId}`,
       expected_revision: arrivalRaceStarted.ship.revision,
-      checkpoint_kind: "MANUAL_STOPPED",
-      ship: {
+      route_type: "standard",
+      target: arrivalRaceNextTarget,
+      observed_ship: {
         position: arrivalRaceTarget,
-        rotation: arrivalRaceCheckpoint.ship.rotation,
+        rotation: arrivalRaceNext.ship.rotation,
         speed: 0,
         desired_speed: 0
       },
-      ...commandWindow(arrivalRaceCheckpointAt + 1)
+      ...commandWindow(arrivalRaceNextAt + 1)
     }
   }),
   (error) => error?.code === "MOVEMENT_REVISION_CONFLICT"
@@ -180,12 +203,12 @@ const startAt = Date.now() + 10;
 const startBody = {
   character_id: characterId,
   client_action_id: `standard-${characterId}`,
-  expected_revision: checkpoint.ship.revision,
+  expected_revision: initial.ship.revision,
   route_type: "standard",
   target: dockBuilding.position,
   observed_ship: {
-    position: checkpoint.ship.position,
-    rotation: checkpoint.ship.rotation,
+    position: initial.ship.position,
+    rotation: initial.ship.rotation,
     speed: 0,
     desired_speed: 0
   },
@@ -238,6 +261,11 @@ assert.equal(docked.ship.spatial_mode, "DOCKED");
 assert.equal(docked.ship.phase, "arrived");
 assert.equal(docked.ship.position, null);
 assert.equal(docked.custody.id, dockBuilding.building_instance_id);
+const observedDocked = await request(
+  `/observe-space?ship_uid=${docked.ship.ship_uid}&limit=1&server_now=${dockNow + 1}`
+);
+assert.equal(observedDocked.peers[0].spatial_mode, "DOCKED");
+assert.equal(observedDocked.peers[0].pose, null);
 
 const movedBuildingPosition = {
   x: dockBuilding.position.x + 777,

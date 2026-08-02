@@ -90,6 +90,7 @@ let navigationResponse = createNavigationResponse({
   shipUid: activeShipUid,
   serverTime: now
 });
+const initialAuthorityPosition = { ...navigationResponse.navigation.ship.position };
 
 const browser = await chromium.launch({ headless: true });
 
@@ -98,11 +99,11 @@ try {
   const restored = await loadSecondSession();
 
   assert.equal(serverState.assets_revision, 2);
-  assert.equal(navigationResponse.navigation.ship.revision, 2);
+  assert.equal(navigationResponse.navigation.ship.revision, 1);
   assert.equal(serverState.assets.profile.display_name, "Server Pilot");
   assert.equal(restored.displayName, "Server Pilot");
   assert.equal(restored.oreQuantity, 7);
-  assert.deepEqual(restored.position, { x: 12345, y: 23456, z: 34567 });
+  assert.deepEqual(restored.position, initialAuthorityPosition);
   console.log("online player state browser test passed");
 } finally {
   await browser.close();
@@ -124,9 +125,6 @@ async function mutateFirstSession() {
       ]
     }), { reason: "mining" });
 
-    const shipState = manager.createDefaultPlayerShipState(Date.now(), manager.snapshot.sectors, characterId);
-    shipState.position = { x: 12345, y: 23456, z: 34567 };
-    await manager.savePlayerShipState(shipState);
     await manager.putCharacterProfile({
       ...initialAssets.profile,
       display_name: "Server Pilot"
@@ -177,6 +175,9 @@ async function handleApiRoute(route) {
   if (url.pathname === "/v1/world/bootstrap") {
     return respond({ ok: true, world, server_time: Date.now() });
   }
+  if (url.pathname === "/v1/world/reconcile" && request.method() === "POST") {
+    return respond({ ok: true, result: null, world, server_time: Date.now() });
+  }
   if (url.pathname === "/v1/player/state" && request.method() === "GET") {
     return respond({ ok: true, state: serverState, server_time: Date.now() });
   }
@@ -198,37 +199,10 @@ async function handleApiRoute(route) {
     };
     return respond({ ok: true, state: serverState, server_time: Date.now() });
   }
-  if (url.pathname === "/v1/navigation/checkpoint" && request.method() === "POST") {
-    const body = request.postDataJSON();
-    if (body.expected_revision !== navigationResponse.navigation.ship.revision) {
-      return respond({
-        ok: false,
-        error: "MOVEMENT_REVISION_CONFLICT",
-        message: "conflict"
-      }, 409);
-    }
-    const updatedAt = Date.now();
-    navigationResponse = createNavigationResponse({
-      characterId,
-      shipUid: activeShipUid,
-      position: body.ship.position,
-      rotation: body.ship.rotation,
-      revision: navigationResponse.navigation.ship.revision + 1,
-      serverTime: updatedAt
-    });
-    navigationResponse.navigation.ship.speed = body.ship.speed;
-    navigationResponse.navigation.ship.desired_speed = body.ship.desired_speed;
-    return respond({
-      ...navigationResponse,
-      navigation: {
-        ...navigationResponse.navigation,
-        server_time: updatedAt
-      }
-    });
-  }
-  if (url.pathname === "/v1/space/ships" && request.method() === "GET") {
+  if (url.pathname === "/v1/space/observe" && request.method() === "GET") {
     return respond({
       ok: true,
+      scope: "zone",
       zone_id: url.searchParams.get("zone_id"),
       server_time: Date.now(),
       peers: []

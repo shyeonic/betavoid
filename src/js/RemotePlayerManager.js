@@ -71,6 +71,14 @@ export class RemotePlayerManager {
     this.replacePeerSource(peers, "field");
   }
 
+  replaceObservedPeers(peers) {
+    this.replaceFieldPeers(peers);
+  }
+
+  upsertObservedPeers(peers) {
+    peers.forEach((peer) => this.upsertPeer(peer, "field"));
+  }
+
   replacePeerSource(peers, source) {
     const incomingIds = new Set(peers.map((peer) => peer?.character_id).filter(Boolean));
     const sourceIds = source === "field" ? this.fieldPeerIds : this.presencePeerIds;
@@ -168,7 +176,7 @@ export class RemotePlayerManager {
       state.root.add(model);
       this.registerStylizedRenderTarget?.(state.root);
     } catch (error) {
-      console.warn(`[presence] remote ship ${state.shipId} unavailable.`, error);
+      console.warn(`[observation] remote ship ${state.shipId} unavailable.`, error);
     }
   }
 

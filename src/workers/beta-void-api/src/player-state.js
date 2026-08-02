@@ -92,26 +92,6 @@ export async function commitPlayerAssets(db, auth, profile, body) {
   return normalizePlayerStateRow(await selectPlayerState(db, auth.uid), profile);
 }
 
-export async function savePlayerShipState(db, auth, profile, body) {
-  await getOrCreatePlayerState(db, auth, profile);
-  const now = Date.now();
-  const shipState = normalizeShipState(body?.ship_state, profile.character_id, now);
-  const result = await db.prepare(`
-    UPDATE player_states
-    SET
-      ship_state_json = ?,
-      ship_revision = ship_revision + 1,
-      last_reason = 'ship-position',
-      updated_at = ?
-    WHERE firebase_uid = ?
-  `).bind(JSON.stringify(shipState), now, auth.uid).run();
-
-  if (Number(result?.meta?.changes) !== 1) {
-    throw playerStateError(500, "PLAYER_STATE_UNAVAILABLE", "Player ship state unavailable.");
-  }
-  return normalizePlayerStateRow(await selectPlayerState(db, auth.uid), profile);
-}
-
 function createDefaultPlayerAssets(profile, createdAt) {
   const characterId = profile.character_id;
   const activeShipUid = `ship-${characterId}-${DEFAULT_SHIP_ID}-001`;
@@ -366,27 +346,6 @@ function normalizeDocking(value, activeShipUid, characterId) {
   };
 }
 
-function normalizeShipState(value, characterId, now) {
-  if (!value || typeof value !== "object") {
-    throw playerStateError(400, "PLAYER_SHIP_STATE_INVALID", "Player ship state is invalid.");
-  }
-  return {
-    key: `playerShip:${characterId}`,
-    ship_id: safeId(value.ship_id || "PLAYER-SHIP-001", "player ship"),
-    player_id: characterId,
-    position: normalizeVector(value.position),
-    rotation: normalizeQuaternion(value.rotation),
-    chunk_id: optionalId(value.chunk_id),
-    chunk: value.chunk && typeof value.chunk === "object" ? normalizeVector(value.chunk) : null,
-    sector_id: optionalId(value.sector_id),
-    speed: finiteNumber(value.speed, -1e6, 1e6),
-    desiredSpeed: finiteNumber(value.desiredSpeed, -1e6, 1e6),
-    created_at: validTimestamp(value.created_at, now),
-    updated_at: now,
-    server_updated_at: now
-  };
-}
-
 function validateAssetTransition(current, next, reason) {
   const before = buildItemLedger(current.assets, current.docking);
   const after = buildItemLedger(next.assets, next.docking);
@@ -514,23 +473,6 @@ function normalizePlainObject(value) {
     throw playerStateError(400, "PLAYER_ASSETS_INVALID", "Expected an object.");
   }
   return { ...value };
-}
-
-function normalizeVector(value = {}) {
-  return {
-    x: finiteNumber(value.x, -1e9, 1e9),
-    y: finiteNumber(value.y, -1e9, 1e9),
-    z: finiteNumber(value.z, -1e9, 1e9)
-  };
-}
-
-function normalizeQuaternion(value = {}) {
-  return {
-    x: finiteNumber(value.x, -1, 1),
-    y: finiteNumber(value.y, -1, 1),
-    z: finiteNumber(value.z, -1, 1),
-    w: finiteNumber(value.w ?? 1, -1, 1)
-  };
 }
 
 function safeId(value, label) {

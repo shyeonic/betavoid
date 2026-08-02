@@ -5,6 +5,7 @@ import {
   deriveMovementState,
   quaternionForward
 } from "../../../js/navigationKinematics.js";
+import { evaluateActionPositionObservation } from "./action-position-validation.js";
 import { WORLD_TEMPLATE } from "./generated/world-template.js";
 import { ensureWorldInitialized, getWorldEntityState } from "./world-state.js";
 
@@ -12,8 +13,6 @@ const PRIMARY_WORLD_ID = "primary";
 const FIELD_MODE = "FIELD";
 const MAX_COORDINATE = 1_000_000_000;
 const MAX_ID_LENGTH = 180;
-const MANUAL_STOPPED_CHECKPOINT = "MANUAL_STOPPED";
-const SNAPSHOT_CHECKPOINT = "SNAPSHOT";
 const MAX_COMMAND_LIFETIME_MS = 10_000;
 const COMMAND_CLOCK_SKEW_MS = 2_000;
 const DOCK_RANGE_RENDER_UNITS = 150;
@@ -70,12 +69,7 @@ export async function startPlayerNavigation(db, context, body, now = Date.now())
   assertShipCanNavigate(state);
   assertCommandRevision(state, body?.expected_revision);
   const physics = getShipPhysics(state.ship.ship_definition_id);
-  const anchor = state.activeContract
-    ? movementAnchor(state.ship, state.activeContract, now)
-    : observedAnchor(body?.observed_ship, state.ship, physics);
-  if (!state.activeContract) {
-    assertManualPositionReachable(state.ship, anchor.position, physics, now);
-  }
+  const anchor = resolveValidatedActionAnchor(state, body?.observed_ship, physics, now);
   const routeType = normalizeRouteType(body?.route_type);
   const plan = routeType === "standard"
     ? createStandardMovementPlan({
@@ -374,100 +368,6 @@ export async function overridePlayerNavigation(db, context, body, now = Date.now
   return response;
 }
 
-export async function checkpointPlayerShip(db, context, body, now = Date.now()) {
-  const clientActionId = requiredId(body?.client_action_id, "client action");
-  const checkpointKind = normalizeCheckpointKind(body?.checkpoint_kind);
-  const receipt = await getCommandReceipt(db, clientActionId, context.characterId);
-  if (receipt) return receipt;
-  assertCommandDeadline(body, now);
-
-  const state = await getPlayerNavigationStateInternal(db, context, now);
-  assertShipCanNavigate(state);
-  assertCommandRevision(state, body?.expected_revision);
-  if (state.activeContract) {
-    throw navigationError(409, "MOVEMENT_ACTIVE", "Manual checkpoint is unavailable during navigation.");
-  }
-  const physics = getShipPhysics(state.ship.ship_definition_id);
-  const observed = observedAnchor(body?.ship, state.ship, physics);
-  assertManualPositionReachable(state.ship, observed.position, physics, now);
-  const anchor = checkpointKind === MANUAL_STOPPED_CHECKPOINT
-    ? { ...observed, speed: 0, desiredSpeed: 0 }
-    : observed;
-  const zones = zoneFields(anchor.position, state.ship.spatial_mode);
-  const nextRevision = state.ship.revision + 1;
-  const nextShip = {
-    ...state.ship,
-    position: anchor.position,
-    rotation: anchor.rotation,
-    speed: anchor.speed,
-    desired_speed: anchor.desiredSpeed,
-    phase: "manual",
-    revision: nextRevision,
-    checkpoint_at: now,
-    updated_at: now,
-    ...zones
-  };
-  const response = publicNavigationState({
-    ship: nextShip,
-    activeContract: null,
-    custody: null,
-    betaSpaceSession: state.betaSpaceSession,
-    serverTime: now
-  });
-  const results = await db.batch([
-    db.prepare(`
-      UPDATE ship_locations
-      SET
-        position_x = ?,
-        position_y = ?,
-        position_z = ?,
-        rotation_x = ?,
-        rotation_y = ?,
-        rotation_z = ?,
-        rotation_w = ?,
-        speed = ?,
-        desired_speed = ?,
-        sector_id = ?,
-        chunk_id = ?,
-        movement_phase = 'MANUAL',
-        revision = revision + 1,
-        checkpoint_at = ?,
-        updated_at = ?
-      WHERE ship_uid = ? AND revision = ? AND active_contract_id IS NULL
-    `).bind(
-      anchor.position.x,
-      anchor.position.y,
-      anchor.position.z,
-      anchor.rotation.x,
-      anchor.rotation.y,
-      anchor.rotation.z,
-      anchor.rotation.w,
-      anchor.speed,
-      anchor.desiredSpeed,
-      zones.sector_id,
-      zones.chunk_id,
-      now,
-      now,
-      state.ship.ship_uid,
-      state.ship.revision
-    ),
-    createReceiptInsert(db, {
-      clientActionId,
-      ownerCharacterId: context.characterId,
-      commandType: checkpointKind,
-      response,
-      now,
-      shipUid: state.ship.ship_uid,
-      expectedRevision: nextRevision,
-      expectedContractId: null
-    })
-  ]);
-  if (statementChanges(results[0]) !== 1) {
-    throw navigationError(409, "MOVEMENT_REVISION_CONFLICT", "Ship movement revision changed.");
-  }
-  return response;
-}
-
 export async function dockPlayerShip(db, context, body, now = Date.now()) {
   const clientActionId = requiredId(body?.client_action_id, "client action");
   const receipt = await getCommandReceipt(db, clientActionId, context.characterId);
@@ -481,12 +381,7 @@ export async function dockPlayerShip(db, context, body, now = Date.now()) {
   }
 
   const physics = getShipPhysics(state.ship.ship_definition_id);
-  const anchor = state.activeContract
-    ? movementAnchor(state.ship, state.activeContract, now)
-    : observedAnchor(body?.observed_ship, state.ship, physics);
-  if (!state.activeContract) {
-    assertManualPositionReachable(state.ship, anchor.position, physics, now);
-  }
+  const anchor = resolveValidatedActionAnchor(state, body?.observed_ship, physics, now);
 
   const buildingId = requiredId(body?.building_id, "building");
   const building = await getWorldEntity(db, "building", buildingId);
@@ -778,12 +673,12 @@ export async function enterPlayerBetaSpace(db, context, body, now = Date.now()) 
   }
 
   const physics = getShipPhysics(state.ship.ship_definition_id);
-  const returnAnchor = state.activeContract
-    ? movementAnchor(state.ship, state.activeContract, now)
-    : observedAnchor(body?.observed_ship, state.ship, physics);
-  if (!state.activeContract) {
-    assertManualPositionReachable(state.ship, returnAnchor.position, physics, now);
-  }
+  const returnAnchor = resolveValidatedActionAnchor(
+    state,
+    body?.observed_ship,
+    physics,
+    now
+  );
   const spawnPosition = betaSpaceSpawnPosition();
   const zones = zoneFields(spawnPosition, "BETA_SPACE");
   const sessionId = `beta-session-${crypto.randomUUID()}`;
@@ -1056,114 +951,235 @@ export async function getPlayerCommandResult(db, context, clientActionId, now = 
 export async function listZoneShipPeers(
   db,
   zoneId,
-  { excludedCharacterId = null, now = Date.now() } = {}
+  { excludedCharacterId = null, limit = 64, now = Date.now() } = {}
 ) {
   await ensureWorldInitialized(db);
   const normalizedZone = requiredId(zoneId, "zone");
+  const normalizedLimit = normalizeObservationLimit(limit);
+  const scanLimit = Math.min(1024, Math.max(128, normalizedLimit * 8));
   const spatialMode = normalizedZone === BETA_SPACE_ID ? "BETA_SPACE" : FIELD_MODE;
-  const [shipResult, contractResult, betaSessionResult] = await db.batch([
-    db.prepare(`
-      SELECT *
-      FROM ship_locations
-      WHERE world_id = ?
-        AND (
-          (? = 'BETA_SPACE' AND spatial_mode = 'BETA_SPACE')
-          OR (
-            ? = 'FIELD'
-            AND (
-              spatial_mode = 'BETA_SPACE'
-              OR (
-                spatial_mode = 'FIELD'
-                AND (
-                  sector_id = ?
-                  OR chunk_id = ?
-                  OR active_contract_id IS NOT NULL
-                )
+  const shipResult = await db.prepare(`
+    SELECT *
+    FROM ship_locations
+    WHERE world_id = ?
+      AND (
+        (? = 'BETA_SPACE' AND spatial_mode = 'BETA_SPACE')
+        OR (
+          ? = 'FIELD'
+          AND (
+            spatial_mode = 'BETA_SPACE'
+            OR (
+              spatial_mode = 'FIELD'
+              AND (
+                sector_id = ?
+                OR chunk_id = ?
+                OR active_contract_id IS NOT NULL
               )
             )
           )
         )
-      ORDER BY owner_character_id, ship_uid
-      LIMIT 2000
-    `).bind(PRIMARY_WORLD_ID, spatialMode, spatialMode, normalizedZone, normalizedZone),
-    db.prepare(`
-      SELECT *
-      FROM movement_contracts
-      WHERE world_id = ? AND status = 'ACTIVE'
-      ORDER BY issued_at
-      LIMIT 2000
-    `).bind(PRIMARY_WORLD_ID),
-    db.prepare(`
-      SELECT *
-      FROM beta_space_sessions
-      WHERE world_id = ? AND status = 'ACTIVE'
-    `).bind(PRIMARY_WORLD_ID)
-  ]);
-  const contracts = new Map(
-    (contractResult?.results || []).map((row) => [row.contract_id, contractFromRow(row)])
-  );
-  const betaSessions = new Map(
-    (betaSessionResult?.results || []).map((row) => [row.ship_uid, betaSpaceSessionFromRow(row)])
-  );
+      )
+    ORDER BY
+      CASE WHEN sector_id = ? OR chunk_id = ? THEN 0 ELSE 1 END,
+      owner_character_id,
+      ship_uid
+    LIMIT ?
+  `).bind(
+    PRIMARY_WORLD_ID,
+    spatialMode,
+    spatialMode,
+    normalizedZone,
+    normalizedZone,
+    normalizedZone,
+    normalizedZone,
+    scanLimit
+  ).all();
+  const shipRows = shipResult?.results || [];
+  const { contracts, betaSessions } = await loadObservedShipDependencies(db, shipRows);
   const peers = [];
-  for (const row of shipResult?.results || []) {
+  for (const row of shipRows) {
     const storedShip = shipFromRow(row);
-    const ship = deriveExpiredBetaSpaceShip(
+    const peer = observedShipPeer({
       storedShip,
-      betaSessions.get(storedShip.ship_uid) || null,
+      contract: storedShip.active_contract_id
+        ? contracts.get(storedShip.active_contract_id) || null
+        : null,
+      betaSpaceSession: betaSessions.get(storedShip.ship_uid) || null,
       now
-    );
-    if (ship.spatial_mode !== spatialMode) continue;
-    if (ship.owner_character_id === excludedCharacterId) continue;
-    const contract = ship.active_contract_id
-      ? contracts.get(ship.active_contract_id) || null
-      : null;
-    const derived = contract
-      ? deriveMovementState(contract, now)
-      : {
-          position: ship.position,
-          speed: ship.speed,
-          desiredSpeed: ship.desired_speed,
-          phase: ship.phase,
-          logicalStatus: "ACTIVE"
-        };
-    const zones = zoneFields(derived.position, ship.spatial_mode);
-    if (zones.sector_id !== normalizedZone && zones.chunk_id !== normalizedZone) continue;
-    const rotation = contract
-      ? rotationForMovement(contract, ship.rotation, derived.phase)
-      : ship.rotation;
-    const heading = contract?.heading || quaternionForward(rotation);
-    peers.push({
-      character_id: ship.owner_character_id,
-      display_name: ship.display_name,
-      ship_id: ship.ship_definition_id,
-      ship_uid: ship.ship_uid,
-      zone_id: normalizedZone,
-      updated_at: Math.max(ship.updated_at, contract?.updatedAt || 0),
-      source: "authority",
-      pose: {
-        seq: ship.revision,
-        ship_id: ship.ship_definition_id,
-        position: derived.position,
-        rotation,
-        velocity: {
-          x: heading.x * derived.speed,
-          y: heading.y * derived.speed,
-          z: heading.z * derived.speed
-        },
-        speed: derived.speed,
-        server_at: now
-      },
-      route: contract && derived.logicalStatus === "ACTIVE"
-        ? realtimeContract(contract)
-        : null
     });
+    if (peer.spatial_mode !== spatialMode) continue;
+    if (peer.character_id === excludedCharacterId) continue;
+    if (peer.zone_id !== normalizedZone) continue;
+    peers.push(peer);
+    if (peers.length >= normalizedLimit) break;
   }
   return {
+    scope: "zone",
     zone_id: normalizedZone,
     server_time: now,
     peers
   };
+}
+
+export async function observeSpaceShips(
+  db,
+  {
+    zoneId = null,
+    characterId = null,
+    shipUid = null,
+    excludedCharacterId = null,
+    limit = 64,
+    now = Date.now()
+  } = {}
+) {
+  if (!characterId && !shipUid) {
+    return listZoneShipPeers(db, zoneId, { excludedCharacterId, limit, now });
+  }
+
+  await ensureWorldInitialized(db);
+  const normalizedCharacterId = characterId
+    ? requiredId(characterId, "observed character")
+    : null;
+  const normalizedShipUid = shipUid ? requiredId(shipUid, "observed ship") : null;
+  const normalizedLimit = normalizeObservationLimit(limit);
+  const filters = ["world_id = ?"];
+  const bindings = [PRIMARY_WORLD_ID];
+  if (normalizedCharacterId) {
+    filters.push("owner_character_id = ?");
+    bindings.push(normalizedCharacterId);
+  }
+  if (normalizedShipUid) {
+    filters.push("ship_uid = ?");
+    bindings.push(normalizedShipUid);
+  }
+  bindings.push(normalizedLimit);
+  const shipResult = await db.prepare(`
+    SELECT *
+    FROM ship_locations
+    WHERE ${filters.join(" AND ")}
+    ORDER BY ship_uid
+    LIMIT ?
+  `).bind(...bindings).all();
+  const shipRows = shipResult?.results || [];
+  const { contracts, betaSessions } = await loadObservedShipDependencies(db, shipRows);
+  const peers = shipRows
+    .map((row) => {
+      const storedShip = shipFromRow(row);
+      return observedShipPeer({
+        storedShip,
+        contract: storedShip.active_contract_id
+          ? contracts.get(storedShip.active_contract_id) || null
+          : null,
+        betaSpaceSession: betaSessions.get(storedShip.ship_uid) || null,
+        now
+      });
+    })
+    .filter((peer) => peer.character_id !== excludedCharacterId);
+  return {
+    scope: "ship",
+    zone_id: null,
+    selector: {
+      character_id: normalizedCharacterId,
+      ship_uid: normalizedShipUid
+    },
+    server_time: now,
+    peers
+  };
+}
+
+async function loadObservedShipDependencies(db, shipRows) {
+  const selectedShipUids = shipRows.map((row) => row.ship_uid);
+  const selectedContractIds = shipRows
+    .map((row) => row.active_contract_id)
+    .filter(Boolean);
+  const statements = [];
+  const contractIndex = selectedContractIds.length > 0 ? statements.length : -1;
+  if (contractIndex >= 0) {
+    statements.push(db.prepare(`
+      SELECT * FROM movement_contracts
+      WHERE contract_id IN (${selectedContractIds.map(() => "?").join(", ")})
+    `).bind(...selectedContractIds));
+  }
+  const betaSessionIndex = selectedShipUids.length > 0 ? statements.length : -1;
+  if (betaSessionIndex >= 0) {
+    statements.push(db.prepare(`
+      SELECT * FROM beta_space_sessions
+      WHERE ship_uid IN (${selectedShipUids.map(() => "?").join(", ")})
+        AND status = 'ACTIVE'
+    `).bind(...selectedShipUids));
+  }
+  const results = statements.length > 0 ? await db.batch(statements) : [];
+  const contracts = new Map(
+    (results[contractIndex]?.results || []).map((row) => [
+      row.contract_id,
+      contractFromRow(row)
+    ])
+  );
+  const betaSessions = new Map(
+    (results[betaSessionIndex]?.results || []).map((row) => [
+      row.ship_uid,
+      betaSpaceSessionFromRow(row)
+    ])
+  );
+  return { contracts, betaSessions };
+}
+
+function observedShipPeer({ storedShip, contract, betaSpaceSession, now }) {
+  const ship = deriveExpiredBetaSpaceShip(storedShip, betaSpaceSession, now);
+  const common = {
+    character_id: ship.owner_character_id,
+    display_name: ship.display_name,
+    ship_id: ship.ship_definition_id,
+    ship_uid: ship.ship_uid,
+    spatial_mode: ship.spatial_mode,
+    updated_at: Math.max(ship.updated_at, contract?.updatedAt || 0),
+    source: "authority"
+  };
+  if (ship.spatial_mode === "DOCKED") {
+    return { ...common, zone_id: null, pose: null, route: null };
+  }
+
+  const derived = contract
+    ? deriveMovementState(contract, now)
+    : {
+        position: ship.position,
+        speed: ship.speed,
+        desiredSpeed: ship.desired_speed,
+        phase: ship.phase,
+        logicalStatus: "ACTIVE"
+      };
+  const zones = zoneFields(derived.position, ship.spatial_mode);
+  const rotation = contract
+    ? rotationForMovement(contract, ship.rotation, derived.phase)
+    : ship.rotation;
+  const heading = contract?.heading || quaternionForward(rotation);
+  return {
+    ...common,
+    zone_id: ship.spatial_mode === "BETA_SPACE"
+      ? BETA_SPACE_ID
+      : zones.sector_id || zones.chunk_id,
+    pose: {
+      seq: ship.revision,
+      ship_id: ship.ship_definition_id,
+      position: derived.position,
+      rotation,
+      velocity: {
+        x: heading.x * derived.speed,
+        y: heading.y * derived.speed,
+        z: heading.z * derived.speed
+      },
+      speed: derived.speed,
+      server_at: now
+    },
+    route: contract && derived.logicalStatus === "ACTIVE"
+      ? realtimeContract(contract)
+      : null
+  };
+}
+
+function normalizeObservationLimit(value) {
+  const number = Math.floor(Number(value));
+  return Number.isFinite(number) ? clamp(number, 1, 64) : 64;
 }
 
 export async function getNavigationAdminSummary(db, now = Date.now()) {
@@ -1810,6 +1826,15 @@ function movementAnchor(ship, contract, now) {
   };
 }
 
+function resolveValidatedActionAnchor(state, observedShip, physics, now) {
+  if (state.activeContract) {
+    return movementAnchor(state.ship, state.activeContract, now);
+  }
+  const anchor = observedAnchor(observedShip, state.ship, physics);
+  assertActionPositionReachable(state.ship, anchor.position, physics, now);
+  return anchor;
+}
+
 function observedAnchor(value, ship, physics) {
   const source = value && typeof value === "object" ? value : {};
   return {
@@ -1828,8 +1853,7 @@ function observedAnchor(value, ship, physics) {
   };
 }
 
-function assertManualPositionReachable(ship, position, physics, now) {
-  const elapsedSeconds = Math.max(0, (now - Number(ship.checkpoint_at || now)) / 1000);
+function assertActionPositionReachable(ship, position, physics, now) {
   const forwardSpeed = Math.max(
     Math.abs(Number(physics.minSpeed) || 0),
     Math.abs(Number(physics.maxSpeed) || 0)
@@ -1841,25 +1865,22 @@ function assertManualPositionReachable(ship, position, physics, now) {
   );
   const networkGraceSeconds = 2;
   const fixedBuffer = Math.max((Number(physics.arrivalRadius) || 0) * 2, 1);
-  const allowance = maximumCombinedSpeed * (elapsedSeconds + networkGraceSeconds) + fixedBuffer;
-  const distance = Math.hypot(
-    Number(position.x) - Number(ship.position.x),
-    Number(position.y) - Number(ship.position.y),
-    Number(position.z) - Number(ship.position.z)
-  );
-  if (distance > allowance) {
+  const validation = evaluateActionPositionObservation({
+    authoritativePosition: ship.position,
+    observedPosition: position,
+    checkpointAt: ship.checkpoint_at,
+    serverNow: now,
+    maximumCombinedSpeed,
+    networkGraceSeconds,
+    fixedBuffer
+  });
+  if (!validation.valid) {
     throw navigationError(
       409,
       "MANUAL_POSITION_OUT_OF_RANGE",
-      "Manual settlement is outside the reachable movement range."
+      "Observed action position is outside the reachable movement range."
     );
   }
-}
-
-function normalizeCheckpointKind(value) {
-  if (value == null || value === "") return SNAPSHOT_CHECKPOINT;
-  if (value === MANUAL_STOPPED_CHECKPOINT || value === SNAPSHOT_CHECKPOINT) return value;
-  throw navigationError(400, "CHECKPOINT_KIND_INVALID", "Unsupported checkpoint kind.");
 }
 
 function getShipPhysics(shipDefinitionId) {

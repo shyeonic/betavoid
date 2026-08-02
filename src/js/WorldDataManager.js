@@ -2352,6 +2352,10 @@ export class WorldDataManager {
     };
   }
 
+  observeSpace({ zoneId = null, characterId = null, shipUid = null, limit = 64 } = {}) {
+    return this.onlineApi.observeSpace({ zoneId, characterId, shipUid, limit });
+  }
+
   startNavigation({ clientActionId, routeType, target = null, observedShip }) {
     return this.queueNavigationServerMutation(async () => {
       const actionId = clientActionId || createClientActionId("nav");
@@ -2562,53 +2566,6 @@ export class WorldDataManager {
     const state = this.navigationStateToPlayerShipState(this.navigationServerState);
     await this.putStoreValue("playerShip", state);
     return state;
-  }
-
-  async savePlayerShipState(state, { checkpointKind = "SNAPSHOT" } = {}) {
-    const characterId = state.player_id || DEFAULT_CHARACTER_ID;
-    this.assertServerCharacter(characterId);
-    const position = this.normalizeVector(state.position);
-    const chunkData = this.getChunkDataAtPosition(position);
-    const sector = this.getSectorAtPosition(position.x, position.y, position.z);
-    const nextState = {
-      ...state,
-      key: this.createPlayerShipStateKey(characterId),
-      player_id: characterId,
-      position,
-      rotation: this.normalizeQuaternion(state.rotation),
-      chunk_id: chunkData.chunk_id,
-      chunk: chunkData.chunk,
-      sector_id: sector?.sector_id || null,
-      speed: Number(state.speed) || 0,
-      desiredSpeed: Number(state.desiredSpeed) || 0,
-      updated_at: Date.now()
-    };
-
-    return this.queueNavigationServerMutation(async () => {
-      const actionId = createClientActionId("checkpoint");
-      const renderScale = Number(this.config.renderScale) || 0.01;
-      const commandWindow = this.createNavigationCommandWindow();
-      const serverState = await this.runNavigationCommand(actionId, commandWindow, (current) => (
-        this.onlineApi.checkpointNavigation({
-          clientActionId: actionId,
-          expectedRevision: current.ship.revision,
-          issuedAt: commandWindow.issuedAt,
-          expiresAt: commandWindow.expiresAt,
-          checkpointKind,
-          ship: {
-            position: nextState.position,
-            rotation: nextState.rotation,
-            speed: nextState.speed / renderScale,
-            desired_speed: nextState.desiredSpeed / renderScale
-          }
-        })
-      ));
-      this.navigationServerState = serverState;
-      this.navigationServerReceivedAt = Date.now();
-      const savedState = this.navigationStateToPlayerShipState(serverState);
-      await this.putStoreValue("playerShip", savedState);
-      return savedState;
-    });
   }
 
   navigationStateToPlayerShipState(state) {

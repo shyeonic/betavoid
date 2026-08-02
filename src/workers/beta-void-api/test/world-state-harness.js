@@ -6,7 +6,6 @@ import {
   rebuildWorldState
 } from "../src/world-state.js";
 import {
-  checkpointPlayerShip,
   dockPlayerShip,
   enterPlayerBetaSpace,
   exitPlayerBetaSpace,
@@ -15,6 +14,7 @@ import {
   listNavigationAdminHistory,
   listNavigationAdminShips,
   listZoneShipPeers,
+  observeSpaceShips,
   overridePlayerNavigation,
   startPlayerNavigation,
   undockPlayerShip
@@ -94,15 +94,6 @@ export default {
           testNow(body.server_now)
         ));
       }
-      if (request.method === "POST" && url.pathname === "/navigation/checkpoint") {
-        const body = await request.json();
-        return json(await checkpointPlayerShip(
-          env.WORLD_DB,
-          navigationContext(body.character_id, body.spatial_mode),
-          body,
-          testNow(body.server_now)
-        ));
-      }
       if (request.method === "POST" && url.pathname === "/navigation/dock") {
         const body = await request.json();
         return json(await dockPlayerShip(
@@ -159,6 +150,16 @@ export default {
             now: testNow(url.searchParams.get("server_now"))
           }
         ));
+      }
+      if (request.method === "GET" && url.pathname === "/observe-space") {
+        return json(await observeSpaceShips(env.WORLD_DB, {
+          zoneId: url.searchParams.get("zone_id"),
+          characterId: url.searchParams.get("character_id"),
+          shipUid: url.searchParams.get("ship_uid"),
+          excludedCharacterId: url.searchParams.get("excluded_character_id"),
+          limit: url.searchParams.get("limit"),
+          now: testNow(url.searchParams.get("server_now"))
+        }));
       }
       if (request.method === "GET" && url.pathname === "/navigation/admin-ships") {
         return json(await listNavigationAdminShips(
