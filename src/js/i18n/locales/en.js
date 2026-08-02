@@ -75,9 +75,22 @@ export const en = {
       categories: {
         buildings: "Buildings",
         resources: "Resources",
-        betaVoids: "Beta Void"
+        betaVoids: "Beta Void",
+        ships: "Ships"
       },
       empty: "No objects detected",
+      shipInfo: "Info",
+      locateShip: "Locate",
+      locatingShip: "Locating...",
+      shipLocated: "Ship location received",
+      shipLocateFailed: "Ship location unavailable",
+      party: "Party",
+      partyPlanned: "Party position synchronization is planned",
+      scanTime: "Scanned",
+      shipUid: "Ship UID",
+      docked: "Docked",
+      locationUnscanned: "Not scanned",
+      locationUnavailable: "Location unavailable",
       select: "Select",
       detail: "Detail",
       autoNavigate: "Auto Navigate",

@@ -75,9 +75,22 @@ export const ko = {
       categories: {
         buildings: "건물",
         resources: "자원",
-        betaVoids: "베타 보이드"
+        betaVoids: "베타 보이드",
+        ships: "함선"
       },
       empty: "감지된 객체 없음",
+      shipInfo: "정보",
+      locateShip: "위치찾기",
+      locatingShip: "위치 확인 중...",
+      shipLocated: "함선 좌표를 수신했습니다",
+      shipLocateFailed: "함선 위치를 확인할 수 없습니다",
+      party: "파티",
+      partyPlanned: "파티 좌표 동기화는 추후 구현 예정입니다",
+      scanTime: "스캔 시각",
+      shipUid: "함선 UID",
+      docked: "정박 중",
+      locationUnscanned: "미스캔",
+      locationUnavailable: "좌표 없음",
       select: "선택",
       detail: "상세",
       autoNavigate: "자동 항법",

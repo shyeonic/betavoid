@@ -68,18 +68,20 @@ export class UIManager {
     this.selectedWorldObjectSummary = null;
     this.selectedObjectListTargetId = null;
     this.renderedObjectList = [];
-    this.objectListPayload = { buildings: [], resources: [], betaVoids: [] };
+    this.objectListPayload = { buildings: [], resources: [], betaVoids: [], ships: [] };
     this.fittingState = null;
     this.objectListCategory = "resources";
     this.objectListSort = {
       buildings: "sector",
       resources: "sector",
-      betaVoids: "sector"
+      betaVoids: "sector",
+      ships: "name"
     };
     this.cargoDisplayKind = "all";
     this.playerProfile = null;
     this.onKeyBindingsChange = null;
     this.onRequestObjectList = null;
+    this.onLocateObservedShip = null;
     this.onSelectWorldObject = null;
     this.onNavigateToWorldObject = null;
     this.onClearWorldSelection = null;
@@ -339,6 +341,7 @@ export class UIManager {
     onChunkBoundsModeChange,
     onShipSelect,
     onRequestObjectList,
+    onLocateObservedShip,
     onSelectWorldObject,
     onNavigateToWorldObject,
     onClearWorldSelection,
@@ -371,6 +374,7 @@ export class UIManager {
     this.onSetSpeed = onSetSpeed;
     this.onKeyBindingsChange = onKeyBindingsChange;
     this.onRequestObjectList = typeof onRequestObjectList === "function" ? onRequestObjectList : null;
+    this.onLocateObservedShip = typeof onLocateObservedShip === "function" ? onLocateObservedShip : null;
     this.onSelectWorldObject = typeof onSelectWorldObject === "function" ? onSelectWorldObject : null;
     this.onNavigateToWorldObject = typeof onNavigateToWorldObject === "function" ? onNavigateToWorldObject : null;
     this.onHyperdriveToWorldObject = typeof onHyperdriveToWorldObject === "function" ? onHyperdriveToWorldObject : null;
@@ -939,10 +943,12 @@ export class UIManager {
     this.elements.objectListPopup.setAttribute("aria-hidden", "false");
 
     try {
-      const payload = this.onRequestObjectList ? await this.onRequestObjectList() : { buildings: [], resources: [], betaVoids: [] };
-      this.renderObjectList(payload || { buildings: [], resources: [], betaVoids: [] });
+      const payload = this.onRequestObjectList
+        ? await this.onRequestObjectList()
+        : { buildings: [], resources: [], betaVoids: [], ships: [] };
+      this.renderObjectList(payload || { buildings: [], resources: [], betaVoids: [], ships: [] });
     } catch {
-      this.renderObjectList({ buildings: [], resources: [], betaVoids: [] });
+      this.renderObjectList({ buildings: [], resources: [], betaVoids: [], ships: [] });
       this.showErrorToast("scanner unavailable");
     }
 
@@ -1187,8 +1193,8 @@ export class UIManager {
     });
   }
 
-  renderObjectList({ buildings = [], resources = [], betaVoids = [] }) {
-    this.objectListPayload = { buildings, resources, betaVoids };
+  renderObjectList({ buildings = [], resources = [], betaVoids = [], ships = [] }) {
+    this.objectListPayload = { buildings, resources, betaVoids, ships };
     this.renderObjectListCategory();
   }
 
@@ -1222,7 +1228,9 @@ export class UIManager {
 
     const tableHead = document.createElement("div");
     tableHead.className = "object-list-table-head";
-    const columns = category === "buildings"
+    const columns = category === "ships"
+      ? ["Status", "Pilot", "Ship"]
+      : category === "buildings"
       ? ["Sector", "Name", "Position"]
       : category === "betaVoids"
         ? ["Sector", "Name", "Position"]
@@ -1249,8 +1257,8 @@ export class UIManager {
 
     const sector = document.createElement("div");
     sector.className = "object-row-sector";
-    sector.textContent = item.sectorName;
-    sector.title = item.sectorName;
+    sector.textContent = category === "ships" ? item.statusLabel : item.sectorName;
+    sector.title = sector.textContent;
 
     const main = document.createElement("div");
     main.className = "object-row-main";
@@ -1267,15 +1275,19 @@ export class UIManager {
 
     const name = document.createElement("div");
     name.className = "object-row-name";
-    name.textContent = category === "buildings" || category === "betaVoids" ? item.name : item.typeLabel;
+    name.textContent = category === "ships"
+      ? item.name
+      : category === "buildings" || category === "betaVoids"
+        ? item.name
+        : item.typeLabel;
     name.title = name.textContent;
 
     main.append(icon, name);
 
     const coordinates = document.createElement("div");
     coordinates.className = "object-row-coordinates";
-    coordinates.textContent = this.formatListPosition(item.position);
-    coordinates.title = this.formatPosition(item.position);
+    coordinates.textContent = category === "ships" ? item.typeLabel : this.formatListPosition(item.position);
+    coordinates.title = category === "ships" ? item.typeLabel : this.formatPosition(item.position);
 
     row.append(sector, main, coordinates);
     wrapper.append(row);
@@ -1354,6 +1366,15 @@ export class UIManager {
       return;
     }
 
+    const locateShipButton = target?.closest("[data-ship-locate-id]");
+    if (locateShipButton instanceof HTMLButtonElement) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (locateShipButton.disabled) return;
+      void this.locateShipFromObjectList(locateShipButton);
+      return;
+    }
+
     const row = target?.closest("[data-object-id]");
     if (!row) return;
 
@@ -1390,6 +1411,8 @@ export class UIManager {
   }
 
   createObjectBubble(object, { includeSelect = true } = {}) {
+    if (object.kind === "ship") return this.createShipObjectBubble(object);
+
     const bubble = document.createElement("div");
     bubble.className = "object-detail-bubble";
     bubble.dataset.objectBubbleId = object.id;
@@ -1431,6 +1454,75 @@ export class UIManager {
     this.appendDockButton(bubble, object);
     this.appendGatherButton(bubble, object);
     return bubble;
+  }
+
+  createShipObjectBubble(object) {
+    const bubble = document.createElement("div");
+    bubble.className = "object-detail-bubble ship-detail-bubble";
+    bubble.dataset.objectBubbleId = object.id;
+
+    const info = document.createElement("button");
+    info.className = "object-bubble-button";
+    info.type = "button";
+    info.dataset.objectDetailId = object.id;
+    info.textContent = this.t("ui.scanner.shipInfo", "Info");
+
+    const locate = document.createElement("button");
+    locate.className = "object-bubble-button object-navigate-button";
+    locate.type = "button";
+    locate.dataset.shipLocateId = object.id;
+    locate.textContent = this.t("ui.scanner.locateShip", "Locate");
+
+    const party = document.createElement("button");
+    party.className = "object-bubble-button";
+    party.type = "button";
+    party.disabled = true;
+    party.setAttribute("aria-disabled", "true");
+    party.title = this.t("ui.scanner.partyPlanned", "Party synchronization is planned");
+    party.textContent = this.t("ui.scanner.party", "Party");
+
+    bubble.append(info, locate, party);
+    if (object.scannedAt) {
+      const result = document.createElement("div");
+      result.className = "ship-scan-result";
+      const location = object.position
+        ? this.formatPosition(object.position)
+        : object.status === "DOCKED"
+          ? this.t("ui.scanner.docked", "Docked")
+          : this.t("ui.scanner.locationUnavailable", "Location unavailable");
+      result.append(
+        this.createObjectBubbleLine(this.t("ui.scanner.fields.position", "Position"), location),
+        this.createObjectBubbleLine(
+          this.t("ui.scanner.scanTime", "Scanned"),
+          new Date(object.scannedAt).toLocaleTimeString()
+        )
+      );
+      bubble.append(result);
+    }
+    return bubble;
+  }
+
+  async locateShipFromObjectList(button) {
+    const object = this.findRenderedObject(button.dataset.shipLocateId);
+    if (!object || !this.onLocateObservedShip) return;
+    const idleLabel = this.t("ui.scanner.locateShip", "Locate");
+    button.disabled = true;
+    button.textContent = this.t("ui.scanner.locatingShip", "Locating...");
+    try {
+      const located = await this.onLocateObservedShip(object);
+      if (!located) throw new Error("Ship location unavailable.");
+      Object.assign(object, located);
+      const stored = this.objectListPayload.ships.find((item) => item.id === object.id);
+      if (stored) Object.assign(stored, located);
+      this.renderObjectListCategory();
+      this.selectObjectListItem(object.id, { scroll: true });
+      this.showToast(this.t("ui.scanner.shipLocated", "Ship location received"));
+    } catch (error) {
+      console.warn("[scanner] ship location unavailable.", error);
+      button.disabled = false;
+      button.textContent = idleLabel;
+      this.showErrorToast(this.t("ui.scanner.shipLocateFailed", "Ship location unavailable"));
+    }
   }
 
   // Adds a gather/stop toggle to a resource node's detail bubble. Mirrors the
@@ -1546,6 +1638,8 @@ export class UIManager {
   }
 
   createObjectDetailPopupElement(object, onClose) {
+    if (object.kind === "ship") return this.createShipDetailPopupElement(object, onClose);
+
     const popup = document.createElement("section");
     popup.className = "object-detail-popup";
     popup.dataset.objectDetailPopupId = object.id;
@@ -1618,6 +1712,39 @@ export class UIManager {
     }
 
     popup.append(header, ...lines, ...actions);
+    return popup;
+  }
+
+  createShipDetailPopupElement(object, onClose) {
+    const popup = document.createElement("section");
+    popup.className = "object-detail-popup";
+    popup.dataset.objectDetailPopupId = object.id;
+    popup.setAttribute("role", "dialog");
+    popup.setAttribute("aria-label", this.t("ui.scanner.shipInfo", "Ship info"));
+
+    const header = document.createElement("header");
+    header.className = "object-detail-popup-header";
+    const title = document.createElement("h3");
+    title.className = "object-detail-popup-title";
+    title.textContent = object.name;
+    const close = document.createElement("button");
+    close.className = "object-detail-popup-close";
+    close.type = "button";
+    close.setAttribute("aria-label", this.t("ui.scanner.closeDetail", "Close detail"));
+    close.innerHTML = '<span class="svg-icon svg-icon-close" aria-hidden="true"></span>';
+    close.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    });
+    header.append(title, close);
+
+    popup.append(
+      header,
+      this.createObjectBubbleLine(this.t("ui.scanner.fields.type", "Type"), object.typeLabel),
+      this.createObjectBubbleLine(this.t("ui.scanner.fields.status", "Status"), object.statusLabel),
+      this.createObjectBubbleLine(this.t("ui.scanner.shipUid", "Ship UID"), object.shipUid || object.id)
+    );
     return popup;
   }
 
@@ -2140,16 +2267,18 @@ export class UIManager {
     if (kind === "building") return "buildings";
     if (kind === "resource") return "resources";
     if (kind === "betaVoid") return "betaVoids";
+    if (kind === "ship") return "ships";
     return null;
   }
 
   getNormalizedObjectListCategory(category) {
-    return ["resources", "buildings", "betaVoids"].includes(category) ? category : "resources";
+    return ["resources", "buildings", "betaVoids", "ships"].includes(category) ? category : "resources";
   }
 
   getObjectListCategoryLabel(category) {
     if (category === "buildings") return this.t("ui.scanner.categories.buildings", "Buildings");
     if (category === "betaVoids") return this.t("ui.scanner.categories.betaVoids", "Beta Void");
+    if (category === "ships") return this.t("ui.scanner.categories.ships", "Ships");
     return this.t("ui.scanner.categories.resources", "Resources");
   }
 
@@ -2170,7 +2299,7 @@ export class UIManager {
   }
 
   stepObjectListCategory(step) {
-    const categories = ["resources", "buildings", "betaVoids"];
+    const categories = ["resources", "buildings", "betaVoids", "ships"];
     const currentIndex = categories.indexOf(this.objectListCategory);
     const nextIndex = (currentIndex + (Number.isFinite(step) ? step : 1) + categories.length) % categories.length;
     this.setObjectListCategory(categories[nextIndex]);
@@ -2229,6 +2358,14 @@ export class UIManager {
   }
 
   getObjectListSortOptions(category) {
+    if (category === "ships") {
+      return [
+        { id: "name", label: "Pilot" },
+        { id: "type", label: "Ship" },
+        { id: "status", label: "Status" }
+      ];
+    }
+
     if (category === "resources") {
       return [
         { id: "sector", label: "Sector" },

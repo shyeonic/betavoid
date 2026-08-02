@@ -227,7 +227,9 @@ export class OnlineApiClient {
     if (characterId) query.set("character_id", String(characterId));
     if (shipUid) query.set("ship_uid", String(shipUid));
     query.set("limit", String(limit));
-    const payload = await this.request(`/v1/space/observe?${query}`);
+    const payload = await this.request(`/v1/space/observe?${query}`, {
+      timeoutMs: 5_000
+    });
     return {
       scope: payload?.scope === "ship" ? "ship" : "zone",
       zoneId: String(payload?.zone_id || ""),

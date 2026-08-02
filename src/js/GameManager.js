@@ -231,6 +231,7 @@ export class GameManager {
     this.remotePlayerManager = null;
     this.observedSpaceZoneId = null;
     this.zoneObservationSequence = 0;
+    this.knownObservedShips = new Map();
     this.targetingOverlay = new TargetingOverlay({
       canvas: this.ui.elements.targetingCanvas,
       frameStyle: this.getEnvironmentPreset().targeting.frame
@@ -439,6 +440,7 @@ export class GameManager {
       onPerformanceSettingChange: (key, enabled) => this.setPerformanceSetting(key, enabled),
       onShipSelect: (shipId) => void this.setSelectedShipId(shipId),
       onRequestObjectList: () => this.getWorldObjectList(),
+      onLocateObservedShip: (ship) => this.locateObservedShip(ship),
       onSelectWorldObject: (object) => this.selectWorldObjectFromListItem(object),
       onNavigateToWorldObject: (object) => this.navigateToWorldObject(object),
       onClearWorldSelection: () => this.clearWorldSelection(),
@@ -4747,6 +4749,9 @@ export class GameManager {
       shipUid,
       limit
     });
+    this.rememberObservedShips(observation.peers, {
+      locatedAt: targeted ? observation.serverTime : null
+    });
 
     if (!shouldRender) return observation;
     if (observation.scope === "zone") {
@@ -4763,6 +4768,89 @@ export class GameManager {
 
     this.remotePlayerManager?.upsertObservedPeers(observation.peers);
     return observation;
+  }
+
+  rememberObservedShips(peers, { locatedAt = null } = {}) {
+    for (const peer of peers || []) {
+      const shipUid = String(peer?.ship_uid || "");
+      if (!shipUid) continue;
+      const previous = this.knownObservedShips.get(shipUid) || {};
+      if (
+        previous.peer
+        && Number(peer.updated_at) < Number(previous.peer.updated_at)
+      ) {
+        continue;
+      }
+      this.knownObservedShips.set(shipUid, {
+        peer: { ...(previous.peer || {}), ...peer },
+        discoveredAt: previous.discoveredAt || Date.now(),
+        locatedAt: Number(locatedAt) || previous.locatedAt || null
+      });
+    }
+  }
+
+  getObservedShipListItems() {
+    return [...this.knownObservedShips.values()]
+      .map((record) => this.createObservedShipListItem(record))
+      .filter(Boolean);
+  }
+
+  createObservedShipListItem(record) {
+    const peer = record?.peer;
+    const shipUid = String(peer?.ship_uid || "");
+    if (!shipUid) return null;
+    const definition = this.shipDefinitions[peer.ship_id] || null;
+    const position = record.locatedAt && peer.pose?.position
+      ? {
+          x: numberOrZero(peer.pose.position.x),
+          y: numberOrZero(peer.pose.position.y),
+          z: numberOrZero(peer.pose.position.z)
+        }
+      : null;
+    const sector = position
+      ? this.worldDataManager.getSectorAtPosition(position.x, position.y, position.z)
+      : null;
+    const routeType = String(peer.route?.route_type || "").toUpperCase();
+    const spatialMode = String(peer.spatial_mode || "UNKNOWN").toUpperCase();
+    const statusLabel = routeType || spatialMode;
+    const sectorName = sector
+      ? this.i18n.resolveDefinitionText(sector, "name", sector.name || sector.sector_id)
+      : record.locatedAt
+        ? spatialMode === "DOCKED" ? "DOCKED" : String(peer.zone_id || "UNKNOWN")
+        : this.i18n.t("ui.scanner.locationUnscanned", {}, "Not scanned");
+    return {
+      id: shipUid,
+      kind: "ship",
+      type: String(peer.ship_id || "unknown"),
+      name: String(peer.display_name || "Pilot"),
+      typeLabel: this.i18n.resolveDefinitionText(
+        definition,
+        "name",
+        definition?.fallbackLabel || peer.ship_id || "Ship"
+      ),
+      iconUrl: "./rss/svg/ui_ship.svg",
+      characterId: String(peer.character_id || ""),
+      shipUid,
+      status: spatialMode,
+      statusLabel,
+      sectorName,
+      position,
+      scannedAt: Number(record.locatedAt) || null,
+      serverUpdatedAt: Number(peer.updated_at) || null
+    };
+  }
+
+  async locateObservedShip(ship) {
+    const shipUid = String(ship?.shipUid || ship?.id || "");
+    if (!shipUid) throw new Error("Ship identifier is unavailable.");
+    const observation = await this.observeOnlineSpace({
+      shipUid,
+      limit: 1,
+      render: true
+    });
+    const peer = observation.peers.find((candidate) => candidate?.ship_uid === shipUid);
+    if (!peer) throw new Error("Ship is no longer observable.");
+    return this.createObservedShipListItem(this.knownObservedShips.get(shipUid));
   }
 
   async clearAllData() {
@@ -4956,7 +5044,14 @@ export class GameManager {
 
   getWorldObjectList() {
     const snapshot = this.worldMapManager?.snapshot || this.worldDataManager.snapshot;
-    if (!snapshot) return { buildings: [], resources: [], betaVoids: [] };
+    if (!snapshot) {
+      return {
+        buildings: [],
+        resources: [],
+        betaVoids: [],
+        ships: this.getObservedShipListItems()
+      };
+    }
 
     const sectorsById = new Map(snapshot.sectors.map((sector) => [sector.sector_id, sector]));
     const playerPosition = this.getPlayerDataPosition();
@@ -5024,7 +5119,8 @@ export class GameManager {
       resources: snapshot.resourceNodes.map((resourceNode) => toListItem(resourceNode, "resource")),
       betaVoids: (snapshot.betaVoids || [])
         .filter((betaVoid) => betaVoid.status === "active")
-        .map((betaVoid) => toListItem(betaVoid, "betaVoid"))
+        .map((betaVoid) => toListItem(betaVoid, "betaVoid")),
+      ships: this.getObservedShipListItems()
     };
   }
 
