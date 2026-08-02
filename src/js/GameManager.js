@@ -244,7 +244,7 @@ export class GameManager {
     this.presenceRouteSignature = null;
     this.presenceSequence = 0;
     this.manualSettlementTracker = new ManualMovementSettlementTracker();
-    this.fieldShipRefreshInterval = 5000;
+    this.fieldShipRefreshInterval = 5 * 60 * 1000;
     this.fieldShipLastRefreshedAt = 0;
     this.fieldShipRefreshPending = false;
     this.targetingOverlay = new TargetingOverlay({
@@ -393,7 +393,7 @@ export class GameManager {
     this.worldSummaryPending = false;
     this.betaVoidLifecycleLastCheckedAt = 0;
     this.betaVoidLifecyclePending = false;
-    this.betaVoidLifecycleInterval = 30000;
+    this.betaVoidLifecycleInterval = 5 * 60 * 1000;
     this.playerShipSavePendingCount = 0;
     this._lastFrameTimestamp = 0;
     this._frameIntervalMs = FRAME_INTERVAL_MS;

@@ -6,14 +6,12 @@ const BETA_VOID_ENEMY_TYPES = ["pirate_squad", "raider_group", "hostile_fleet"];
 const BETA_VOID_RISK_LEVELS = [1, 2, 3, 4, 5];
 const BETA_VOID_REWARD_TABLE_IDS = ["loot_91", "loot_92", "loot_93"];
 
-export async function getOrCreateWorldState(db) {
-  let worldRow = await ensureWorldInitialized(db);
-  await materializeBetaVoidLifecycle(db, worldRow, Date.now());
-  worldRow = await selectWorld(db, PRIMARY_WORLD_ID);
+export async function getOrCreateWorldState(db, now = Date.now()) {
+  const worldRow = await ensureWorldInitialized(db);
 
   const [entityResult, storageResult, metaResult] = await db.batch([
     db.prepare(`
-      SELECT entity_type, state_json
+      SELECT entity_type, entity_id, state_json, revision
       FROM world_entities
       WHERE world_id = ?
       ORDER BY entity_type, entity_id
@@ -37,9 +35,19 @@ export async function getOrCreateWorldState(db) {
     building: [],
     beta_void: []
   };
-  for (const row of entityResult?.results || []) {
+  const entityRows = entityResult?.results || [];
+  const derivedBetaVoids = deriveBetaVoidLifecycle({
+    records: entityRows,
+    worldSeed: worldRow.seed,
+    now
+  });
+  for (const row of entityRows) {
     if (!entities[row.entity_type]) continue;
-    entities[row.entity_type].push(parseState(row.state_json));
+    entities[row.entity_type].push(
+      row.entity_type === "beta_void"
+        ? derivedBetaVoids.get(row.entity_id)
+        : parseState(row.state_json)
+    );
   }
   const meta = Object.fromEntries(
     (metaResult?.results || []).map((row) => [row.meta_key, parseState(row.state_json)])
@@ -77,40 +85,38 @@ export async function ensureWorldInitialized(db) {
   return worldRow;
 }
 
-export async function materializeBetaVoidLifecycle(db, worldRow, now = Date.now()) {
-  const result = await db.prepare(`
-    SELECT entity_type, entity_id, state_json, revision
-    FROM world_entities
-    WHERE world_id = ?
-      AND entity_type IN ('sector', 'resource_node', 'building', 'beta_void')
-    ORDER BY entity_type, entity_id
-  `).bind(PRIMARY_WORLD_ID).all();
-  const records = (result?.results || []).map((row) => ({
+export function deriveBetaVoidLifecycle({ records, worldSeed, now = Date.now() }) {
+  const normalizedRecords = records.map((row) => ({
     ...row,
-    state: parseState(row.state_json)
+    state: row.state || parseState(row.state_json)
   }));
-  const sectors = records
+  const sectors = normalizedRecords
     .filter((entry) => entry.entity_type === "sector")
     .map((entry) => entry.state);
-  const betaEntries = records.filter((entry) => entry.entity_type === "beta_void");
-  const placedObjects = records
+  const betaEntries = normalizedRecords
+    .filter((entry) => entry.entity_type === "beta_void")
+    .map((entry) => ({ ...entry, state: structuredClone(entry.state) }));
+  const placedObjects = normalizedRecords
     .filter((entry) => ["resource_node", "building", "beta_void"].includes(entry.entity_type))
-    .map((entry) => entry.state);
-  const updates = [];
+    .map((entry) => (
+      entry.entity_type === "beta_void"
+        ? betaEntries.find((candidate) => candidate.entity_id === entry.entity_id).state
+        : entry.state
+    ));
 
-  for (const entry of betaEntries) {
-    const betaVoid = structuredClone(entry.state);
-    const lifecycleDue = betaVoid.status === "active"
-      ? betaVoid.active_reset_at != null && Number(betaVoid.active_reset_at) <= now
-      : betaVoid.status === "defeated"
-        && betaVoid.next_regeneration_checkpoint != null
-        && Number(betaVoid.next_regeneration_checkpoint) <= now;
-    if (!lifecycleDue) continue;
+  while (true) {
+    const due = betaEntries
+      .map((entry) => ({ entry, at: betaVoidLifecycleBoundary(entry.state) }))
+      .filter((candidate) => candidate.at != null && candidate.at <= now)
+      .sort((a, b) => a.at - b.at || a.entry.entity_id.localeCompare(b.entry.entity_id))[0];
+    if (!due) break;
 
+    const entry = due.entry;
+    const betaVoid = entry.state;
     const lifecycleKey = betaVoid.status === "defeated"
       ? `defeated:${betaVoid.next_regeneration_checkpoint}`
       : `active:${betaVoid.active_reset_at}`;
-    const rng = createSeededRandom(`${worldRow.seed}:${betaVoid.id}:${lifecycleKey}`);
+    const rng = createSeededRandom(`${worldSeed}:${betaVoid.id}:${lifecycleKey}`);
     const sector = sectors.find((candidate) => candidate.sector_id === betaVoid.sector_id);
     const position = findBetaVoidResetPosition({
       betaVoid,
@@ -119,6 +125,7 @@ export async function materializeBetaVoidLifecycle(db, worldRow, now = Date.now(
       rng
     });
     const generation = Math.max(1, Math.round(Number(betaVoid.variant_generation) || 1) + 1);
+    const boundaryAt = due.at;
     const chunk = chunkDataAtPosition(position);
     Object.assign(betaVoid, {
       position,
@@ -128,35 +135,146 @@ export async function materializeBetaVoidLifecycle(db, worldRow, now = Date.now(
       status: "active",
       defeated_at: null,
       next_regeneration_checkpoint: null,
-      ...createBetaVoidLifecycleState({ generation, now, rng }),
-      last_updated: now
+      ...createBetaVoidLifecycleState({ generation, now: boundaryAt, rng }),
+      last_updated: boundaryAt
     });
     const placedIndex = placedObjects.findIndex((candidate) => candidate.id === betaVoid.id);
     if (placedIndex >= 0) placedObjects[placedIndex] = betaVoid;
-    updates.push({ entry, betaVoid });
   }
 
-  if (updates.length === 0) return { changed: false, count: 0 };
-  const statements = updates.map(({ entry, betaVoid }) => db.prepare(`
-    UPDATE world_entities
-    SET state_json = ?, sector_id = ?, chunk_id = ?, revision = revision + 1, updated_at = ?
-    WHERE world_id = ? AND entity_type = 'beta_void' AND entity_id = ? AND revision = ?
-  `).bind(
-    JSON.stringify(betaVoid),
-    betaVoid.sector_id || null,
-    betaVoid.chunk_id || null,
-    now,
-    PRIMARY_WORLD_ID,
-    entry.entity_id,
-    Number(entry.revision)
-  ));
-  statements.push(db.prepare(`
-    UPDATE world_instances
-    SET revision = revision + 1, updated_at = ?
-    WHERE world_id = ? AND revision = ?
-  `).bind(now, PRIMARY_WORLD_ID, Number(worldRow.revision)));
-  await db.batch(statements);
-  return { changed: true, count: updates.length };
+  return new Map(betaEntries.map((entry) => [entry.entity_id, entry.state]));
+}
+
+export async function getWorldEntityState(db, entityType, entityId, now = Date.now()) {
+  const normalizedType = normalizeEntityType(entityType);
+  const normalizedId = optionalId(entityId);
+  if (!normalizedType || !normalizedId) return null;
+  const world = await getOrCreateWorldState(db, now);
+  const collection = {
+    sector: world.snapshot.sectors,
+    resource_node: world.snapshot.resource_nodes,
+    building: world.snapshot.buildings,
+    beta_void: world.snapshot.beta_voids
+  }[normalizedType];
+  return collection.find((entry) => entityIdForState(normalizedType, entry) === normalizedId) || null;
+}
+
+export async function processBetaVoidEntity(db, {
+  betaVoidId,
+  expectedGeneration,
+  clientActionId,
+  actorCharacterId,
+  actorShipUid,
+  issuedAt,
+  expiresAt
+}, now = Date.now()) {
+  const entityId = optionalId(betaVoidId);
+  const actionId = optionalId(clientActionId);
+  const characterId = optionalId(actorCharacterId);
+  const shipUid = optionalId(actorShipUid);
+  assertWorldCommandDeadline({ issuedAt, expiresAt }, now);
+  if (!entityId || !actionId || !characterId || !shipUid) {
+    throw worldError(400, "WORLD_COMMAND_INVALID", "Beta Void command identifiers are required.");
+  }
+
+  const existingReceipt = await getWorldCommandReceipt(db, actionId, characterId);
+  if (existingReceipt) return existingReceipt;
+
+  await ensureWorldInitialized(db);
+  const row = await db.prepare(`
+    SELECT entity_type, entity_id, state_json, revision
+    FROM world_entities
+    WHERE world_id = ? AND entity_type = 'beta_void' AND entity_id = ?
+  `).bind(PRIMARY_WORLD_ID, entityId).first();
+  if (!row) throw worldError(404, "BETA_VOID_NOT_FOUND", "Beta Void was not found.");
+
+  const current = await getWorldEntityState(db, "beta_void", entityId, now);
+  if (!current || current.status !== "active") {
+    throw worldError(409, "BETA_VOID_UNAVAILABLE", "Beta Void is unavailable.");
+  }
+  const generation = Math.max(1, Math.round(Number(current.variant_generation) || 1));
+  if (!Number.isInteger(Number(expectedGeneration)) || Number(expectedGeneration) !== generation) {
+    throw worldError(409, "BETA_VOID_GENERATION_CHANGED", "Beta Void generation changed.");
+  }
+  const activeSession = await db.prepare(`
+    SELECT session_id
+    FROM beta_space_sessions
+    WHERE ship_uid = ?
+      AND owner_character_id = ?
+      AND source_beta_void_id = ?
+      AND source_generation = ?
+      AND status = 'ACTIVE'
+      AND expires_at > ?
+  `).bind(shipUid, characterId, entityId, generation, now).first();
+  if (!activeSession) {
+    throw worldError(409, "BETA_VOID_SESSION_REQUIRED", "An active Beta Space session is required.");
+  }
+
+  const defeated = {
+    ...current,
+    status: "defeated",
+    defeated_at: now,
+    next_regeneration_checkpoint: nextSixHourCheckpoint(now),
+    active_reset_at: null,
+    active_reset_interval_minutes: null,
+    last_updated: now
+  };
+  const response = {
+    command_type: "PROCESS_BETA_VOID",
+    client_action_id: actionId,
+    entity: defeated,
+    recorded_at: now
+  };
+  const nextEntityRevision = Number(row.revision) + 1;
+  const results = await db.batch([
+    db.prepare(`
+      UPDATE world_entities
+      SET state_json = ?, sector_id = ?, chunk_id = ?, revision = revision + 1, updated_at = ?
+      WHERE world_id = ? AND entity_type = 'beta_void' AND entity_id = ? AND revision = ?
+    `).bind(
+      JSON.stringify(defeated),
+      defeated.sector_id || null,
+      defeated.chunk_id || null,
+      now,
+      PRIMARY_WORLD_ID,
+      entityId,
+      Number(row.revision)
+    ),
+    db.prepare(`
+      UPDATE world_instances
+      SET revision = revision + 1, updated_at = ?
+      WHERE world_id = ?
+        AND EXISTS (
+          SELECT 1 FROM world_entities
+          WHERE world_id = ? AND entity_type = 'beta_void' AND entity_id = ?
+            AND revision = ? AND updated_at = ?
+        )
+    `).bind(now, PRIMARY_WORLD_ID, PRIMARY_WORLD_ID, entityId, nextEntityRevision, now),
+    db.prepare(`
+      INSERT OR IGNORE INTO world_command_receipts (
+        client_action_id, owner_character_id, command_type, response_json, created_at
+      )
+      SELECT ?, ?, 'PROCESS_BETA_VOID', ?, ?
+      FROM world_entities
+      WHERE world_id = ? AND entity_type = 'beta_void' AND entity_id = ?
+        AND revision = ? AND updated_at = ?
+    `).bind(
+      actionId,
+      characterId,
+      JSON.stringify(response),
+      now,
+      PRIMARY_WORLD_ID,
+      entityId,
+      nextEntityRevision,
+      now
+    )
+  ]);
+  if (statementChanges(results[0]) !== 1) {
+    const receipt = await getWorldCommandReceipt(db, actionId, characterId);
+    if (receipt) return receipt;
+    throw worldError(409, "BETA_VOID_REVISION_CONFLICT", "Beta Void state changed.");
+  }
+  return response;
 }
 
 export async function getWorldAdminSummary(db) {
@@ -231,7 +349,10 @@ export async function listWorldAdminEntities(db, {
   cursor = null,
   limit = 50
 } = {}) {
-  await getOrCreateWorldState(db);
+  const world = await getOrCreateWorldState(db);
+  const betaVoids = new Map(
+    world.snapshot.beta_voids.map((entry) => [entry.id, entry])
+  );
   const normalizedType = normalizeEntityType(entityType);
   const normalizedSector = optionalId(sectorId);
   const normalizedCursor = decodeEntityCursor(cursor);
@@ -274,16 +395,21 @@ export async function listWorldAdminEntities(db, {
   const hasMore = rows.length > normalizedLimit;
   const selected = rows.slice(0, normalizedLimit);
   return {
-    entities: selected.map((row) => ({
+    entities: selected.map((row) => {
+      const state = row.entity_type === "beta_void"
+        ? betaVoids.get(row.entity_id) || parseState(row.state_json)
+        : parseState(row.state_json);
+      return {
       entity_type: row.entity_type,
       entity_id: row.entity_id,
-      sector_id: row.sector_id,
-      chunk_id: row.chunk_id,
+      sector_id: state.sector_id || row.sector_id,
+      chunk_id: state.chunk_id || row.chunk_id,
       revision: Number(row.revision),
       created_at: Number(row.created_at),
       updated_at: Number(row.updated_at),
-      state: parseState(row.state_json)
-    })),
+      state
+    };
+    }),
     next_cursor: hasMore ? encodeEntityCursor(selected.at(-1)) : null
   };
 }
@@ -441,6 +567,59 @@ function entityId(entityType, record) {
   if (entityType === "building") return record.building_instance_id;
   if (entityType === "beta_void") return record.id;
   throw worldError(500, "WORLD_TEMPLATE_INVALID", "Unknown world entity type.");
+}
+
+function entityIdForState(entityType, record) {
+  return entityId(entityType, record);
+}
+
+function betaVoidLifecycleBoundary(betaVoid) {
+  const value = betaVoid.status === "active"
+    ? betaVoid.active_reset_at
+    : betaVoid.status === "defeated"
+      ? betaVoid.next_regeneration_checkpoint
+      : null;
+  const boundary = Number(value);
+  return Number.isFinite(boundary) && boundary > 0 ? boundary : null;
+}
+
+function nextSixHourCheckpoint(now) {
+  const interval = 6 * 60 * 60 * 1000;
+  return (Math.floor(now / interval) + 1) * interval;
+}
+
+function assertWorldCommandDeadline({ issuedAt, expiresAt }, now) {
+  const issued = Number(issuedAt);
+  const expires = Number(expiresAt);
+  if (
+    !Number.isInteger(issued)
+    || !Number.isInteger(expires)
+    || expires <= issued
+    || expires - issued > 10_000
+    || issued > now + 2_000
+  ) {
+    throw worldError(400, "WORLD_COMMAND_WINDOW_INVALID", "World command window is invalid.");
+  }
+  if (now > expires) {
+    throw worldError(409, "WORLD_COMMAND_EXPIRED", "World command expired before it reached the server.");
+  }
+}
+
+async function getWorldCommandReceipt(db, clientActionId, ownerCharacterId) {
+  const row = await db.prepare(`
+    SELECT owner_character_id, response_json
+    FROM world_command_receipts
+    WHERE client_action_id = ?
+  `).bind(clientActionId).first();
+  if (!row) return null;
+  if (row.owner_character_id !== ownerCharacterId) {
+    throw worldError(409, "WORLD_ACTION_CONFLICT", "World action belongs to another character.");
+  }
+  return parseState(row.response_json);
+}
+
+function statementChanges(result) {
+  return Number(result?.meta?.changes ?? result?.changes ?? 0);
 }
 
 function rebaseTimestamps(value, offset) {

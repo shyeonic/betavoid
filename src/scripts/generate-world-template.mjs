@@ -147,6 +147,35 @@ try {
           }
         ])
     );
+    const enabledChunkGroups = new Map();
+    for (const chunk of gameData.enabledChunks || []) {
+      const x = Number(chunk.x) || 0;
+      const y = Number(chunk.y) || 0;
+      const z = Number(chunk.z) || 0;
+      const key = `${x}:${y}`;
+      if (!enabledChunkGroups.has(key)) enabledChunkGroups.set(key, { x, y, values: [] });
+      enabledChunkGroups.get(key).values.push(z);
+    }
+    const enabledChunkRuns = [];
+    for (const { x, y, values } of enabledChunkGroups.values()) {
+      values.sort((a, b) => a - b);
+      let start = null;
+      let end = null;
+      for (const z of values) {
+        if (start == null) {
+          start = z;
+          end = z;
+        } else if (z === end + 1) {
+          end = z;
+        } else {
+          enabledChunkRuns.push([x, y, start, end]);
+          start = z;
+          end = z;
+        }
+      }
+      if (start != null) enabledChunkRuns.push([x, y, start, end]);
+    }
+    enabledChunkRuns.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
     return {
       schemaVersion: 1,
       templateEpoch: generatedAt,
@@ -165,6 +194,20 @@ try {
         placementMargin: gameData.worldConfig.betaVoidPlacementMargin,
         activeResetMinMinutes: gameData.worldConfig.betaVoidActiveResetMinMinutes,
         activeResetMaxMinutes: gameData.worldConfig.betaVoidActiveResetMaxMinutes
+      },
+      resourceLifecycle: {
+        checkInterval: gameData.worldConfig.resourceCheckInterval,
+        placementMargin: gameData.worldConfig.placementMargin,
+        minDistance: gameData.worldConfig.resourceMinDistance,
+        resourceIds: [...gameData.initialResourceTypes],
+        definitions: structuredClone(gameData.resourceDefinitions),
+        itemTypes: Object.fromEntries(
+          Object.entries(gameData.itemDefinitions).map(([itemId, definition]) => [
+            itemId,
+            definition.type || null
+          ])
+        ),
+        enabledChunkRuns: enabledChunkRuns.map((run) => run.join(",")).join(";")
       },
       movementConfig: {
         renderScale: gameData.worldConfig.renderScale,

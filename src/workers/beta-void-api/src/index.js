@@ -7,6 +7,7 @@ import {
   getOrCreateWorldState,
   getWorldAdminSummary,
   listWorldAdminEntities,
+  processBetaVoidEntity,
   rebuildWorldState
 } from "./world-state.js";
 import {
@@ -24,6 +25,7 @@ import {
   startPlayerNavigation,
   undockPlayerShip
 } from "./navigation-state.js";
+import { reconcileResourceLifecycle } from "./resource-lifecycle.js";
 export { PresenceShard } from "./presence-shard.js";
 
 const FIREBASE_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -58,6 +60,37 @@ export default {
         await requireFirebaseUser(request, env);
         const world = await getOrCreateWorldState(env.WORLD_DB);
         return json({ ok: true, world, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/world/reconcile" && request.method === "POST") {
+        await requireFirebaseUser(request, env);
+        const reconciliation = await reconcileResourceLifecycle(env.WORLD_DB);
+        const serverTime = Date.now();
+        const world = await getOrCreateWorldState(env.WORLD_DB, serverTime);
+        return json({
+          ok: true,
+          reconciliation,
+          world,
+          server_time: serverTime
+        }, { request, env });
+      }
+
+      if (url.pathname === "/v1/world/beta-voids/process" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const body = await readJsonBody(request);
+        const result = await processBetaVoidEntity(env.WORLD_DB, {
+          betaVoidId: body?.beta_void_id,
+          expectedGeneration: body?.expected_generation,
+          clientActionId: body?.client_action_id,
+          actorCharacterId: context.characterId,
+          actorShipUid: context.shipUid,
+          issuedAt: body?.issued_at,
+          expiresAt: body?.expires_at
+        });
+        const serverTime = Date.now();
+        const world = await getOrCreateWorldState(env.WORLD_DB, serverTime);
+        return json({ ok: true, result, world, server_time: serverTime }, { request, env });
       }
 
       if (url.pathname === "/v1/admin/session" && request.method === "GET") {

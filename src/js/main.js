@@ -76,7 +76,7 @@ async function startAuthenticatedGame() {
       gameDataPromise ||= loadGameData();
       const [gameData, worldBootstrap, playerState, navigationState] = await Promise.all([
         gameDataPromise,
-        onlineApi.getWorldBootstrap(),
+        onlineApi.reconcileWorld(),
         onlineApi.getPlayerState(),
         onlineApi.getNavigationState()
       ]);

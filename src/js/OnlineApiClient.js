@@ -17,6 +17,38 @@ export class OnlineApiClient {
     return normalizeWorldBootstrap(payload?.world, payload?.server_time);
   }
 
+  async reconcileWorld() {
+    const payload = await this.request("/v1/world/reconcile", {
+      method: "POST",
+      body: {}
+    });
+    return normalizeWorldBootstrap(payload?.world, payload?.server_time);
+  }
+
+  async processBetaVoid({
+    betaVoidId,
+    expectedGeneration,
+    clientActionId,
+    issuedAt,
+    expiresAt
+  }) {
+    const payload = await this.request("/v1/world/beta-voids/process", {
+      method: "POST",
+      body: {
+        beta_void_id: betaVoidId,
+        expected_generation: expectedGeneration,
+        client_action_id: clientActionId,
+        issued_at: issuedAt,
+        expires_at: expiresAt
+      },
+      timeoutMs: 4_000
+    });
+    return {
+      result: payload?.result || null,
+      world: normalizeWorldBootstrap(payload?.world, payload?.server_time)
+    };
+  }
+
   async getPlayerState() {
     const payload = await this.request("/v1/player/state");
     return normalizePlayerState(payload?.state, payload?.server_time);

@@ -6,7 +6,7 @@ import {
   quaternionForward
 } from "../../../js/navigationKinematics.js";
 import { WORLD_TEMPLATE } from "./generated/world-template.js";
-import { ensureWorldInitialized } from "./world-state.js";
+import { ensureWorldInitialized, getWorldEntityState } from "./world-state.js";
 
 const PRIMARY_WORLD_ID = "primary";
 const FIELD_MODE = "FIELD";
@@ -22,15 +22,42 @@ const BETA_SPACE_ID = "BETA-SPACE";
 const BETA_SPACE_CHUNK_SPAN = 5;
 
 export async function getPlayerNavigationState(db, context, now = Date.now()) {
-  return publicNavigationState(await getPlayerNavigationStateInternal(db, context, now));
+  return publicNavigationState(await getPlayerNavigationStateInternal(
+    db,
+    context,
+    now,
+    { materializeTimedTransitions: false }
+  ));
 }
 
-async function getPlayerNavigationStateInternal(db, context, now = Date.now()) {
+async function getPlayerNavigationStateInternal(
+  db,
+  context,
+  now = Date.now(),
+  { materializeTimedTransitions = true } = {}
+) {
   await ensureWorldInitialized(db);
   let ship = await getOrCreateShip(db, context, now);
-  ship = await materializeExpiredBetaSpaceSession(db, ship, now);
-  const state = await resolvePlayerState(db, ship, now, { materializeArrival: true });
-  return attachPlacementState(db, state);
+  const beforeTimedTransition = ship;
+  ship = materializeTimedTransitions
+    ? await materializeExpiredBetaSpaceSession(db, ship, now)
+    : await resolveExpiredBetaSpaceShipForRead(db, ship, now);
+  const state = await resolvePlayerState(db, ship, now, {
+    materializeArrival: materializeTimedTransitions
+  });
+  const attached = await attachPlacementState(db, state);
+  if (
+    materializeTimedTransitions
+    && beforeTimedTransition.spatial_mode === "BETA_SPACE"
+    && ship.spatial_mode === FIELD_MODE
+    && ship.revision === beforeTimedTransition.revision + 1
+  ) {
+    attached.timedRevisionTransition = {
+      fromRevision: beforeTimedTransition.revision,
+      toRevision: ship.revision
+    };
+  }
+  return attached;
 }
 
 export async function startPlayerNavigation(db, context, body, now = Date.now()) {
@@ -736,7 +763,7 @@ export async function enterPlayerBetaSpace(db, context, body, now = Date.now()) 
     throw navigationError(409, "BETA_ENTRY_SHIP_NOT_IN_FIELD", "Only a field ship can enter Beta Space.");
   }
   const betaVoidId = requiredId(body?.beta_void_id, "Beta Void");
-  const betaVoid = await getWorldEntity(db, "beta_void", betaVoidId);
+  const betaVoid = await getWorldEntityState(db, "beta_void", betaVoidId, now);
   if (!betaVoid || betaVoid.status !== "active") {
     throw navigationError(409, "BETA_VOID_UNAVAILABLE", "Beta Void is unavailable.");
   }
@@ -1033,37 +1060,60 @@ export async function listZoneShipPeers(
 ) {
   await ensureWorldInitialized(db);
   const normalizedZone = requiredId(zoneId, "zone");
-  await materializeExpiredBetaSpaceSessions(db, now);
-  await materializeArrivedMovementContracts(db, now);
   const spatialMode = normalizedZone === BETA_SPACE_ID ? "BETA_SPACE" : FIELD_MODE;
-  const [shipResult, contractResult] = await db.batch([
+  const [shipResult, contractResult, betaSessionResult] = await db.batch([
     db.prepare(`
       SELECT *
       FROM ship_locations
       WHERE world_id = ?
-        AND spatial_mode = ?
         AND (
-          sector_id = ?
-          OR chunk_id = ?
-          OR active_contract_id IS NOT NULL
+          (? = 'BETA_SPACE' AND spatial_mode = 'BETA_SPACE')
+          OR (
+            ? = 'FIELD'
+            AND (
+              spatial_mode = 'BETA_SPACE'
+              OR (
+                spatial_mode = 'FIELD'
+                AND (
+                  sector_id = ?
+                  OR chunk_id = ?
+                  OR active_contract_id IS NOT NULL
+                )
+              )
+            )
+          )
         )
       ORDER BY owner_character_id, ship_uid
       LIMIT 2000
-    `).bind(PRIMARY_WORLD_ID, spatialMode, normalizedZone, normalizedZone),
+    `).bind(PRIMARY_WORLD_ID, spatialMode, spatialMode, normalizedZone, normalizedZone),
     db.prepare(`
       SELECT *
       FROM movement_contracts
       WHERE world_id = ? AND status = 'ACTIVE'
       ORDER BY issued_at
       LIMIT 2000
+    `).bind(PRIMARY_WORLD_ID),
+    db.prepare(`
+      SELECT *
+      FROM beta_space_sessions
+      WHERE world_id = ? AND status = 'ACTIVE'
     `).bind(PRIMARY_WORLD_ID)
   ]);
   const contracts = new Map(
     (contractResult?.results || []).map((row) => [row.contract_id, contractFromRow(row)])
   );
+  const betaSessions = new Map(
+    (betaSessionResult?.results || []).map((row) => [row.ship_uid, betaSpaceSessionFromRow(row)])
+  );
   const peers = [];
   for (const row of shipResult?.results || []) {
-    const ship = shipFromRow(row);
+    const storedShip = shipFromRow(row);
+    const ship = deriveExpiredBetaSpaceShip(
+      storedShip,
+      betaSessions.get(storedShip.ship_uid) || null,
+      now
+    );
+    if (ship.spatial_mode !== spatialMode) continue;
     if (ship.owner_character_id === excludedCharacterId) continue;
     const contract = ship.active_contract_id
       ? contracts.get(ship.active_contract_id) || null
@@ -1118,16 +1168,26 @@ export async function listZoneShipPeers(
 
 export async function getNavigationAdminSummary(db, now = Date.now()) {
   await ensureWorldInitialized(db);
-  await materializeExpiredBetaSpaceSessions(db, now);
-  await materializeArrivedMovementContracts(db, now);
   const [shipCount, fieldCount, activeCount] = await db.batch([
     db.prepare("SELECT COUNT(*) AS count FROM ship_locations WHERE world_id = ?")
       .bind(PRIMARY_WORLD_ID),
     db.prepare(`
       SELECT COUNT(*) AS count
-      FROM ship_locations
-      WHERE world_id = ? AND spatial_mode = 'FIELD'
-    `).bind(PRIMARY_WORLD_ID),
+      FROM ship_locations AS ship
+      WHERE ship.world_id = ?
+        AND (
+          ship.spatial_mode = 'FIELD'
+          OR (
+            ship.spatial_mode = 'BETA_SPACE'
+            AND EXISTS (
+              SELECT 1 FROM beta_space_sessions AS session
+              WHERE session.ship_uid = ship.ship_uid
+                AND session.status = 'ACTIVE'
+                AND session.expires_at <= ?
+            )
+          )
+        )
+    `).bind(PRIMARY_WORLD_ID, now),
     db.prepare(`
       SELECT COUNT(*) AS count
       FROM movement_contracts
@@ -1143,8 +1203,6 @@ export async function getNavigationAdminSummary(db, now = Date.now()) {
 
 export async function listNavigationAdminShips(db, now = Date.now()) {
   await ensureWorldInitialized(db);
-  await materializeExpiredBetaSpaceSessions(db, now);
-  await materializeArrivedMovementContracts(db, now);
   const [
     shipResult,
     contractResult,
@@ -1193,7 +1251,12 @@ export async function listNavigationAdminShips(db, now = Date.now()) {
     (betaSessionResult?.results || []).map((row) => [row.ship_uid, betaSpaceSessionFromRow(row)])
   );
   return (shipResult?.results || []).map((row) => {
-    const ship = shipFromRow(row);
+    const storedShip = shipFromRow(row);
+    const ship = deriveExpiredBetaSpaceShip(
+      storedShip,
+      betaSessions.get(storedShip.ship_uid) || null,
+      now
+    );
     const contract = ship.active_contract_id
       ? contracts.get(ship.active_contract_id) || null
       : null;
@@ -1230,7 +1293,7 @@ export async function listNavigationAdminShips(db, now = Date.now()) {
             revision: Number(custodyRow.revision)
           }
         : null,
-      beta_space_session: betaSessions.has(ship.ship_uid)
+      beta_space_session: ship.spatial_mode === "BETA_SPACE" && betaSessions.has(ship.ship_uid)
         ? publicBetaSpaceSession(betaSessions.get(ship.ship_uid))
         : null,
       rotation,
@@ -1323,15 +1386,6 @@ async function getOrCreateShip(db, context, now) {
     if (existing.owner_character_id !== context.characterId) {
       throw navigationError(403, "SHIP_OWNERSHIP_INVALID", "Ship ownership mismatch.");
     }
-    await db.prepare(`
-      UPDATE ship_locations
-      SET display_name = ?, ship_definition_id = ?
-      WHERE ship_uid = ?
-    `).bind(
-      normalizeDisplayName(context.displayName),
-      normalizeShipDefinitionId(context.shipDefinitionId),
-      shipUid
-    ).run();
     return shipFromRow({
       ...existing,
       display_name: normalizeDisplayName(context.displayName),
@@ -1563,6 +1617,37 @@ async function getActiveBetaSpaceSession(db, shipUid) {
     WHERE ship_uid = ? AND status = 'ACTIVE'
   `).bind(shipUid).first();
   return row ? betaSpaceSessionFromRow(row) : null;
+}
+
+async function resolveExpiredBetaSpaceShipForRead(db, ship, now) {
+  if (ship.spatial_mode !== "BETA_SPACE") return ship;
+  const session = await getActiveBetaSpaceSession(db, ship.ship_uid);
+  if (!session) {
+    throw navigationError(500, "BETA_SESSION_MISSING", "Beta Space session is missing.");
+  }
+  return deriveExpiredBetaSpaceShip(ship, session, now);
+}
+
+function deriveExpiredBetaSpaceShip(ship, session, now) {
+  if (
+    ship.spatial_mode !== "BETA_SPACE"
+    || !session
+    || now < session.expiresAt
+  ) {
+    return ship;
+  }
+  return {
+    ...ship,
+    spatial_mode: FIELD_MODE,
+    position: session.returnPosition,
+    rotation: session.returnRotation,
+    speed: session.returnSpeed,
+    desired_speed: session.returnDesiredSpeed,
+    active_contract_id: null,
+    phase: "manual",
+    checkpoint_at: session.expiresAt,
+    ...zoneFields(session.returnPosition, FIELD_MODE)
+  };
 }
 
 async function materializeExpiredBetaSpaceSession(db, initialShip, now) {
@@ -2201,12 +2286,12 @@ function assertRevision(actual, expected) {
 
 function assertCommandRevision(state, expected) {
   const normalized = Number(expected);
-  const arrival = state.arrivalRevisionTransition;
+  const transition = state.arrivalRevisionTransition || state.timedRevisionTransition;
   if (
     Number.isInteger(normalized)
-    && arrival
-    && normalized === arrival.fromRevision
-    && state.ship.revision === arrival.toRevision
+    && transition
+    && normalized === transition.fromRevision
+    && state.ship.revision === transition.toRevision
   ) {
     return;
   }

@@ -977,134 +977,31 @@ export class WorldDataManager {
     return nextCheckpoint.getTime();
   }
 
-  async processBetaVoid(betaVoidId, processedAt = Date.now()) {
-    const betaVoid = await this.getStoreValue("betaVoids", betaVoidId);
+  async processBetaVoid(betaVoidId) {
+    const betaVoid = this.snapshot?.betaVoids?.find((entry) => entry.id === betaVoidId)
+      || await this.getStoreValue("betaVoids", betaVoidId);
     if (!betaVoid || betaVoid.status !== "active") return betaVoid || null;
-
-    const updated = {
-      ...betaVoid,
-      status: "defeated",
-      defeated_at: processedAt,
-      next_regeneration_checkpoint: this.getNext6HourCheckpoint(processedAt),
-      active_reset_at: null,
-      active_reset_interval_minutes: null,
-      last_updated: processedAt
-    };
-    await this.putStoreValue("betaVoids", updated);
-
-    if (this.snapshot?.betaVoids) {
-      const index = this.snapshot.betaVoids.findIndex((item) => item.id === betaVoidId);
-      if (index >= 0) this.snapshot.betaVoids[index] = updated;
-    }
-
-    return updated;
+    const actionId = createClientActionId("beta-process");
+    const commandWindow = this.createNavigationCommandWindow();
+    const response = await this.onlineApi.processBetaVoid({
+      betaVoidId,
+      expectedGeneration: Math.max(1, Math.round(Number(betaVoid.variant_generation) || 1)),
+      clientActionId: actionId,
+      issuedAt: commandWindow.issuedAt,
+      expiresAt: commandWindow.expiresAt
+    });
+    this.worldBootstrap = normalizeWorldBootstrap(response.world);
+    await this.createWorldCache();
+    return response.result?.entity || null;
   }
 
-  async processBetaVoidLifecycle({ now = Date.now() } = {}) {
-    const [sectors, chunks, resourceNodes, buildings, storedBetaVoids, worldMeta] = await Promise.all([
-      this.getAll("sectors"),
-      this.getAll("chunks"),
-      this.getAll("resourceNodes"),
-      this.getAll("buildings"),
-      this.getAll("betaVoids"),
-      this.getStoreValue("meta", "world")
-    ]);
-
-    if (!worldMeta || sectors.length === 0) return { checked: false, reason: "missing-world" };
-
-    let betaVoids = storedBetaVoids;
-    let changed = false;
-
-    if (betaVoids.length === 0) {
-      betaVoids = this.createInitialBetaVoids({
-        buildings,
-        chunks,
-        createdAt: now,
-        resourceNodes,
-        rng: createSeededRandom(`${worldMeta.seed}:beta-void:${now}`),
-        sectors
-      });
-      changed = betaVoids.length > 0;
-    }
-
-    const placedObjects = [
-      ...resourceNodes,
-      ...buildings,
-      ...betaVoids
-    ];
-
-    for (const betaVoid of betaVoids) {
-      if (betaVoid.status === "defeated") {
-        if (!betaVoid.next_regeneration_checkpoint) continue;
-        if (now < betaVoid.next_regeneration_checkpoint) continue;
-
-        const rng = createSeededRandom(`${worldMeta.seed}:${betaVoid.id}:defeated:${betaVoid.next_regeneration_checkpoint}`);
-        const position = this.findAvailableBetaVoidResetPosition({
-          betaVoid,
-          chunks,
-          placedObjects,
-          rng,
-          sectors
-        });
-        if (!position) continue;
-
-        this.resetBetaVoidToActive({
-          betaVoid,
-          now,
-          position,
-          rng
-        });
-        changed = true;
-        continue;
-      }
-
-      if (betaVoid.status !== "active") continue;
-
-      if (!betaVoid.active_reset_at) {
-        const rng = createSeededRandom(`${worldMeta.seed}:${betaVoid.id}:active-backfill:${now}`);
-        Object.assign(
-          betaVoid,
-          this.createBetaVoidActiveLifecycleState({
-            generation: Math.max(1, Math.round(Number(betaVoid.variant_generation) || 1)),
-            now,
-            rng
-          }),
-          { last_updated: now }
-        );
-        changed = true;
-        continue;
-      }
-
-      if (now < betaVoid.active_reset_at) continue;
-
-      const rng = createSeededRandom(`${worldMeta.seed}:${betaVoid.id}:active:${betaVoid.active_reset_at}`);
-      const position = this.findAvailableBetaVoidResetPosition({
-        betaVoid,
-        chunks,
-        placedObjects,
-        rng,
-        sectors
-      });
-      if (!position) continue;
-
-      this.resetBetaVoidToActive({
-        betaVoid,
-        now,
-        position,
-        rng
-      });
-      changed = true;
-    }
-
-    if (changed) {
-      const { transaction, stores } = this.openTx(["betaVoids"], "readwrite");
-      betaVoids.forEach((betaVoid) => stores.betaVoids.put(betaVoid));
-      await transactionDone(transaction);
-    }
-
+  async processBetaVoidLifecycle() {
+    const previous = betaVoidLifecycleFingerprint(this.snapshot?.betaVoids || []);
+    await this.refreshWorldBootstrap();
+    const betaVoids = this.snapshot?.betaVoids || [];
     return {
       checked: true,
-      changed,
+      changed: previous !== betaVoidLifecycleFingerprint(betaVoids),
       betaVoids
     };
   }
@@ -3571,6 +3468,22 @@ function createClientActionId(prefix) {
   const suffix = globalThis.crypto?.randomUUID?.()
     || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `${prefix}-${suffix}`;
+}
+
+function betaVoidLifecycleFingerprint(betaVoids) {
+  return betaVoids
+    .map((entry) => [
+      entry.id,
+      entry.status,
+      Number(entry.variant_generation) || 0,
+      Number(entry.active_reset_at) || 0,
+      Number(entry.next_regeneration_checkpoint) || 0,
+      Number(entry.position?.x) || 0,
+      Number(entry.position?.y) || 0,
+      Number(entry.position?.z) || 0
+    ].join(":"))
+    .sort()
+    .join("|");
 }
 
 function wait(durationMs) {

@@ -2,6 +2,7 @@ import {
   getOrCreateWorldState,
   getWorldAdminSummary,
   listWorldAdminEntities,
+  processBetaVoidEntity,
   rebuildWorldState
 } from "../src/world-state.js";
 import {
@@ -18,6 +19,7 @@ import {
   startPlayerNavigation,
   undockPlayerShip
 } from "../src/navigation-state.js";
+import { reconcileResourceLifecycle } from "../src/resource-lifecycle.js";
 
 export { PresenceShard } from "../src/presence-shard.js";
 
@@ -26,7 +28,10 @@ export default {
     try {
       const url = new URL(request.url);
       if (request.method === "GET" && url.pathname === "/state") {
-        return json(await getOrCreateWorldState(env.WORLD_DB));
+        return json(await getOrCreateWorldState(
+          env.WORLD_DB,
+          testNow(url.searchParams.get("server_now"))
+        ));
       }
       if (request.method === "GET" && url.pathname === "/summary") {
         return json(await getWorldAdminSummary(env.WORLD_DB));
@@ -44,6 +49,25 @@ export default {
         return json(await rebuildWorldState(env.WORLD_DB, {
           expectedRevision: body.expected_revision
         }));
+      }
+      if (request.method === "POST" && url.pathname === "/beta-process") {
+        const body = await request.json();
+        return json(await processBetaVoidEntity(env.WORLD_DB, {
+          betaVoidId: body.beta_void_id,
+          expectedGeneration: body.expected_generation,
+          clientActionId: body.client_action_id,
+          actorCharacterId: navigationContext(body.character_id).characterId,
+          actorShipUid: navigationContext(body.character_id).shipUid,
+          issuedAt: body.issued_at,
+          expiresAt: body.expires_at
+        }, testNow(body.server_now)));
+      }
+      if (request.method === "POST" && url.pathname === "/reconcile") {
+        const body = await request.json();
+        return json(await reconcileResourceLifecycle(
+          env.WORLD_DB,
+          testNow(body.server_now)
+        ));
       }
       if (request.method === "GET" && url.pathname === "/navigation") {
         return json(await getPlayerNavigationState(
@@ -137,7 +161,10 @@ export default {
         ));
       }
       if (request.method === "GET" && url.pathname === "/navigation/admin-ships") {
-        return json(await listNavigationAdminShips(env.WORLD_DB));
+        return json(await listNavigationAdminShips(
+          env.WORLD_DB,
+          testNow(url.searchParams.get("server_now"))
+        ));
       }
       if (request.method === "GET" && url.pathname === "/navigation/history") {
         return json(await listNavigationAdminHistory(env.WORLD_DB, {

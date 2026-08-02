@@ -31,7 +31,27 @@ function assertVector(actual, expected) {
   assert.ok(Math.abs(actual.z - expected.z) < 0.001);
 }
 
-const world = await request("/state");
+let world = await request("/state");
+const initialResourceCount = world.snapshot.resource_nodes.length;
+const resourceCheckInterval = Number(world.snapshot.resource_manager.check_interval);
+const reconcileAt = Number(world.snapshot.resource_manager.next_check) + resourceCheckInterval * 2;
+const reconciliation = await request("/reconcile", {
+  method: "POST",
+  body: { server_now: reconcileAt }
+});
+assert.equal(reconciliation.changed, true);
+assert.equal(reconciliation.cycles, 3);
+const duplicateReconciliation = await request("/reconcile", {
+  method: "POST",
+  body: { server_now: reconcileAt }
+});
+assert.equal(duplicateReconciliation.changed, false);
+world = await request(`/state?server_now=${reconcileAt}`);
+assert.ok(world.snapshot.resource_nodes.length > initialResourceCount);
+world = await request("/rebuild", {
+  method: "POST",
+  body: { expected_revision: world.revision }
+});
 const dockStorage = world.snapshot.building_storages.find((entry) => entry.docking_capacity > 0);
 const dockBuilding = world.snapshot.buildings.find(
   (entry) => entry.building_instance_id === dockStorage.world_object_id
@@ -194,6 +214,7 @@ const arrived = await request(
   `/navigation?character_id=${characterId}&server_now=${arrivalNow}`
 );
 assert.equal(arrived.ship.phase, "arrived");
+assert.equal(arrived.ship.revision, standard.ship.revision);
 assertVector(arrived.ship.position, dockBuilding.position);
 
 const dockNow = arrivalNow + 1;
@@ -257,6 +278,19 @@ assertVector(undocked.ship.position, {
 });
 
 const betaEnterNow = undockNow + 1;
+await assert.rejects(
+  request("/beta-process", {
+    method: "POST",
+    body: {
+      character_id: characterId,
+      beta_void_id: betaVoid.id,
+      expected_generation: betaVoid.variant_generation,
+      client_action_id: `process-without-session-${characterId}`,
+      ...commandWindow(betaEnterNow)
+    }
+  }),
+  (error) => error?.code === "BETA_VOID_SESSION_REQUIRED"
+);
 const entered = await request("/navigation/beta-enter", {
   method: "POST",
   body: {
@@ -277,6 +311,24 @@ const entered = await request("/navigation/beta-enter", {
 assert.equal(entered.ship.spatial_mode, "BETA_SPACE");
 const returnAnchor = entered.beta_space_session.return_anchor;
 assertVector(returnAnchor.position, undocked.ship.position);
+const processAt = betaEnterNow + 1;
+const processBody = {
+  character_id: characterId,
+  beta_void_id: betaVoid.id,
+  expected_generation: betaVoid.variant_generation,
+  client_action_id: `process-${characterId}`,
+  ...commandWindow(processAt)
+};
+const processed = await request("/beta-process", { method: "POST", body: processBody });
+const duplicateProcess = await request("/beta-process", { method: "POST", body: processBody });
+assert.equal(processed.entity.status, "defeated");
+assert.deepEqual(duplicateProcess, processed);
+const worldAfterProcess = await request(`/state?server_now=${processAt}`);
+assert.equal(worldAfterProcess.revision, world.revision + 1);
+assert.equal(
+  worldAfterProcess.snapshot.beta_voids.find((entry) => entry.id === betaVoid.id)?.status,
+  "defeated"
+);
 const betaSpaceZone = await request(
   `/zone-ships?zone_id=BETA-SPACE&excluded_character_id=someone-else&server_now=${betaEnterNow + 1}`
 );
@@ -304,14 +356,17 @@ const expired = await request(
 );
 assert.equal(expired.ship.spatial_mode, "FIELD");
 assert.equal(expired.beta_space_session, null);
+assert.equal(expired.ship.revision, entered.ship.revision);
 assertVector(expired.ship.position, returnAnchor.position);
 
 const zone = await request(
-  `/zone-ships?zone_id=${expired.ship.sector_id}&excluded_character_id=someone-else`
+  `/zone-ships?zone_id=${expired.ship.sector_id}&excluded_character_id=someone-else&server_now=${entered.beta_space_session.expires_at + 3}`
 );
 assert.ok(zone.peers.some((peer) => peer.character_id === characterId));
 
-const adminShips = await request("/navigation/admin-ships");
+const adminShips = await request(
+  `/navigation/admin-ships?server_now=${entered.beta_space_session.expires_at + 4}`
+);
 const adminShip = adminShips.find((ship) => ship.owner_character_id === characterId);
 assert.ok(adminShip);
 assert.equal(adminShip.spatial_mode, "FIELD");
