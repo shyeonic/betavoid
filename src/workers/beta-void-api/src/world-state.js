@@ -2,9 +2,14 @@ import { WORLD_TEMPLATE } from "./generated/world-template.js";
 
 const PRIMARY_WORLD_ID = "primary";
 const TIMESTAMP_FLOOR = 1_000_000_000_000;
+const BETA_VOID_ENEMY_TYPES = ["pirate_squad", "raider_group", "hostile_fleet"];
+const BETA_VOID_RISK_LEVELS = [1, 2, 3, 4, 5];
+const BETA_VOID_REWARD_TABLE_IDS = ["loot_91", "loot_92", "loot_93"];
 
 export async function getOrCreateWorldState(db) {
-  const worldRow = await ensureWorldInitialized(db);
+  let worldRow = await ensureWorldInitialized(db);
+  await materializeBetaVoidLifecycle(db, worldRow, Date.now());
+  worldRow = await selectWorld(db, PRIMARY_WORLD_ID);
 
   const [entityResult, storageResult, metaResult] = await db.batch([
     db.prepare(`
@@ -70,6 +75,88 @@ export async function ensureWorldInitialized(db) {
   }
   if (!worldRow) throw worldError(500, "WORLD_BOOTSTRAP_UNAVAILABLE", "World bootstrap unavailable.");
   return worldRow;
+}
+
+export async function materializeBetaVoidLifecycle(db, worldRow, now = Date.now()) {
+  const result = await db.prepare(`
+    SELECT entity_type, entity_id, state_json, revision
+    FROM world_entities
+    WHERE world_id = ?
+      AND entity_type IN ('sector', 'resource_node', 'building', 'beta_void')
+    ORDER BY entity_type, entity_id
+  `).bind(PRIMARY_WORLD_ID).all();
+  const records = (result?.results || []).map((row) => ({
+    ...row,
+    state: parseState(row.state_json)
+  }));
+  const sectors = records
+    .filter((entry) => entry.entity_type === "sector")
+    .map((entry) => entry.state);
+  const betaEntries = records.filter((entry) => entry.entity_type === "beta_void");
+  const placedObjects = records
+    .filter((entry) => ["resource_node", "building", "beta_void"].includes(entry.entity_type))
+    .map((entry) => entry.state);
+  const updates = [];
+
+  for (const entry of betaEntries) {
+    const betaVoid = structuredClone(entry.state);
+    const lifecycleDue = betaVoid.status === "active"
+      ? betaVoid.active_reset_at != null && Number(betaVoid.active_reset_at) <= now
+      : betaVoid.status === "defeated"
+        && betaVoid.next_regeneration_checkpoint != null
+        && Number(betaVoid.next_regeneration_checkpoint) <= now;
+    if (!lifecycleDue) continue;
+
+    const lifecycleKey = betaVoid.status === "defeated"
+      ? `defeated:${betaVoid.next_regeneration_checkpoint}`
+      : `active:${betaVoid.active_reset_at}`;
+    const rng = createSeededRandom(`${worldRow.seed}:${betaVoid.id}:${lifecycleKey}`);
+    const sector = sectors.find((candidate) => candidate.sector_id === betaVoid.sector_id);
+    const position = findBetaVoidResetPosition({
+      betaVoid,
+      sector,
+      placedObjects,
+      rng
+    });
+    const generation = Math.max(1, Math.round(Number(betaVoid.variant_generation) || 1) + 1);
+    const chunk = chunkDataAtPosition(position);
+    Object.assign(betaVoid, {
+      position,
+      chunk_id: chunk.chunk_id,
+      chunk: chunk.chunk,
+      local_position: chunk.local_position,
+      status: "active",
+      defeated_at: null,
+      next_regeneration_checkpoint: null,
+      ...createBetaVoidLifecycleState({ generation, now, rng }),
+      last_updated: now
+    });
+    const placedIndex = placedObjects.findIndex((candidate) => candidate.id === betaVoid.id);
+    if (placedIndex >= 0) placedObjects[placedIndex] = betaVoid;
+    updates.push({ entry, betaVoid });
+  }
+
+  if (updates.length === 0) return { changed: false, count: 0 };
+  const statements = updates.map(({ entry, betaVoid }) => db.prepare(`
+    UPDATE world_entities
+    SET state_json = ?, sector_id = ?, chunk_id = ?, revision = revision + 1, updated_at = ?
+    WHERE world_id = ? AND entity_type = 'beta_void' AND entity_id = ? AND revision = ?
+  `).bind(
+    JSON.stringify(betaVoid),
+    betaVoid.sector_id || null,
+    betaVoid.chunk_id || null,
+    now,
+    PRIMARY_WORLD_ID,
+    entry.entity_id,
+    Number(entry.revision)
+  ));
+  statements.push(db.prepare(`
+    UPDATE world_instances
+    SET revision = revision + 1, updated_at = ?
+    WHERE world_id = ? AND revision = ?
+  `).bind(now, PRIMARY_WORLD_ID, Number(worldRow.revision)));
+  await db.batch(statements);
+  return { changed: true, count: updates.length };
 }
 
 export async function getWorldAdminSummary(db) {
@@ -364,6 +451,115 @@ function rebaseTimestamps(value, offset) {
   return Object.fromEntries(
     Object.entries(value).map(([key, entry]) => [key, rebaseTimestamps(entry, offset)])
   );
+}
+
+function findBetaVoidResetPosition({ betaVoid, sector, placedObjects, rng }) {
+  if (!sector?.global_bounds) return { ...betaVoid.position };
+  const otherObjects = placedObjects.filter((entry) => entry.id !== betaVoid.id);
+  const minDistance = Math.max(0, Number(WORLD_TEMPLATE.betaVoidLifecycle?.minDistance) || 0);
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const position = pickPositionInBounds(sector.global_bounds, rng);
+    if (otherObjects.every((entry) => (
+      !entry.position || distanceSquared(position, entry.position) >= minDistance * minDistance
+    ))) {
+      return position;
+    }
+  }
+  return boundsCenter(sector.global_bounds);
+}
+
+function pickPositionInBounds(bounds, rng) {
+  const margin = Math.max(0, Number(WORLD_TEMPLATE.betaVoidLifecycle?.placementMargin) || 0);
+  return {
+    x: Math.round(lerp(bounds.min.x + margin, bounds.max.x - margin, rng())),
+    y: Math.round(lerp(bounds.min.y + margin, bounds.max.y - margin, rng())),
+    z: Math.round(lerp(bounds.min.z + margin, bounds.max.z - margin, rng()))
+  };
+}
+
+function createBetaVoidLifecycleState({ generation, now, rng }) {
+  const enemyType = pickRandom(BETA_VOID_ENEMY_TYPES, rng) || BETA_VOID_ENEMY_TYPES[0];
+  const riskLevel = pickRandom(BETA_VOID_RISK_LEVELS, rng) || BETA_VOID_RISK_LEVELS[0];
+  const rewardTableId = pickRandom(BETA_VOID_REWARD_TABLE_IDS, rng) || BETA_VOID_REWARD_TABLE_IDS[0];
+  const variantSuffix = Math.floor(rng() * 0xffffffff).toString(36).padStart(7, "0");
+  const minMinutes = Math.max(
+    1,
+    Math.round(Number(WORLD_TEMPLATE.betaVoidLifecycle?.activeResetMinMinutes) || 30)
+  );
+  const maxMinutes = Math.max(
+    minMinutes,
+    Math.round(Number(WORLD_TEMPLATE.betaVoidLifecycle?.activeResetMaxMinutes) || 240)
+  );
+  const resetMinutes = Math.floor(rng() * (maxMinutes - minMinutes + 1)) + minMinutes;
+  return {
+    variant_id: `variant_${now}_${variantSuffix}`,
+    variant_created_at: now,
+    variant_generation: generation,
+    enemy_type: enemyType,
+    enemy_power: 500 + riskLevel * 250,
+    risk_level: riskLevel,
+    reward_table_id: rewardTableId,
+    active_reset_interval_minutes: resetMinutes,
+    active_reset_at: now + resetMinutes * 60 * 1000
+  };
+}
+
+function chunkDataAtPosition(position) {
+  const size = WORLD_TEMPLATE.movementConfig.chunkSize;
+  const chunk = {
+    x: Math.floor(position.x / size.x),
+    y: Math.floor(position.y / size.y),
+    z: Math.floor(position.z / size.z)
+  };
+  return {
+    chunk_id: `${chunk.x}:${chunk.y}:${chunk.z}`,
+    chunk,
+    local_position: {
+      x: position.x - chunk.x * size.x,
+      y: position.y - chunk.y * size.y,
+      z: position.z - chunk.z * size.z
+    }
+  };
+}
+
+function createSeededRandom(seed) {
+  let value = hashSeed(String(seed));
+  return () => {
+    value += 0x6D2B79F5;
+    let next = value;
+    next = Math.imul(next ^ (next >>> 15), next | 1);
+    next ^= next + Math.imul(next ^ (next >>> 7), next | 61);
+    return ((next ^ (next >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function hashSeed(seed) {
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function pickRandom(items, rng) {
+  return items[Math.min(items.length - 1, Math.floor(rng() * items.length))] || null;
+}
+
+function boundsCenter(bounds) {
+  return {
+    x: (bounds.min.x + bounds.max.x) / 2,
+    y: (bounds.min.y + bounds.max.y) / 2,
+    z: (bounds.min.z + bounds.max.z) / 2
+  };
+}
+
+function distanceSquared(a, b) {
+  return (a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2;
+}
+
+function lerp(min, max, t) {
+  return min + (max - min) * t;
 }
 
 function normalizeEntityType(value) {

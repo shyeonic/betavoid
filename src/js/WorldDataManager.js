@@ -82,6 +82,7 @@ export class WorldDataManager {
     config = null,
     gameData = null,
     onlineApi = null,
+    onNavigationCommandStatus = null,
     playerState = null,
     navigationState = null,
     worldBootstrap = null
@@ -108,8 +109,12 @@ export class WorldDataManager {
     this.enabledChunks = Array.isArray(gameData.enabledChunks) ? gameData.enabledChunks : null;
     this.dataSourceKey = gameData.dataSourceKey || "game-data:unknown";
     this.onlineApi = onlineApi;
+    this.onNavigationCommandStatus = typeof onNavigationCommandStatus === "function"
+      ? onNavigationCommandStatus
+      : null;
     this.playerServerState = normalizePlayerServerState(playerState);
     this.navigationServerState = normalizeNavigationServerState(navigationState);
+    this.navigationServerReceivedAt = Date.now();
     this.worldBootstrap = normalizeWorldBootstrap(worldBootstrap);
     this.playerCacheHydrated = false;
     this.playerServerMutationChain = Promise.resolve();
@@ -167,6 +172,11 @@ export class WorldDataManager {
   async loadOrCreateWorld() {
     // The authenticated server snapshot is the source. Rebuild the disposable
     // browser cache on each session so stale local world mutations cannot win.
+    return this.createWorldCache();
+  }
+
+  async refreshWorldBootstrap() {
+    this.worldBootstrap = normalizeWorldBootstrap(await this.onlineApi.getWorldBootstrap());
     return this.createWorldCache();
   }
 
@@ -2401,16 +2411,35 @@ export class WorldDataManager {
   async refreshNavigationState() {
     const state = normalizeNavigationServerState(await this.onlineApi.getNavigationState());
     this.navigationServerState = state;
+    this.navigationServerReceivedAt = Date.now();
     return state;
+  }
+
+  createNavigationActionId(prefix = "command") {
+    return createClientActionId(prefix);
+  }
+
+  createNavigationCommandWindow(lifetimeMs = 5_000) {
+    const elapsed = Math.max(0, Date.now() - this.navigationServerReceivedAt);
+    const estimatedServerNow = Math.round(this.navigationServerState.serverTime + elapsed);
+    const issuedAt = estimatedServerNow;
+    return {
+      issuedAt,
+      expiresAt: issuedAt + lifetimeMs,
+      localExpiresAt: Date.now() + lifetimeMs
+    };
   }
 
   startNavigation({ clientActionId, routeType, target = null, observedShip }) {
     return this.queueNavigationServerMutation(async () => {
       const actionId = clientActionId || createClientActionId("nav");
-      const state = await this.runNavigationMutationWithRetry((current) => (
+      const commandWindow = this.createNavigationCommandWindow();
+      const state = await this.runNavigationCommand(actionId, commandWindow, (current) => (
         this.onlineApi.startNavigation({
           clientActionId: actionId,
           expectedRevision: current.ship.revision,
+          issuedAt: commandWindow.issuedAt,
+          expiresAt: commandWindow.expiresAt,
           routeType,
           target,
           observedShip,
@@ -2418,6 +2447,7 @@ export class WorldDataManager {
         })
       ));
       this.navigationServerState = state;
+      this.navigationServerReceivedAt = Date.now();
       return state;
     });
   }
@@ -2427,39 +2457,164 @@ export class WorldDataManager {
       const current = this.navigationServerState;
       if (!current.activeContract) return current;
       const actionId = clientActionId || createClientActionId("override");
-      const state = await this.runNavigationMutationWithRetry((latest) => {
+      const commandWindow = this.createNavigationCommandWindow();
+      const state = await this.runNavigationCommand(actionId, commandWindow, (latest) => {
         if (!latest.activeContract) return latest;
         return this.onlineApi.manualOverride({
           clientActionId: actionId,
           expectedRevision: latest.ship.revision,
+          issuedAt: commandWindow.issuedAt,
+          expiresAt: commandWindow.expiresAt,
           contractId: latest.activeContract.contractId
         });
       });
       this.navigationServerState = state;
+      this.navigationServerReceivedAt = Date.now();
       return state;
     });
   }
 
-  async runNavigationMutationWithRetry(operation) {
-    const delays = [0, 1000, 3000];
-    let lastError = null;
-    for (let index = 0; index < delays.length; index += 1) {
-      if (delays[index] > 0) await wait(delays[index]);
+  dockShip({ buildingId, observedShip, clientActionId = null }) {
+    return this.queueNavigationServerMutation(async () => {
+      const actionId = clientActionId || createClientActionId("dock");
+      const commandWindow = this.createNavigationCommandWindow();
+      const state = await this.runNavigationCommand(actionId, commandWindow, (current) => (
+        this.onlineApi.dockShip({
+          clientActionId: actionId,
+          expectedRevision: current.ship.revision,
+          issuedAt: commandWindow.issuedAt,
+          expiresAt: commandWindow.expiresAt,
+          buildingId,
+          observedShip
+        })
+      ));
+      this.navigationServerState = state;
+      this.navigationServerReceivedAt = Date.now();
+      return state;
+    });
+  }
+
+  undockShip({ buildingId, clientActionId = null } = {}) {
+    return this.queueNavigationServerMutation(async () => {
+      const actionId = clientActionId || createClientActionId("undock");
+      const commandWindow = this.createNavigationCommandWindow();
+      const state = await this.runNavigationCommand(actionId, commandWindow, (current) => (
+        this.onlineApi.undockShip({
+          clientActionId: actionId,
+          expectedRevision: current.ship.revision,
+          issuedAt: commandWindow.issuedAt,
+          expiresAt: commandWindow.expiresAt,
+          buildingId
+        })
+      ));
+      this.navigationServerState = state;
+      this.navigationServerReceivedAt = Date.now();
+      return state;
+    });
+  }
+
+  enterBetaSpace({ betaVoidId, expectedGeneration, observedShip, clientActionId = null }) {
+    return this.queueNavigationServerMutation(async () => {
+      const actionId = clientActionId || createClientActionId("beta-enter");
+      const commandWindow = this.createNavigationCommandWindow();
+      const state = await this.runNavigationCommand(actionId, commandWindow, (current) => (
+        this.onlineApi.enterBetaSpace({
+          clientActionId: actionId,
+          expectedRevision: current.ship.revision,
+          issuedAt: commandWindow.issuedAt,
+          expiresAt: commandWindow.expiresAt,
+          betaVoidId,
+          expectedGeneration,
+          observedShip
+        })
+      ));
+      this.navigationServerState = state;
+      this.navigationServerReceivedAt = Date.now();
+      return state;
+    });
+  }
+
+  exitBetaSpace({ clientActionId = null } = {}) {
+    return this.queueNavigationServerMutation(async () => {
+      const actionId = clientActionId || createClientActionId("beta-exit");
+      const commandWindow = this.createNavigationCommandWindow();
+      const state = await this.runNavigationCommand(actionId, commandWindow, (current) => (
+        this.onlineApi.exitBetaSpace({
+          clientActionId: actionId,
+          expectedRevision: current.ship.revision,
+          issuedAt: commandWindow.issuedAt,
+          expiresAt: commandWindow.expiresAt
+        })
+      ));
+      this.navigationServerState = state;
+      this.navigationServerReceivedAt = Date.now();
+      return state;
+    });
+  }
+
+  async runNavigationCommand(clientActionId, commandWindow, operation) {
+    this.reportNavigationCommandStatus("SENDING", clientActionId);
+    try {
+      const state = normalizeNavigationServerState(await operation(this.navigationServerState));
+      this.reportNavigationCommandStatus("ACCEPTED", clientActionId);
+      return state;
+    } catch (error) {
+      if (Number(error?.status) > 0) {
+        this.reportNavigationCommandStatus("REJECTED", clientActionId, error);
+        throw error;
+      }
+      this.reportNavigationCommandStatus("DELIVERY_UNKNOWN", clientActionId, error);
+      return this.resolveUnknownNavigationCommand(clientActionId, commandWindow, error);
+    }
+  }
+
+  async resolveUnknownNavigationCommand(clientActionId, commandWindow, transportError) {
+    const delays = [0, 250, 750];
+    for (const delay of delays) {
+      if (delay > 0) await wait(delay);
       try {
-        return normalizeNavigationServerState(await operation(this.navigationServerState));
+        const result = await this.onlineApi.getNavigationCommandResult(clientActionId);
+        if (result.status === "ACCEPTED") {
+          this.reportNavigationCommandStatus("ACCEPTED", clientActionId);
+          return normalizeNavigationServerState(result.navigation);
+        }
       } catch (error) {
-        lastError = error;
-        const retryable = error?.code === "MOVEMENT_REVISION_CONFLICT"
-          || error?.status >= 500
-          || !Number.isFinite(Number(error?.status))
-          || Number(error?.status) === 0;
-        if (!retryable || index === delays.length - 1) break;
-        if (error?.code === "MOVEMENT_REVISION_CONFLICT") {
-          await this.refreshNavigationState();
+        if (error?.code !== "MOVEMENT_COMMAND_NOT_FOUND" && Number(error?.status) > 0) {
+          throw error;
         }
       }
+      if (Date.now() >= commandWindow.localExpiresAt) break;
     }
-    throw lastError || new Error("Navigation command failed.");
+
+    const remaining = commandWindow.localExpiresAt - Date.now();
+    if (remaining > 0) await wait(remaining);
+    try {
+      const result = await this.onlineApi.getNavigationCommandResult(clientActionId);
+      if (result.status === "ACCEPTED") {
+        this.reportNavigationCommandStatus("ACCEPTED", clientActionId);
+        return normalizeNavigationServerState(result.navigation);
+      }
+    } catch (error) {
+      if (error?.code !== "MOVEMENT_COMMAND_NOT_FOUND") {
+        throw error;
+      }
+    }
+
+    try {
+      await this.refreshNavigationState();
+    } catch {
+      // Reconnection will rebase again; the expired command is never re-submitted.
+    }
+    const failure = new Error("The server did not confirm the command before it expired.");
+    failure.code = "MOVEMENT_COMMAND_NOT_CONFIRMED";
+    failure.status = 0;
+    failure.cause = transportError;
+    this.reportNavigationCommandStatus("EXPIRED", clientActionId, failure);
+    throw failure;
+  }
+
+  reportNavigationCommandStatus(status, clientActionId, error = null) {
+    this.onNavigationCommandStatus?.({ status, clientActionId, error });
   }
 
   assertServerCharacter(characterId) {
@@ -2499,10 +2654,13 @@ export class WorldDataManager {
     return this.queueNavigationServerMutation(async () => {
       const actionId = createClientActionId("checkpoint");
       const renderScale = Number(this.config.renderScale) || 0.01;
-      const serverState = await this.runNavigationMutationWithRetry((current) => (
+      const commandWindow = this.createNavigationCommandWindow();
+      const serverState = await this.runNavigationCommand(actionId, commandWindow, (current) => (
         this.onlineApi.checkpointNavigation({
           clientActionId: actionId,
           expectedRevision: current.ship.revision,
+          issuedAt: commandWindow.issuedAt,
+          expiresAt: commandWindow.expiresAt,
           checkpointKind,
           ship: {
             position: nextState.position,
@@ -2513,6 +2671,7 @@ export class WorldDataManager {
         })
       ));
       this.navigationServerState = serverState;
+      this.navigationServerReceivedAt = Date.now();
       const savedState = this.navigationStateToPlayerShipState(serverState);
       await this.putStoreValue("playerShip", savedState);
       return savedState;
@@ -2522,15 +2681,17 @@ export class WorldDataManager {
   navigationStateToPlayerShipState(state) {
     const navigation = normalizeNavigationServerState(state);
     const ship = navigation.ship;
+    const position = ship.position || ship.resolvedPosition;
+    if (!position) throw new Error("Server ship placement has no resolvable position.");
     const renderScale = Number(this.config.renderScale) || 0.01;
     return {
       key: this.createPlayerShipStateKey(navigation.characterId),
       ship_id: ship.shipUid,
       player_id: navigation.characterId,
-      position: { ...ship.position },
+      position: { ...position },
       rotation: { ...ship.rotation },
       chunk_id: ship.chunkId,
-      chunk: this.getChunkDataAtPosition(ship.position).chunk,
+      chunk: this.getChunkDataAtPosition(position).chunk,
       sector_id: ship.sectorId,
       speed: ship.speed * renderScale,
       desiredSpeed: ship.desiredSpeed * renderScale,
@@ -3258,12 +3419,31 @@ function normalizeNavigationServerState(value) {
     characterId,
     ship: {
       ...ship,
-      position: normalizePlainVector(ship.position),
+      position: ship.position == null ? null : normalizePlainVector(ship.position),
+      resolvedPosition: ship.resolvedPosition == null
+        ? null
+        : normalizePlainVector(ship.resolvedPosition),
       rotation: normalizePlainQuaternion(ship.rotation),
       speed: Number(ship.speed) || 0,
       desiredSpeed: Number(ship.desiredSpeed) || 0,
       revision
     },
+    custody: value.custody
+      ? {
+          ...value.custody,
+          resolvedPosition: normalizePlainVector(value.custody.resolvedPosition)
+        }
+      : null,
+    betaSpaceSession: value.betaSpaceSession
+      ? {
+          ...value.betaSpaceSession,
+          returnAnchor: {
+            ...value.betaSpaceSession.returnAnchor,
+            position: normalizePlainVector(value.betaSpaceSession.returnAnchor?.position),
+            rotation: normalizePlainQuaternion(value.betaSpaceSession.returnAnchor?.rotation)
+          }
+        }
+      : null,
     activeContract: value.activeContract
       ? {
           ...value.activeContract,

@@ -82,6 +82,32 @@ try {
         updatedAt: generatedAt,
         serverTime: generatedAt
       },
+      navigationState: {
+        characterId,
+        ship: {
+          shipUid: `ship-${characterId}-ship_01-001`,
+          worldId,
+          ownerCharacterId: characterId,
+          displayName: characterId,
+          shipDefinitionId: gameData.defaultShipId,
+          spatialMode: "FIELD",
+          position: { x: 0, y: 0, z: 0 },
+          resolvedPosition: null,
+          rotation: { x: 0, y: 0, z: 0, w: 1 },
+          speed: 0,
+          desiredSpeed: 0,
+          sectorId: null,
+          chunkId: "0:0:0",
+          phase: "manual",
+          revision: 1,
+          checkpointAt: generatedAt,
+          updatedAt: generatedAt
+        },
+        custody: null,
+        betaSpaceSession: null,
+        activeContract: null,
+        serverTime: generatedAt
+      },
       worldBootstrap: {
         worldId,
         seed: worldSeed,
@@ -108,6 +134,19 @@ try {
         structuredClone(definition.specs)
       ])
     );
+    const buildingDocking = Object.fromEntries(
+      Object.entries(gameData.buildingDefinitions)
+        .filter(([, definition]) => definition?.docking)
+        .map(([buildingId, definition]) => [
+          buildingId,
+          {
+            capacity: definition.docking.capacity,
+            facing: Array.isArray(definition.docking.facing)
+              ? [...definition.docking.facing]
+              : [0, 0, 1]
+          }
+        ])
+    );
     return {
       schemaVersion: 1,
       templateEpoch: generatedAt,
@@ -120,6 +159,13 @@ try {
       betaVoids: generated.betaVoids,
       resourceManager: generated.resourceManager,
       buildingStorages: generated.stationInventories.buildingStorages,
+      buildingDocking,
+      betaVoidLifecycle: {
+        minDistance: gameData.worldConfig.betaVoidMinDistance,
+        placementMargin: gameData.worldConfig.betaVoidPlacementMargin,
+        activeResetMinMinutes: gameData.worldConfig.betaVoidActiveResetMinMinutes,
+        activeResetMaxMinutes: gameData.worldConfig.betaVoidActiveResetMaxMinutes
+      },
       movementConfig: {
         renderScale: gameData.worldConfig.renderScale,
         chunkSize: gameData.worldConfig.chunkSize,

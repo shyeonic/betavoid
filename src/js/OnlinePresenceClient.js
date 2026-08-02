@@ -121,6 +121,11 @@ export class OnlinePresenceClient {
     this.send(this.latestRoute);
   }
 
+  clearLatestState() {
+    this.latestPose = null;
+    this.latestRoute = null;
+  }
+
   flushLatestState() {
     if (this.latestRoute) this.send(this.latestRoute);
     else if (this.latestPose) this.send(this.latestPose);

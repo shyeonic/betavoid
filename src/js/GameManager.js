@@ -214,10 +214,12 @@ export class GameManager {
       audioRegistry: gameData.assetRegistry?.audio,
       assetBaseUrl: new URL("../", gameData.baseUrl).href
     });
+    this.unknownNavigationCommands = new Set();
     this.worldDataManager = new WorldDataManager({
       config: this.worldConfig,
       gameData,
       onlineApi,
+      onNavigationCommandStatus: (feedback) => this.handleNavigationCommandStatus(feedback),
       playerState,
       navigationState,
       worldBootstrap
@@ -2190,7 +2192,10 @@ export class GameManager {
 
   async restorePlayerShipState() {
     const authoritativeState = this.worldDataManager.getNavigationState();
-    if (!this.isDocked() && authoritativeState) {
+    if (authoritativeState?.ship) {
+      if (authoritativeState.ship.spatialMode === "BETA_SPACE") {
+        this.activateAuthoritativeBetaSpace(authoritativeState);
+      }
       this.applyAuthoritativeNavigationState(authoritativeState);
       this.resetInitialCamera();
       return;
@@ -2412,6 +2417,23 @@ export class GameManager {
   } = {}) {
     const state = navigationState;
     const contract = state?.activeContract || null;
+    if (state?.ship?.spatialMode === "DOCKED") {
+      this.state.speed = 0;
+      this.state.desiredSpeed = 0;
+      this.state.autopilotPhase = null;
+      this.navTarget = null;
+      this.activeNavLog = null;
+      this.activeNavLogId = null;
+      this.hyperdriveLog = null;
+      this.hyperdriveLogId = null;
+      this.isHyperdrive = false;
+      this.targetMarker.visible = false;
+      this.syncDockingPresentation();
+      return true;
+    }
+    if (state?.ship?.spatialMode === "BETA_SPACE" && !this.betaSpaceSession) {
+      this.activateAuthoritativeBetaSpace(state);
+    }
     if (
       expectedClientActionId
       && contract?.clientActionId !== expectedClientActionId
@@ -3114,38 +3136,20 @@ export class GameManager {
       flight_duration: flightDuration
     };
 
-    if (this.isBetaSpaceActive()) {
-      this.activeNavLogId = this.betaSpaceManager.createNavLog(this.betaSpaceSession, {
-        target: { x, y, z },
-        from_position: from,
-        flight_start_at: flightStartAt,
-        peak_speed: peakSpeed,
-        flight_duration: flightDuration
-      });
-    } else {
-      this.activeNavLogId = this.worldDataManager.createNavLog({
-        target: { x, y, z },
-        from_position: from,
-        flight_start_at: flightStartAt,
-        peak_speed: peakSpeed,
-        flight_duration: flightDuration
-      });
-
-      this.recordAuthoritativeNavigationStart(
-        "standard",
-        { x, y, z },
-        this.activeNavLogId
-      );
-      this.updateOnlinePresence({ force: true });
-    }
+    this.activeNavLogId = this.worldDataManager.createNavigationActionId("nav");
+    this.recordAuthoritativeNavigationStart(
+      "standard",
+      { x, y, z },
+      this.activeNavLogId
+    );
+    this.updateOnlinePresence({ force: true });
   }
 
   clearTarget(message, completed = false) {
     const now = Date.now();
     const inBetaSpace = this.isBetaSpaceActive();
     const wasHyperdrive = this.isHyperdrive || !!this.hyperdriveLogId;
-    const shouldOverrideServer = !inBetaSpace
-      && !completed
+    const shouldOverrideServer = !completed
       && Boolean(this.hyperdriveLogId || this.activeNavLogId);
     if (this.hyperdriveLogId) {
       if (inBetaSpace) {
@@ -3188,13 +3192,13 @@ export class GameManager {
     // Warp ended (arrival or cancel): revert from warp ambience to the destination's location BGM.
     if (wasHyperdrive) this.refreshBgm();
     if (shouldOverrideServer) this.recordAuthoritativeManualOverride();
-    if (!inBetaSpace && completed) {
+    if (completed) {
       setTimeout(() => {
         void this.worldDataManager.refreshNavigationState()
           .catch((error) => this.handleNavigationRecordFailure(error));
       }, 100);
     }
-    if (!inBetaSpace) this.updateOnlinePresence({ force: true });
+    this.updateOnlinePresence({ force: true });
   }
 
   cancelAutopilot() {
@@ -3214,10 +3218,8 @@ export class GameManager {
     this.navTarget = null;
     this.activeNavLog = null;
     this.targetMarker.visible = false;
-    if (!this.isBetaSpaceActive()) {
-      this.recordAuthoritativeManualOverride();
-      this.updateOnlinePresence({ force: true });
-    }
+    this.recordAuthoritativeManualOverride();
+    this.updateOnlinePresence({ force: true });
   }
 
   initiateHyperdrive({ x, y, z }) {
@@ -3301,7 +3303,7 @@ export class GameManager {
     };
 
     this.hyperdriveLog = log;
-    this.hyperdriveLogId = this.worldDataManager.createHyperdriveNavLog(log);
+    this.hyperdriveLogId = this.worldDataManager.createNavigationActionId("warp");
 
     this.recordAuthoritativeNavigationStart(
       "hyperdrive",
@@ -3796,7 +3798,7 @@ export class GameManager {
       status: "active"
     };
 
-    const id = this.worldDataManager.createNavLog(log);
+    const id = this.worldDataManager.createNavigationActionId("deactivation");
     this._deactivationLog = { ...log, id };
     this.recordAuthoritativeNavigationStart(
       "deactivation",
@@ -4511,7 +4513,6 @@ export class GameManager {
 
   updateManualMovementSettlement() {
     const eligible = !this.isDocked()
-      && !this.isBetaSpaceActive()
       && !this.worldDataResetting
       && !this._deactivationLog
       && this.state.autopilotPhase === null;
@@ -4586,8 +4587,17 @@ export class GameManager {
 
   handleNavigationRecordFailure(error) {
     console.error("[navigation] authoritative command failed.", error);
+    if (Number(error?.status) >= 400 && Number(error?.status) < 500) {
+      this.applyAuthoritativeNavigationState(this.worldDataManager.getNavigationState());
+      this.navigationRecordFailed = false;
+      this.ui.showErrorToast(error?.message || "navigation command rejected");
+      return;
+    }
+    this.applyAuthoritativeNavigationState(this.worldDataManager.getNavigationState());
     if (!this.navigationRecordFailed) {
-      this.ui.showErrorToast("navigation server record failed; offline state");
+      if (error?.code !== "MOVEMENT_COMMAND_NOT_CONFIRMED") {
+        this.ui.showErrorToast("navigation server record failed; offline state");
+      }
     }
     this.navigationRecordFailed = true;
     clearTimeout(this.navigationRebaseTimer);
@@ -4605,20 +4615,33 @@ export class GameManager {
     }, 10000);
   }
 
+  handleNavigationCommandStatus({ status, clientActionId }) {
+    if (status === "DELIVERY_UNKNOWN") {
+      this.unknownNavigationCommands.add(clientActionId);
+      this.ui.showToast("server response pending");
+      return;
+    }
+    const wasUnknown = this.unknownNavigationCommands.delete(clientActionId);
+    if (status === "ACCEPTED" && wasUnknown) {
+      this.ui.showToast("server command confirmed");
+    } else if (status === "EXPIRED") {
+      this.ui.showErrorToast("command expired without server confirmation");
+    }
+  }
+
   updateOnlinePresence({ force = false, manualStoppedState = null } = {}) {
     if (!this.presenceClient || !this.remotePlayerManager || !this.worldMapManager?.snapshot) return;
     if (document.visibilityState === "hidden") {
       this.setOnlinePresenceUnavailable();
       return;
     }
-    if (this.isDocked() || this.isBetaSpaceActive() || this.worldDataResetting) {
+    if (this.isDocked() || this.worldDataResetting) {
       this.setOnlinePresenceUnavailable();
       return;
     }
 
-    const now = Date.now();
     const dataPosition = manualStoppedState?.position || this.getPlayerDataPosition();
-    const zoneId = this.getPresenceZoneId(dataPosition);
+    const zoneId = this.isBetaSpaceActive() ? "BETA-SPACE" : this.getPresenceZoneId(dataPosition);
     if (!zoneId) {
       this.setOnlinePresenceUnavailable();
       return;
@@ -4635,13 +4658,10 @@ export class GameManager {
     }
     this.refreshAuthorityFieldShips(zoneId, { force: zoneChanged });
 
-    const route = this.buildPresenceRoute(dataPosition, now);
-    if (route) {
-      const signature = `${zoneId}:${route.action_id}`;
-      if (force || signature !== this.presenceRouteSignature) {
-        this.presenceRouteSignature = signature;
-        this.presenceClient.publishRoute(route);
-      }
+    const authorityRouteActive = this.state.autopilotPhase !== null;
+    if (authorityRouteActive) {
+      this.presenceRouteSignature = null;
+      this.presenceClient.clearLatestState();
       return;
     }
 
@@ -4696,50 +4716,6 @@ export class GameManager {
       });
   }
 
-  buildPresenceRoute(dataPosition, now = Date.now()) {
-    const hyperdrive = this.isHyperdrive && this.hyperdriveLog && this.hyperdriveLogId
-      ? {
-          actionId: this.hyperdriveLogId,
-          type: "hyperdrive",
-          target: this.hyperdriveLog.target,
-          departAt: Number(this.hyperdriveLog.jump_start_at) || now,
-          arriveAt: (Number(this.hyperdriveLog.jump_start_at) || now)
-            + Math.max(0, Number(this.hyperdriveLog.flight_duration) || 0) * 1000
-        }
-      : null;
-    const standard = !hyperdrive && this.state.autopilotPhase !== null && this.activeNavLogId && this.activeNavLog
-      ? {
-          actionId: this.activeNavLogId,
-          type: "standard",
-          target: this.activeNavLog.target,
-          departAt: Number(this.activeNavLog.flight_start_at) || now,
-          arriveAt: (Number(this.activeNavLog.flight_start_at) || now)
-            + Math.max(0, Number(this.activeNavLog.flight_duration) || 0) * 1000
-        }
-      : null;
-    const active = hyperdrive || standard;
-    if (!active?.target) return null;
-
-    const target = this.worldMapManager.toDataVector(new THREE.Vector3(
-      Number(active.target.x) || 0,
-      Number(active.target.y) || 0,
-      Number(active.target.z) || 0
-    ));
-    const departDelayMs = Math.max(0, active.departAt - now);
-    const durationMs = active.departAt > now
-      ? Math.max(0, active.arriveAt - active.departAt)
-      : Math.max(0, active.arriveAt - now);
-    return {
-      action_id: active.actionId,
-      route_type: active.type,
-      ship_id: this.selectedShipId,
-      from_position: dataPosition,
-      target: { x: target.x, y: target.y, z: target.z },
-      depart_delay_ms: departDelayMs,
-      duration_ms: durationMs
-    };
-  }
-
   setOnlinePresenceUnavailable() {
     if (!this.presenceZoneId && this.presenceClient?.state === "disconnected") return;
     this.presenceZoneId = null;
@@ -4754,7 +4730,7 @@ export class GameManager {
     shipState = null,
     checkpointKind = "SNAPSHOT"
   } = {}) {
-    if (this.isBetaSpaceActive() || this.isDocked()) return;
+    if (this.isDocked()) return;
     if (this._deactivationLog) return;
     if (!force && this.state.autopilotPhase !== null) return;
     if (!this.worldDataManager.db || this.worldDataResetting) return;
@@ -5285,11 +5261,12 @@ export class GameManager {
   }
 
   isBetaSpaceActive() {
-    return !!this.betaSpaceSession;
+    return this.worldDataManager.getNavigationState()?.ship?.spatialMode === "BETA_SPACE"
+      || !!this.betaSpaceSession;
   }
 
   isDocked() {
-    return !!this.dockingState;
+    return this.worldDataManager.getNavigationState()?.ship?.spatialMode === "DOCKED";
   }
 
   // The persisted dock truth is the active ship's location storage (station_hangar vs active_ship).
@@ -5304,6 +5281,16 @@ export class GameManager {
   // docked the ship lives in the station's docked_ships zone (server) and
   // loadPlayerAssets reconstructs that station_hangar location in memory.
   deriveDockingState() {
+    const authority = this.worldDataManager.getNavigationState();
+    if (authority?.ship) {
+      if (authority.ship.spatialMode !== "DOCKED" || authority.custody?.type !== "BUILDING") {
+        return null;
+      }
+      return {
+        station_id: authority.custody.id,
+        slot: Number.isInteger(authority.custody.slot) ? authority.custody.slot : 0
+      };
+    }
     const storage = this.getActiveShipLocationStorage();
     if (storage?.storage_type !== "station_hangar") return null;
     const ship = this.getActiveShipItem();
@@ -5575,7 +5562,9 @@ export class GameManager {
   }
 
   getDockedStationId() {
-    return this.deriveDockingState()?.station_id || null;
+    return this.worldDataManager.getNavigationState()?.custody?.id
+      || this.deriveDockingState()?.station_id
+      || null;
   }
 
   getStationName(stationId) {
@@ -5750,8 +5739,25 @@ export class GameManager {
       return;
     }
 
-    // Clear in-flight navigation/targeting (mirrors Beta Space enter bookkeeping).
-    if (this.state.autopilotPhase !== null || this.isHyperdrive) this.clearTarget(null);
+    let authorityState;
+    try {
+      authorityState = await this.worldDataManager.dockShip({
+        buildingId: resolved.id,
+        observedShip: this.buildObservedNavigationShip()
+      });
+    } catch (error) {
+      this.ui.showErrorToast(error?.message || "docking command failed");
+      return;
+    }
+    if (
+      authorityState.ship.spatialMode !== "DOCKED"
+      || authorityState.custody?.id !== resolved.id
+    ) {
+      this.ui.showErrorToast("docking command was not confirmed");
+      return;
+    }
+
+    // DOCK acceptance atomically cancels the server movement contract.
     this.exitTargetCameraMode();
     this.clearWorldSelection();
     this.activeActions.clear();
@@ -5773,17 +5779,13 @@ export class GameManager {
     // station blowing up resolves it field-locally. "Docked" is derived from the
     // ship's location (its docked_ships membership) — no stored docked state.
     const stationId = resolved.id;
-    const capacity = this.getStationCapacity(resolved.building_id);
     const now = Date.now();
-    const dockSlot = await this.pickDockSlot(stationId, capacity);
-    if (dockSlot < 0) {
-      this.ui.showErrorToast("cannot dock — hangar full");
-      await this.ui.fadeIn(2000);
-      return;
-    }
+    const dockSlot = authorityState.custody.slot;
     const result = await this.worldDataManager.dockActiveShipToStation(this.characterId, stationId, { dockSlot, nowMs: now });
     if (!result?.committed) {
-      this.ui.showErrorToast("cannot dock — hangar unavailable");
+      this.dockingState = { station_id: stationId, slot: dockSlot };
+      this.enterDockingScene();
+      this.ui.showErrorToast("docked on server; local asset cache unavailable");
       await this.ui.fadeIn(2000);
       return;
     }
@@ -5802,6 +5804,13 @@ export class GameManager {
   async undock() {
     if (!this.isDocked()) return;
     const stationId = this.getDockedStationId();
+    let authorityState;
+    try {
+      authorityState = await this.worldDataManager.undockShip({ buildingId: stationId });
+    } catch (error) {
+      this.ui.showErrorToast(error?.message || "undock command failed");
+      return;
+    }
     await this.ui.fadeOut(this.getSpaceBackgroundColor(), 2000); // 2s fade to space bg, then transition
     const now = Date.now();
     // Custody migration (one transaction): bring the ship subtree back from the
@@ -5819,11 +5828,10 @@ export class GameManager {
     }
     await this.loadPlayerAssets(); // syncDockingPresentation exits the docking scene
 
-    // Deterministic reappearance at the station front + 10m.
-    const anchor = this.computeUndockAnchor(stationId);
-    if (anchor) {
-      this.ship.position.copy(this.worldMapManager.toRenderVector(anchor.position));
-      const r = anchor.rotation;
+    // The server resolves the current building coordinate before releasing custody.
+    if (authorityState.ship.position) {
+      this.ship.position.copy(this.worldMapManager.toRenderVector(authorityState.ship.position));
+      const r = authorityState.ship.rotation;
       this.ship.quaternion.set(r.x || 0, r.y || 0, r.z || 0, Number.isFinite(Number(r.w)) ? Number(r.w) : 1).normalize();
     }
     this.state.speed = 0;
@@ -5832,7 +5840,6 @@ export class GameManager {
 
     this.syncWorldRuntimeWithPlayer({ force: true });
     await this.refreshWorldSummary({ force: true });
-    await this.savePlayerShipState({ force: true });
     this.updateOnlinePresence({ force: true });
     await this.ui.fadeIn(2000); // 2s fade from space bg into the space scene
     this.ui.showToast("undocked");
@@ -6030,6 +6037,35 @@ export class GameManager {
     return null;
   }
 
+  activateAuthoritativeBetaSpace(authorityState) {
+    const serverSession = authorityState?.betaSpaceSession;
+    if (!serverSession || !authorityState.ship.position) return false;
+    const source = this.findBetaVoidRecord(serverSession.sourceBetaVoidId) || {};
+    const session = this.betaSpaceManager.enter({
+      sourceBetaVoid: {
+        ...source,
+        id: serverSession.sourceBetaVoidId,
+        active_reset_at: serverSession.expiresAt
+      },
+      returnState: null,
+      now: serverSession.enteredAt
+    });
+    session.id = serverSession.sessionId;
+    session.expiresAt = serverSession.expiresAt;
+    session.sourceActiveResetAt = serverSession.expiresAt;
+    session.spawnPosition = { ...authorityState.ship.position };
+    this.betaSpaceSession = session;
+    this.betaSpaceExitPending = false;
+    this.worldMapManager.renderWorld(session.snapshot, authorityState.ship.position);
+    this.worldMapManager.setCurrentSectorId("BETA-SPACE");
+    this.ui.setBetaSpaceState({
+      active: true,
+      remainingMs: Math.max(0, serverSession.expiresAt - authorityState.serverTime)
+    });
+    this.setOnlinePresenceUnavailable();
+    return true;
+  }
+
   createBetaSpaceReturnState() {
     return {
       position: {
@@ -6087,48 +6123,37 @@ export class GameManager {
       return;
     }
 
-    const now = Date.now();
-    const activeResetAt = Number(sourceBetaVoid.active_reset_at ?? object.activeResetAt);
-    if (Number.isFinite(activeResetAt) && activeResetAt <= now) {
-      await this.updateBetaVoidLifecycle({ force: true });
-      this.ui.showToast("Beta Void has reset");
+    let authorityState;
+    try {
+      authorityState = await this.worldDataManager.enterBetaSpace({
+        betaVoidId: sourceBetaVoid.id,
+        expectedGeneration: Number(sourceBetaVoid.variant_generation) || 1,
+        observedShip: this.buildObservedNavigationShip()
+      });
+    } catch (error) {
+      if (
+        error?.code === "BETA_VOID_EXPIRED"
+        || error?.code === "BETA_VOID_GENERATION_CHANGED"
+        || error?.code === "BETA_VOID_UNAVAILABLE"
+      ) {
+        try {
+          const snapshot = await this.worldDataManager.refreshWorldBootstrap();
+          this.worldMapManager.renderWorld(snapshot, this.getPlayerDataPosition());
+          this.syncWorldRuntimeWithPlayer({ force: true });
+          await this.refreshWorldSummary({ force: true });
+        } catch {
+          // The command rejection remains the primary feedback.
+        }
+      }
+      this.ui.showErrorToast(error?.message || "Beta Space entry command failed");
       return;
     }
 
-    const returnState = this.createBetaSpaceReturnState();
-    if (this.state.autopilotPhase !== null || this.isHyperdrive) {
-      this.clearTarget(null);
-    }
     this.exitTargetCameraMode();
     this.clearWorldSelection();
     this.activeActions.clear();
-    await this.savePlayerShipState({ force: true });
-
-    const session = this.betaSpaceManager.enter({
-      sourceBetaVoid,
-      returnState,
-      now
-    });
-    this.betaSpaceSession = session;
-    this.betaSpaceExitPending = false;
-    this.setOnlinePresenceUnavailable();
-
-    this.state.speed = 0;
-    this.state.desiredSpeed = 0;
-    this.state.autopilotPhase = null;
-    this.state.autopilotPeakSpeed = 0;
-    this.navTarget = null;
-    this.activeNavLog = null;
-    this.activeNavLogId = null;
-    this.hyperdriveLog = null;
-    this.hyperdriveLogId = null;
-    this.isHyperdrive = false;
-    this.targetMarker.visible = false;
-
-    const spawnPosition = this.worldMapManager.toRenderVector(session.spawnPosition);
-    this.ship.position.copy(spawnPosition);
-    this.worldMapManager.renderWorld(session.snapshot, session.spawnPosition);
-    this.worldMapManager.setCurrentSectorId("BETA-SPACE");
+    this.activateAuthoritativeBetaSpace(authorityState);
+    this.applyAuthoritativeNavigationState(authorityState);
     this.syncWorldRuntimeWithPlayer({ force: true });
     await this.refreshWorldSummary({ force: true });
     this.updateBetaSpaceState({ showToasts: false });
@@ -6140,21 +6165,26 @@ export class GameManager {
     if (!session || this.betaSpaceExitPending) return;
     this.betaSpaceExitPending = true;
 
-    this.clearTarget(null);
-    this.activeActions.clear();
-    this.exitTargetCameraMode();
-    this.clearWorldSelection();
-    this.restoreBetaSpaceReturnState(session.returnState);
-    this.betaSpaceSession = null;
-    this.ui.setBetaSpaceState({ active: false });
-
     try {
-      await this.worldDataManager.processBetaVoidLifecycle();
-      const snapshot = await this.worldDataManager.getWorldSnapshot();
-      this.worldMapManager.renderWorld(snapshot, this.getPlayerDataPosition());
+      let authorityState;
+      try {
+        authorityState = await this.worldDataManager.exitBetaSpace();
+      } catch (error) {
+        if (error?.code !== "BETA_SESSION_NOT_ACTIVE") throw error;
+        authorityState = await this.worldDataManager.refreshNavigationState();
+        if (authorityState.ship.spatialMode === "BETA_SPACE") throw error;
+      }
+
+      this.activeActions.clear();
+      this.exitTargetCameraMode();
+      this.clearWorldSelection();
+      this.betaSpaceSession = null;
+      this.ui.setBetaSpaceState({ active: false });
+      const snapshot = await this.worldDataManager.refreshWorldBootstrap();
+      this.worldMapManager.renderWorld(snapshot, authorityState.ship.position);
+      this.applyAuthoritativeNavigationState(authorityState);
       this.syncWorldRuntimeWithPlayer({ force: true });
       await this.refreshWorldSummary({ force: true });
-      await this.savePlayerShipState({ force: true });
       this.updateOnlinePresence({ force: true });
       this.ui.showToast(reason === "expired" ? "Beta Space expired" : "exited Beta Space");
     } catch (error) {

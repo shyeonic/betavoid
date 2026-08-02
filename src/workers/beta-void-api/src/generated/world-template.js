@@ -3553,6 +3553,158 @@ export const WORLD_TEMPLATE = {
       "updated_at": 1767225600000
     }
   ],
+  "buildingDocking": {
+    "arc_station": {
+      "capacity": 10,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "plasma_power_plant": {
+      "capacity": 0,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "beta_particle_reactor": {
+      "capacity": 0,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "orbital_dorm": {
+      "capacity": 0,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "colony_dorm": {
+      "capacity": 0,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "orbital_defence_turret": {
+      "capacity": 0,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "sentinel_turret": {
+      "capacity": 0,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "shipyard": {
+      "capacity": null,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "trade_port": {
+      "capacity": null,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "outbase": {
+      "capacity": 5,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "hydro_synthesizer": {
+      "capacity": 4,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "mine": {
+      "capacity": 4,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "refinery": {
+      "capacity": 4,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "bio_fab": {
+      "capacity": 0,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "food_factory": {
+      "capacity": 0,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "silicon_factory": {
+      "capacity": 0,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "weapon_factory": {
+      "capacity": 0,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    },
+    "advanced_weapon_factory": {
+      "capacity": 0,
+      "facing": [
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "betaVoidLifecycle": {
+    "minDistance": 200,
+    "placementMargin": 500,
+    "activeResetMinMinutes": 30,
+    "activeResetMaxMinutes": 240
+  },
   "movementConfig": {
     "renderScale": 0.01,
     "chunkSize": {

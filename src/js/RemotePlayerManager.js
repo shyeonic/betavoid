@@ -125,13 +125,18 @@ export class RemotePlayerManager {
   }
 
   selectEffectivePeer(state) {
-    if (state.fieldPeer?.route?.authority) {
-      return {
-        ...(state.presencePeer || {}),
-        ...state.fieldPeer
-      };
-    }
-    return state.presencePeer || state.fieldPeer;
+    const authority = state.fieldPeer;
+    const presence = state.presencePeer;
+    if (!authority) return presence;
+    if (!presence || authority.route?.authority) return authority;
+
+    const presenceIsNewer = Number(presence.updated_at) > Number(authority.updated_at);
+    return {
+      ...presence,
+      ...authority,
+      pose: presenceIsNewer && presence.pose ? presence.pose : authority.pose,
+      route: authority.route
+    };
   }
 
   ensurePeerRoot(state) {

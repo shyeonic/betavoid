@@ -30,6 +30,8 @@ export class OnlineApiClient {
   async startNavigation({
     clientActionId,
     expectedRevision,
+    issuedAt,
+    expiresAt,
     routeType,
     target = null,
     observedShip,
@@ -40,23 +42,29 @@ export class OnlineApiClient {
       body: {
         client_action_id: clientActionId,
         expected_revision: expectedRevision,
+        issued_at: issuedAt,
+        expires_at: expiresAt,
         route_type: routeType,
         target,
         observed_ship: observedShip
       },
-      keepalive
+      keepalive,
+      timeoutMs: 4_000
     });
     return normalizeNavigationState(payload?.navigation);
   }
 
-  async manualOverride({ clientActionId, expectedRevision, contractId }) {
+  async manualOverride({ clientActionId, expectedRevision, issuedAt, expiresAt, contractId }) {
     const payload = await this.request("/v1/navigation/manual-override", {
       method: "POST",
       body: {
         client_action_id: clientActionId,
         expected_revision: expectedRevision,
+        issued_at: issuedAt,
+        expires_at: expiresAt,
         contract_id: contractId
-      }
+      },
+      timeoutMs: 4_000
     });
     return normalizeNavigationState(payload?.navigation);
   }
@@ -64,6 +72,8 @@ export class OnlineApiClient {
   async checkpointNavigation({
     clientActionId,
     expectedRevision,
+    issuedAt,
+    expiresAt,
     checkpointKind = "SNAPSHOT",
     ship,
     keepalive = false
@@ -73,12 +83,105 @@ export class OnlineApiClient {
       body: {
         client_action_id: clientActionId,
         expected_revision: expectedRevision,
+        issued_at: issuedAt,
+        expires_at: expiresAt,
         checkpoint_kind: checkpointKind,
         ship
       },
-      keepalive
+      keepalive,
+      timeoutMs: 4_000
     });
     return normalizeNavigationState(payload?.navigation);
+  }
+
+  async dockShip({
+    clientActionId,
+    expectedRevision,
+    issuedAt,
+    expiresAt,
+    buildingId,
+    observedShip
+  }) {
+    const payload = await this.request("/v1/navigation/dock", {
+      method: "POST",
+      body: {
+        client_action_id: clientActionId,
+        expected_revision: expectedRevision,
+        issued_at: issuedAt,
+        expires_at: expiresAt,
+        building_id: buildingId,
+        observed_ship: observedShip
+      },
+      timeoutMs: 4_000
+    });
+    return normalizeNavigationState(payload?.navigation);
+  }
+
+  async undockShip({ clientActionId, expectedRevision, issuedAt, expiresAt, buildingId }) {
+    const payload = await this.request("/v1/navigation/undock", {
+      method: "POST",
+      body: {
+        client_action_id: clientActionId,
+        expected_revision: expectedRevision,
+        issued_at: issuedAt,
+        expires_at: expiresAt,
+        building_id: buildingId
+      },
+      timeoutMs: 4_000
+    });
+    return normalizeNavigationState(payload?.navigation);
+  }
+
+  async enterBetaSpace({
+    clientActionId,
+    expectedRevision,
+    issuedAt,
+    expiresAt,
+    betaVoidId,
+    expectedGeneration,
+    observedShip
+  }) {
+    const payload = await this.request("/v1/navigation/beta-space/enter", {
+      method: "POST",
+      body: {
+        client_action_id: clientActionId,
+        expected_revision: expectedRevision,
+        issued_at: issuedAt,
+        expires_at: expiresAt,
+        beta_void_id: betaVoidId,
+        expected_generation: expectedGeneration,
+        observed_ship: observedShip
+      },
+      timeoutMs: 4_000
+    });
+    return normalizeNavigationState(payload?.navigation);
+  }
+
+  async exitBetaSpace({ clientActionId, expectedRevision, issuedAt, expiresAt }) {
+    const payload = await this.request("/v1/navigation/beta-space/exit", {
+      method: "POST",
+      body: {
+        client_action_id: clientActionId,
+        expected_revision: expectedRevision,
+        issued_at: issuedAt,
+        expires_at: expiresAt
+      },
+      timeoutMs: 4_000
+    });
+    return normalizeNavigationState(payload?.navigation);
+  }
+
+  async getNavigationCommandResult(clientActionId) {
+    const payload = await this.request(
+      `/v1/navigation/commands/${encodeURIComponent(clientActionId)}`,
+      { timeoutMs: 2_000 }
+    );
+    return {
+      status: String(payload?.result?.status || ""),
+      commandType: String(payload?.result?.command_type || ""),
+      navigation: normalizeNavigationState(payload?.result?.navigation),
+      recordedAt: Number(payload?.result?.recorded_at) || 0
+    };
   }
 
   async listZoneShips(zoneId) {
@@ -185,27 +288,45 @@ export class OnlineApiClient {
     method = "GET",
     body = null,
     forceTokenRefresh = false,
-    keepalive = false
+    keepalive = false,
+    timeoutMs = 0
   } = {}) {
     const token = await this.identity.getIdToken(forceTokenRefresh);
     if (!token) throw new OnlineApiError("AUTH_REQUIRED", "Authentication is required.", 401);
 
-    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-      method,
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`,
-        ...(body == null ? {} : { "Content-Type": "application/json" })
-      },
-      body: body == null ? undefined : JSON.stringify(body),
-      keepalive
-    });
+    const controller = timeoutMs > 0 ? new AbortController() : null;
+    const timeoutId = controller
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
+    let response;
+    try {
+      response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+        method,
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+          ...(body == null ? {} : { "Content-Type": "application/json" })
+        },
+        body: body == null ? undefined : JSON.stringify(body),
+        keepalive,
+        signal: controller?.signal
+      });
+    } catch (error) {
+      if (controller?.signal.aborted) {
+        throw new OnlineApiError("NETWORK_TIMEOUT", "Online API request timed out.", 0);
+      }
+      throw error;
+    } finally {
+      if (timeoutId !== null) clearTimeout(timeoutId);
+    }
 
-    if (response.status === 401 && !forceTokenRefresh) {
+    const isNavigationMutation = method !== "GET" && path.startsWith("/v1/navigation/");
+    if (response.status === 401 && !forceTokenRefresh && !isNavigationMutation) {
       return this.request(path, {
         method,
         body,
         keepalive,
+        timeoutMs,
         forceTokenRefresh: true
       });
     }
@@ -324,7 +445,10 @@ function normalizeNavigationState(value) {
       displayName: String(ship?.display_name || "Pilot"),
       shipDefinitionId: String(ship?.ship_definition_id || "ship_01"),
       spatialMode: String(ship?.spatial_mode || ""),
-      position: normalizeVector(ship?.position),
+      position: ship?.position == null ? null : normalizeVector(ship.position),
+      resolvedPosition: ship?.resolved_position == null
+        ? null
+        : normalizeVector(ship.resolved_position),
       rotation: normalizeQuaternion(ship?.rotation),
       speed: Number(ship?.speed) || 0,
       desiredSpeed: Number(ship?.desired_speed) || 0,
@@ -335,6 +459,19 @@ function normalizeNavigationState(value) {
       checkpointAt: Number(ship?.checkpoint_at) || 0,
       updatedAt: Number(ship?.updated_at) || 0
     },
+    custody: value?.custody
+      ? {
+          type: String(value.custody.type || ""),
+          id: String(value.custody.id || ""),
+          slot: Number(value.custody.slot),
+          sinceAt: Number(value.custody.since_at) || 0,
+          revision: Number(value.custody.revision) || 1,
+          resolvedPosition: normalizeVector(value.custody.resolved_position)
+        }
+      : null,
+    betaSpaceSession: value?.beta_space_session
+      ? normalizeBetaSpaceSession(value.beta_space_session)
+      : null,
     activeContract: value?.active_contract
       ? normalizeMovementContract(value.active_contract)
       : null,
@@ -344,6 +481,8 @@ function normalizeNavigationState(value) {
     !normalized.characterId
     || !normalized.ship.shipUid
     || normalized.ship.ownerCharacterId !== normalized.characterId
+    || (normalized.ship.spatialMode === "DOCKED" && !normalized.custody)
+    || (normalized.ship.spatialMode !== "DOCKED" && !normalized.ship.position)
     || !Number.isInteger(revision)
     || revision < 1
   ) {
@@ -353,6 +492,22 @@ function normalizeNavigationState(value) {
     );
   }
   return normalized;
+}
+
+function normalizeBetaSpaceSession(value) {
+  return {
+    sessionId: String(value?.session_id || ""),
+    sourceBetaVoidId: String(value?.source_beta_void_id || ""),
+    sourceGeneration: Number(value?.source_generation) || 0,
+    enteredAt: Number(value?.entered_at) || 0,
+    expiresAt: Number(value?.expires_at) || 0,
+    returnAnchor: {
+      position: normalizeVector(value?.return_anchor?.position),
+      rotation: normalizeQuaternion(value?.return_anchor?.rotation),
+      speed: Number(value?.return_anchor?.speed) || 0,
+      desiredSpeed: Number(value?.return_anchor?.desired_speed) || 0
+    }
+  };
 }
 
 function normalizeMovementContract(value) {

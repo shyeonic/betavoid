@@ -1,0 +1,97 @@
+import assert from "node:assert/strict";
+import { WorldDataManager } from "../js/WorldDataManager.js";
+
+function navigationState(revision = 1) {
+  const now = Date.now();
+  return {
+    characterId: "delivery-test",
+    ship: {
+      shipUid: "ship-delivery-test-ship_01-001",
+      worldId: "primary",
+      ownerCharacterId: "delivery-test",
+      displayName: "Delivery Test",
+      shipDefinitionId: "ship_01",
+      spatialMode: "FIELD",
+      position: { x: 1, y: 2, z: 3 },
+      resolvedPosition: null,
+      rotation: { x: 0, y: 0, z: 0, w: 1 },
+      speed: 0,
+      desiredSpeed: 0,
+      sectorId: "SEC-001",
+      chunkId: "0:0:0",
+      phase: "manual",
+      revision,
+      checkpointAt: now,
+      updatedAt: now
+    },
+    custody: null,
+    betaSpaceSession: null,
+    activeContract: null,
+    serverTime: now
+  };
+}
+
+function managerWith(api) {
+  const manager = Object.create(WorldDataManager.prototype);
+  manager.onlineApi = api;
+  manager.navigationServerState = navigationState();
+  manager.onNavigationCommandStatus = null;
+  manager.refreshNavigationState = async () => manager.navigationServerState;
+  return manager;
+}
+
+{
+  let mutationCalls = 0;
+  let receiptCalls = 0;
+  const accepted = navigationState(2);
+  const manager = managerWith({
+    async getNavigationCommandResult() {
+      receiptCalls += 1;
+      return { status: "ACCEPTED", navigation: accepted };
+    }
+  });
+  const result = await manager.runNavigationCommand(
+    "delivery-accepted",
+    { localExpiresAt: Date.now() + 100 },
+    async () => {
+      mutationCalls += 1;
+      const error = new Error("response lost");
+      error.status = 0;
+      throw error;
+    }
+  );
+  assert.equal(mutationCalls, 1);
+  assert.equal(receiptCalls, 1);
+  assert.equal(result.ship.revision, 2);
+}
+
+{
+  let mutationCalls = 0;
+  let receiptCalls = 0;
+  const manager = managerWith({
+    async getNavigationCommandResult() {
+      receiptCalls += 1;
+      const error = new Error("not recorded");
+      error.code = "MOVEMENT_COMMAND_NOT_FOUND";
+      error.status = 404;
+      throw error;
+    }
+  });
+  await assert.rejects(
+    manager.runNavigationCommand(
+      "delivery-expired",
+      { localExpiresAt: Date.now() },
+      async () => {
+        mutationCalls += 1;
+        const error = new Error("network unavailable");
+        error.status = 0;
+        throw error;
+      }
+    ),
+    (error) => error?.code === "MOVEMENT_COMMAND_NOT_CONFIRMED"
+  );
+  assert.equal(mutationCalls, 1);
+  assert.ok(receiptCalls >= 1);
+}
+
+console.log("navigation command delivery check passed");

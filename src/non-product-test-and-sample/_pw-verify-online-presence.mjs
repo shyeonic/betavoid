@@ -5,6 +5,7 @@ import {
   createNavigationResponse,
   withWorldAuthoritySnapshot
 } from "./_pw-world-authority-fixture.mjs";
+import { createStandardMovementPlan } from "../js/navigationKinematics.js";
 
 const baseUrl = process.env.BETA_VOID_TEST_BASE_URL || "http://127.0.0.1:4173";
 const now = Date.now();
@@ -36,11 +37,14 @@ const users = [
 
 async function run() {
   const hub = new MockPresenceHub();
+  const authorityByCharacterId = new Map();
   const browser = await chromium.launch({ headless: true });
   const sessions = [];
 
   try {
-    for (const user of users) sessions.push(await openSession(browser, hub, user));
+    for (const user of users) {
+      sessions.push(await openSession(browser, hub, authorityByCharacterId, user));
+    }
     const [alpha, beta] = sessions;
 
     await Promise.all(sessions.map(({ page }) => page.waitForFunction(() => (
@@ -69,30 +73,38 @@ async function run() {
     }, { characterId: users[0].characterId, expectedX: moved.x }, { timeout: 10_000 });
 
     const poseCountBeforeRoute = hub.messageCounts.pose;
-    const routeResult = await alpha.page.evaluate(() => {
+    const predictedActionId = await alpha.page.evaluate(() => {
       const game = window.__betaVoidGame;
       const target = game.ship.position.clone().add({ x: 400, y: 0, z: 0 });
       game.setTarget({ x: target.x, y: target.y, z: target.z });
       for (let i = 0; i < 5; i += 1) game.updateOnlinePresence();
-      return {
-        actionId: game.activeNavLogId,
-        routeSignature: game.presenceRouteSignature
-      };
+      return game.activeNavLogId;
     });
-    assert.ok(routeResult.actionId);
-    assert.ok(routeResult.routeSignature);
+    assert.ok(predictedActionId);
+    await alpha.page.waitForFunction(() => Boolean(
+      window.__betaVoidGame?.worldDataManager?.getNavigationState()?.activeContract
+    ), null, { timeout: 10_000 });
+    const authorityActionId = await alpha.page.evaluate(() => (
+      window.__betaVoidGame.worldDataManager.getNavigationState().activeContract.clientActionId
+    ));
+    assert.equal(authorityActionId, predictedActionId);
 
-    await beta.page.waitForFunction((characterId) => Boolean(
-      window.__betaVoidGame?.remotePlayerManager?.getPeerSnapshot(characterId)?.route
-    ), users[0].characterId, { timeout: 10_000 });
-    assert.equal(hub.messageCounts.route, 1);
+    const fieldRoute = await beta.page.evaluate(async () => {
+      const game = window.__betaVoidGame;
+      const result = await game.onlineApi.listZoneShips(game.presenceZoneId);
+      game.remotePlayerManager.replaceFieldPeers(result.peers);
+      return result.peers[0]?.route || null;
+    });
+    assert.equal(fieldRoute?.authority, true);
+    assert.equal(hub.messageCounts.route, 0);
     assert.equal(hub.messageCounts.pose, poseCountBeforeRoute);
 
     const routeSnapshot = await beta.page.evaluate((characterId) => (
       window.__betaVoidGame.remotePlayerManager.getPeerSnapshot(characterId)
     ), users[0].characterId);
-    assert.equal(routeSnapshot.route.action_id, routeResult.actionId);
-    assert.equal(routeSnapshot.route.route_type, "standard");
+    assert.equal(routeSnapshot.route.contractId, authorityActionId);
+    assert.equal(routeSnapshot.route.routeType, "standard");
+    assert.equal(routeSnapshot.route.authority, true);
     assert.equal(hub.protocolChecks, 2);
 
     await alpha.context.close();
@@ -136,7 +148,7 @@ async function run() {
   }
 }
 
-async function openSession(browser, hub, user) {
+async function openSession(browser, hub, authorityByCharacterId, user) {
   const context = await browser.newContext();
   const page = await context.newPage();
   const errors = [];
@@ -162,6 +174,7 @@ async function openSession(browser, hub, user) {
     displayName: user.displayName,
     serverTime: now
   });
+  authorityByCharacterId.set(user.characterId, navigation.navigation);
   await page.route("https://beta-void-api.infira-2025.workers.dev/v1/**", async (route) => {
     const request = route.request();
     assert.equal(request.headers().authorization, `Bearer ${user.token}`);
@@ -187,19 +200,26 @@ async function openSession(browser, hub, user) {
       || url.pathname === "/v1/navigation/checkpoint"
       || url.pathname === "/v1/navigation/manual-override"
     ) {
+      const body = request.postDataJSON();
+      const serverTime = Date.now();
+      const activeContract = url.pathname === "/v1/navigation/start"
+        ? createPublicStandardContract(body, navigation.navigation, serverTime)
+        : null;
       navigation = createNavigationResponse({
         characterId: user.characterId,
         displayName: user.displayName,
-        position: navigation.navigation.ship.position,
-        rotation: navigation.navigation.ship.rotation,
+        position: body.ship?.position || body.observed_ship?.position || navigation.navigation.ship.position,
+        rotation: body.ship?.rotation || body.observed_ship?.rotation || navigation.navigation.ship.rotation,
         revision: navigation.navigation.ship.revision + 1,
-        serverTime: Date.now()
+        serverTime,
+        activeContract
       });
+      authorityByCharacterId.set(user.characterId, navigation.navigation);
       return respond(navigation);
     }
     if (url.pathname === "/v1/space/ships" && request.method() === "GET") {
       const other = users.find((candidate) => candidate.characterId !== user.characterId);
-      const otherNavigation = createNavigationResponse({
+      const otherNavigation = authorityByCharacterId.get(other.characterId) || createNavigationResponse({
         characterId: other.characterId,
         displayName: other.displayName,
         serverTime: Date.now()
@@ -225,7 +245,9 @@ async function openSession(browser, hub, user) {
             speed: 0,
             server_at: Date.now()
           },
-          route: null
+          route: otherNavigation.active_contract
+            ? createRealtimeContract(otherNavigation.active_contract)
+            : null
         }]
       });
     }
@@ -246,6 +268,87 @@ async function openSession(browser, hub, user) {
   await page.waitForFunction(() => Boolean(window.__betaVoidGame), null, { timeout: 30_000 });
   await page.evaluate(() => window.__betaVoidGame.loadWorld());
   return { context, page, user, errors };
+}
+
+function createPublicStandardContract(body, navigation, serverTime) {
+  const physics = {
+    maxSpeed: 30_000,
+    accelerationRate: 3_000,
+    decelerationRate: 3_000,
+    pitchRate: 2,
+    yawRate: 2,
+    arrivalRadius: 100,
+    deactivationCoastDuration: 2
+  };
+  const plan = createStandardMovementPlan({
+    position: body.observed_ship?.position || navigation.ship.position,
+    rotation: body.observed_ship?.rotation || navigation.ship.rotation,
+    speed: body.observed_ship?.speed || 0,
+    target: body.target,
+    physics,
+    issuedAt: serverTime
+  });
+  return {
+    contract_id: body.client_action_id,
+    client_action_id: body.client_action_id,
+    route_type: plan.routeType,
+    status: "ACTIVE",
+    start_position: plan.startPosition,
+    start_heading: plan.startHeading,
+    start_speed: plan.startSpeed,
+    from_position: plan.fromPosition,
+    target: plan.target,
+    heading: plan.heading,
+    stop_start_at: plan.stopStartAt,
+    align_start_at: plan.alignStartAt,
+    cooldown_start_at: null,
+    flight_at: plan.flightAt,
+    arrive_at: plan.arriveAt,
+    stop_duration: plan.stopDuration,
+    align_duration: plan.alignDuration,
+    cooldown_duration: 0,
+    flight_duration: plan.flightDuration,
+    warp_entry_duration: 0,
+    warp_cruise_duration: 0,
+    warp_exit_duration: 0,
+    peak_speed: plan.peakSpeed,
+    desired_speed: plan.desiredSpeed,
+    coast_duration: plan.coastDuration,
+    physics: plan.physics,
+    revision: 1,
+    issued_at: serverTime,
+    canceled_at: null,
+    settled_at: null,
+    updated_at: serverTime
+  };
+}
+
+function createRealtimeContract(contract) {
+  return {
+    authority: true,
+    contractVersion: 1,
+    contractId: contract.contract_id,
+    routeType: contract.route_type,
+    startPosition: contract.start_position,
+    startHeading: contract.start_heading,
+    startSpeed: contract.start_speed,
+    fromPosition: contract.from_position,
+    target: contract.target,
+    heading: contract.heading,
+    stopStartAt: contract.stop_start_at,
+    alignStartAt: contract.align_start_at,
+    cooldownStartAt: contract.cooldown_start_at,
+    flightAt: contract.flight_at,
+    arriveAt: contract.arrive_at,
+    stopDuration: contract.stop_duration,
+    alignDuration: contract.align_duration,
+    cooldownDuration: contract.cooldown_duration,
+    flightDuration: contract.flight_duration,
+    peakSpeed: contract.peak_speed,
+    desiredSpeed: contract.desired_speed,
+    coastDuration: contract.coast_duration,
+    physics: contract.physics
+  };
 }
 
 function createPlayerState(user) {

@@ -11,13 +11,18 @@ import {
 } from "./world-state.js";
 import {
   checkpointPlayerShip,
+  dockPlayerShip,
+  enterPlayerBetaSpace,
+  exitPlayerBetaSpace,
   getNavigationAdminSummary,
+  getPlayerCommandResult,
   getPlayerNavigationState,
   listNavigationAdminHistory,
   listNavigationAdminShips,
   listZoneShipPeers,
   overridePlayerNavigation,
-  startPlayerNavigation
+  startPlayerNavigation,
+  undockPlayerShip
 } from "./navigation-state.js";
 export { PresenceShard } from "./presence-shard.js";
 
@@ -187,6 +192,65 @@ export default {
         return json({ ok: true, navigation }, { request, env });
       }
 
+      if (url.pathname === "/v1/navigation/dock" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const navigation = await dockPlayerShip(
+          env.WORLD_DB,
+          context,
+          await readJsonBody(request)
+        );
+        return json({ ok: true, navigation }, { request, env });
+      }
+
+      if (url.pathname === "/v1/navigation/undock" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const navigation = await undockPlayerShip(
+          env.WORLD_DB,
+          context,
+          await readJsonBody(request)
+        );
+        return json({ ok: true, navigation }, { request, env });
+      }
+
+      if (url.pathname === "/v1/navigation/beta-space/enter" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const navigation = await enterPlayerBetaSpace(
+          env.WORLD_DB,
+          context,
+          await readJsonBody(request)
+        );
+        return json({ ok: true, navigation }, { request, env });
+      }
+
+      if (url.pathname === "/v1/navigation/beta-space/exit" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const navigation = await exitPlayerBetaSpace(
+          env.WORLD_DB,
+          context,
+          await readJsonBody(request)
+        );
+        return json({ ok: true, navigation }, { request, env });
+      }
+
+      const commandResultMatch = url.pathname.match(/^\/v1\/navigation\/commands\/([^/]+)$/);
+      if (commandResultMatch && request.method === "GET") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const result = await getPlayerCommandResult(
+          env.WORLD_DB,
+          context,
+          decodeURIComponent(commandResultMatch[1])
+        );
+        if (!result) {
+          throw httpError(404, "MOVEMENT_COMMAND_NOT_FOUND", "Movement command was not recorded.");
+        }
+        return json({ ok: true, result }, { request, env });
+      }
+
       if (url.pathname === "/v1/space/ships" && request.method === "GET") {
         const auth = await requireFirebaseUser(request, env);
         const context = await getNavigationContext(env, auth);
@@ -267,8 +331,7 @@ function navigationContextFromPlayerState(profile, state) {
     displayName: profile.display_name,
     shipUid: state.assets?.profile?.active_ship_uid
       || `ship-${profile.character_id}-ship_01-001`,
-    shipDefinitionId: state.assets?.profile?.selected_ship_id || "ship_01",
-    spatialMode: state.docking ? "DOCKED" : "FIELD"
+    shipDefinitionId: state.assets?.profile?.selected_ship_id || "ship_01"
   };
 }
 

@@ -262,7 +262,9 @@ function renderShips() {
       appendCell(row, `${ship.ship_definition_id} / ${ship.ship_uid}`);
       appendCell(row, ship.spatial_mode);
       appendCell(row, ship.sector_id || ship.chunk_id || "-");
-      appendCell(row, formatVector(ship.position));
+      appendCell(row, ship.custody
+        ? `${ship.custody.id} @ ${formatVector(ship.resolved_position)}`
+        : formatVector(ship.position));
       appendCell(row, formatNumber(Math.round(Number(ship.speed) || 0)));
       appendCell(row, ship.phase || "-");
       appendCell(row, ship.route_type || "-");
