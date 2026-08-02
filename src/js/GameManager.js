@@ -244,9 +244,6 @@ export class GameManager {
     this.presenceRouteSignature = null;
     this.presenceSequence = 0;
     this.manualSettlementTracker = new ManualMovementSettlementTracker();
-    this.fieldShipRefreshInterval = 5 * 60 * 1000;
-    this.fieldShipLastRefreshedAt = 0;
-    this.fieldShipRefreshPending = false;
     this.targetingOverlay = new TargetingOverlay({
       canvas: this.ui.elements.targetingCanvas,
       frameStyle: this.getEnvironmentPreset().targeting.frame
@@ -4647,8 +4644,8 @@ export class GameManager {
       this.presenceClient.ensureZone(zoneId, {
         worldId: this.worldBootstrap.worldId
       });
+      this.refreshAuthorityFieldShips(zoneId);
     }
-    this.refreshAuthorityFieldShips(zoneId, { force: zoneChanged });
 
     const authorityRouteActive = this.state.autopilotPhase !== null;
     if (authorityRouteActive) {
@@ -4685,16 +4682,7 @@ export class GameManager {
     return this.worldDataManager.getChunkDataAtPosition(dataPosition).chunk_id || null;
   }
 
-  refreshAuthorityFieldShips(zoneId, { force = false } = {}) {
-    const now = Date.now();
-    if (
-      this.fieldShipRefreshPending
-      || (!force && now - this.fieldShipLastRefreshedAt < this.fieldShipRefreshInterval)
-    ) {
-      return;
-    }
-    this.fieldShipRefreshPending = true;
-    this.fieldShipLastRefreshedAt = now;
+  refreshAuthorityFieldShips(zoneId) {
     void this.onlineApi.listZoneShips(zoneId)
       .then((result) => {
         if (this.presenceZoneId !== zoneId) return;
@@ -4702,9 +4690,6 @@ export class GameManager {
       })
       .catch((error) => {
         console.warn("[navigation] field ship snapshot unavailable.", error);
-      })
-      .finally(() => {
-        this.fieldShipRefreshPending = false;
       });
   }
 
@@ -4712,7 +4697,6 @@ export class GameManager {
     if (!this.presenceZoneId && this.presenceClient?.state === "disconnected") return;
     this.presenceZoneId = null;
     this.presenceRouteSignature = null;
-    this.fieldShipLastRefreshedAt = 0;
     this.presenceClient?.disconnect();
     this.remotePlayerManager?.clear();
   }

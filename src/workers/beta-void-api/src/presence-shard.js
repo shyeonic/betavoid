@@ -46,8 +46,7 @@ export class PresenceShard {
       protocol: PROTOCOL,
       zone_id: zoneId,
       server_at: now,
-      peers,
-      field_peers: []
+      peers
     }));
     this.broadcast({
       type: "peer_joined",

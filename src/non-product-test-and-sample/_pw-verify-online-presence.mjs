@@ -567,8 +567,7 @@ class MockPresenceHub {
       type: "hello",
       zone_id: "test",
       server_at: Date.now(),
-      peers: existing,
-      field_peers: []
+      peers: existing
     }));
     this.broadcast({
       type: "peer_joined",

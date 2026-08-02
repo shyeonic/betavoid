@@ -40,7 +40,9 @@ export class RemotePlayerManager {
   handlePresenceMessage(message) {
     if (!message || typeof message !== "object") return;
     if (message.type === "hello") {
-      this.replaceFieldPeers(message.field_peers || []);
+      if (Array.isArray(message.field_peers)) {
+        this.replaceFieldPeers(message.field_peers);
+      }
       this.replacePresencePeers(message.peers || []);
       return;
     }
