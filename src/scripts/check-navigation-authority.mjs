@@ -89,6 +89,73 @@ await assert.rejects(
   (error) => error?.code === "MOVEMENT_COMMAND_EXPIRED"
 );
 
+const arrivalRaceCharacterId = `arrival-race-${Date.now()}`;
+const arrivalRaceInitial = await request(
+  `/navigation?character_id=${arrivalRaceCharacterId}`
+);
+const arrivalRaceTarget = {
+  ...arrivalRaceInitial.ship.position,
+  x: arrivalRaceInitial.ship.position.x + 1_000
+};
+const arrivalRaceStartAt = Date.now();
+const arrivalRaceStarted = await request("/navigation/start", {
+  method: "POST",
+  body: {
+    character_id: arrivalRaceCharacterId,
+    client_action_id: `arrival-race-start-${arrivalRaceCharacterId}`,
+    expected_revision: arrivalRaceInitial.ship.revision,
+    route_type: "standard",
+    target: arrivalRaceTarget,
+    observed_ship: {
+      position: arrivalRaceInitial.ship.position,
+      rotation: arrivalRaceInitial.ship.rotation,
+      speed: 0,
+      desired_speed: 0
+    },
+    ...commandWindow(arrivalRaceStartAt)
+  }
+});
+const arrivalRaceCheckpointAt = arrivalRaceStarted.active_contract.arrive_at + 1;
+const arrivalRaceCheckpoint = await request("/navigation/checkpoint", {
+  method: "POST",
+  body: {
+    character_id: arrivalRaceCharacterId,
+    client_action_id: `arrival-race-stop-${arrivalRaceCharacterId}`,
+    expected_revision: arrivalRaceStarted.ship.revision,
+    checkpoint_kind: "MANUAL_STOPPED",
+    ship: {
+      position: arrivalRaceTarget,
+      rotation: arrivalRaceStarted.ship.rotation,
+      speed: 0,
+      desired_speed: 0
+    },
+    ...commandWindow(arrivalRaceCheckpointAt)
+  }
+});
+assert.equal(arrivalRaceCheckpoint.active_contract, null);
+assert.equal(arrivalRaceCheckpoint.ship.phase, "manual");
+assert.equal(arrivalRaceCheckpoint.ship.revision, arrivalRaceStarted.ship.revision + 2);
+assertVector(arrivalRaceCheckpoint.ship.position, arrivalRaceTarget);
+await assert.rejects(
+  request("/navigation/checkpoint", {
+    method: "POST",
+    body: {
+      character_id: arrivalRaceCharacterId,
+      client_action_id: `arrival-race-stale-${arrivalRaceCharacterId}`,
+      expected_revision: arrivalRaceStarted.ship.revision,
+      checkpoint_kind: "MANUAL_STOPPED",
+      ship: {
+        position: arrivalRaceTarget,
+        rotation: arrivalRaceCheckpoint.ship.rotation,
+        speed: 0,
+        desired_speed: 0
+      },
+      ...commandWindow(arrivalRaceCheckpointAt + 1)
+    }
+  }),
+  (error) => error?.code === "MOVEMENT_REVISION_CONFLICT"
+);
+
 const startAt = Date.now() + 10;
 const startBody = {
   character_id: characterId,

@@ -41,7 +41,7 @@ export async function startPlayerNavigation(db, context, body, now = Date.now())
 
   const state = await getPlayerNavigationStateInternal(db, context, now);
   assertShipCanNavigate(state);
-  assertRevision(state.ship.revision, body?.expected_revision);
+  assertCommandRevision(state, body?.expected_revision);
   const physics = getShipPhysics(state.ship.ship_definition_id);
   const anchor = state.activeContract
     ? movementAnchor(state.ship, state.activeContract, now)
@@ -228,7 +228,7 @@ export async function overridePlayerNavigation(db, context, body, now = Date.now
 
   const state = await getPlayerNavigationStateInternal(db, context, now);
   assertShipCanNavigate(state);
-  assertRevision(state.ship.revision, body?.expected_revision);
+  assertCommandRevision(state, body?.expected_revision);
   const contract = state.activeContract;
   if (!contract || state.ship.active_contract_id !== contract.contractId) {
     throw navigationError(409, "MOVEMENT_NOT_ACTIVE", "No active movement contract.");
@@ -356,7 +356,7 @@ export async function checkpointPlayerShip(db, context, body, now = Date.now()) 
 
   const state = await getPlayerNavigationStateInternal(db, context, now);
   assertShipCanNavigate(state);
-  assertRevision(state.ship.revision, body?.expected_revision);
+  assertCommandRevision(state, body?.expected_revision);
   if (state.activeContract) {
     throw navigationError(409, "MOVEMENT_ACTIVE", "Manual checkpoint is unavailable during navigation.");
   }
@@ -448,7 +448,7 @@ export async function dockPlayerShip(db, context, body, now = Date.now()) {
   assertCommandDeadline(body, now);
 
   const state = await getPlayerNavigationStateInternal(db, context, now);
-  assertRevision(state.ship.revision, body?.expected_revision);
+  assertCommandRevision(state, body?.expected_revision);
   if (state.ship.spatial_mode !== FIELD_MODE || state.custody || state.betaSpaceSession) {
     throw navigationError(409, "DOCK_SHIP_NOT_IN_FIELD", "Only a field ship can dock.");
   }
@@ -624,7 +624,7 @@ export async function undockPlayerShip(db, context, body, now = Date.now()) {
   assertCommandDeadline(body, now);
 
   const state = await getPlayerNavigationStateInternal(db, context, now);
-  assertRevision(state.ship.revision, body?.expected_revision);
+  assertCommandRevision(state, body?.expected_revision);
   const custody = state.custody;
   if (state.ship.spatial_mode !== "DOCKED" || custody?.type !== "BUILDING") {
     throw navigationError(409, "UNDOCK_SHIP_NOT_DOCKED", "Ship is not docked at a building.");
@@ -731,7 +731,7 @@ export async function enterPlayerBetaSpace(db, context, body, now = Date.now()) 
   assertCommandDeadline(body, now);
 
   const state = await getPlayerNavigationStateInternal(db, context, now);
-  assertRevision(state.ship.revision, body?.expected_revision);
+  assertCommandRevision(state, body?.expected_revision);
   if (state.ship.spatial_mode !== FIELD_MODE || state.custody || state.betaSpaceSession) {
     throw navigationError(409, "BETA_ENTRY_SHIP_NOT_IN_FIELD", "Only a field ship can enter Beta Space.");
   }
@@ -898,7 +898,7 @@ export async function exitPlayerBetaSpace(db, context, body, now = Date.now()) {
   assertCommandDeadline(body, now);
 
   const state = await getPlayerNavigationStateInternal(db, context, now);
-  assertRevision(state.ship.revision, body?.expected_revision);
+  assertCommandRevision(state, body?.expected_revision);
   const session = state.betaSpaceSession;
   if (state.ship.spatial_mode !== "BETA_SPACE" || !session) {
     throw navigationError(409, "BETA_SESSION_NOT_ACTIVE", "Ship is not in Beta Space.");
@@ -1420,6 +1420,7 @@ async function resolvePlayerState(db, initialShip, now, { materializeArrival }) 
 
   const derived = deriveMovementState(contract, now);
   if (derived.logicalStatus === "ARRIVED" && materializeArrival) {
+    const arrivalFromRevision = ship.revision;
     const rotation = rotationForMovement(contract, ship.rotation, "arrived");
     const zones = zoneFields(contract.target, ship.spatial_mode);
     const results = await db.batch([
@@ -1472,13 +1473,32 @@ async function resolvePlayerState(db, initialShip, now, { materializeArrival }) 
       return {
         ship: { ...ship, phase: "arrived" },
         activeContract: null,
-        serverTime: now
+        serverTime: now,
+        arrivalRevisionTransition: {
+          fromRevision: arrivalFromRevision,
+          toRevision: ship.revision
+        }
       };
     }
     ship = shipFromRow(await db.prepare(
       "SELECT * FROM ship_locations WHERE ship_uid = ?"
     ).bind(ship.ship_uid).first());
-    return resolvePlayerState(db, ship, now, { materializeArrival });
+    const resolved = await resolvePlayerState(db, ship, now, { materializeArrival });
+    if (
+      !resolved.arrivalRevisionTransition
+      && resolved.ship.revision === arrivalFromRevision + 1
+      && resolved.ship.phase === "arrived"
+      && !resolved.activeContract
+    ) {
+      return {
+        ...resolved,
+        arrivalRevisionTransition: {
+          fromRevision: arrivalFromRevision,
+          toRevision: resolved.ship.revision
+        }
+      };
+    }
+    return resolved;
   }
 
   const rotation = rotationForMovement(contract, ship.rotation, derived.phase);
@@ -2177,6 +2197,20 @@ function assertRevision(actual, expected) {
   if (!Number.isInteger(normalized) || normalized !== actual) {
     throw navigationError(409, "MOVEMENT_REVISION_CONFLICT", "Ship movement revision changed.");
   }
+}
+
+function assertCommandRevision(state, expected) {
+  const normalized = Number(expected);
+  const arrival = state.arrivalRevisionTransition;
+  if (
+    Number.isInteger(normalized)
+    && arrival
+    && normalized === arrival.fromRevision
+    && state.ship.revision === arrival.toRevision
+  ) {
+    return;
+  }
+  assertRevision(state.ship.revision, expected);
 }
 
 function normalizeRouteType(value) {
