@@ -42,6 +42,8 @@ const gameManagerSource = await readFile(
 assert.doesNotMatch(gameManagerSource, /new OnlinePresenceClient/);
 assert.doesNotMatch(gameManagerSource, /updateManualMovementSettlement/);
 assert.doesNotMatch(gameManagerSource, /MANUAL_STOPPED/);
+assert.doesNotMatch(gameManagerSource, /betaVoidLifecycleInterval/);
+assert.doesNotMatch(gameManagerSource, /updateBetaVoidLifecycle/);
 assert.match(gameManagerSource, /async observeOnlineSpace/);
 const workerIndexSource = await readFile(
   new URL("../workers/beta-void-api/src/index.js", import.meta.url),

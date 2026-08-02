@@ -374,9 +374,6 @@ export class GameManager {
     this.boundEvents = null;
     this.worldSummaryLastUpdatedAt = 0;
     this.worldSummaryPending = false;
-    this.betaVoidLifecycleLastCheckedAt = 0;
-    this.betaVoidLifecyclePending = false;
-    this.betaVoidLifecycleInterval = 5 * 60 * 1000;
     this._lastFrameTimestamp = 0;
     this._frameIntervalMs = FRAME_INTERVAL_MS;
     this._lastRenderAt = 0;
@@ -4312,7 +4309,6 @@ export class GameManager {
   update(dt) {
     if (this.isDocked()) return;
     if (this.isBetaSpaceActive() && this.updateBetaSpaceState()) return;
-    if (!this.isBetaSpaceActive()) void this.updateBetaVoidLifecycle();
     if (this.miningAligning) {
       // Local pre-mining alignment delay: rotate to face the node, hold position.
       this.updateMiningAlignment(dt);
@@ -6118,30 +6114,6 @@ export class GameManager {
       this.ui.showToast(this.i18n.t("betaVoid.processed", {}, "Beta Void processed"));
     } catch (error) {
       this.ui.showErrorToast(error instanceof Error ? error.message : this.i18n.t("betaVoid.processFailed", {}, "Beta Void process failed"));
-    }
-  }
-
-  async updateBetaVoidLifecycle({ force = false } = {}) {
-    if (this.isBetaSpaceActive()) return;
-    if (!this.worldDataManager.db || this.betaVoidLifecyclePending) return;
-
-    const now = performance.now();
-    if (!force && now - this.betaVoidLifecycleLastCheckedAt < this.betaVoidLifecycleInterval) return;
-    this.betaVoidLifecycleLastCheckedAt = now;
-    this.betaVoidLifecyclePending = true;
-
-    try {
-      const result = await this.worldDataManager.processBetaVoidLifecycle();
-      if (!result?.changed) return;
-
-      const snapshot = await this.worldDataManager.getWorldSnapshot();
-      this.worldMapManager.renderWorld(snapshot, this.getPlayerDataPosition());
-      this.syncWorldRuntimeWithPlayer({ force: true });
-      this.updateTargetingOverlay();
-    } catch (error) {
-      console.error("Beta Void lifecycle failed:", error);
-    } finally {
-      this.betaVoidLifecyclePending = false;
     }
   }
 
