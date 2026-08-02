@@ -228,6 +228,7 @@ export class OnlineApiClient {
     if (shipUid) query.set("ship_uid", String(shipUid));
     query.set("limit", String(limit));
     const payload = await this.request(`/v1/space/observe?${query}`, {
+      cache: "no-store",
       timeoutMs: 5_000
     });
     return {
@@ -435,6 +436,7 @@ export class OnlineApiClient {
     body = null,
     forceTokenRefresh = false,
     keepalive = false,
+    cache = "default",
     timeoutMs = 0
   } = {}) {
     const token = await this.identity.getIdToken(forceTokenRefresh);
@@ -454,6 +456,7 @@ export class OnlineApiClient {
           ...(body == null ? {} : { "Content-Type": "application/json" })
         },
         body: body == null ? undefined : JSON.stringify(body),
+        cache,
         keepalive,
         signal: controller?.signal
       });
@@ -471,6 +474,7 @@ export class OnlineApiClient {
       return this.request(path, {
         method,
         body,
+        cache,
         keepalive,
         timeoutMs,
         forceTokenRefresh: true

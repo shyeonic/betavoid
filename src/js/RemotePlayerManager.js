@@ -75,8 +75,8 @@ export class RemotePlayerManager {
     this.replaceFieldPeers(peers);
   }
 
-  upsertObservedPeers(peers) {
-    peers.forEach((peer) => this.upsertPeer(peer, "field"));
+  upsertObservedPeers(peers, { snap = false, now = Date.now() } = {}) {
+    peers.forEach((peer) => this.upsertPeer(peer, "field", { snap, now }));
   }
 
   replacePeerSource(peers, source) {
@@ -88,7 +88,7 @@ export class RemotePlayerManager {
     peers.forEach((peer) => this.upsertPeer(peer, source));
   }
 
-  upsertPeer(peer, source = "presence") {
+  upsertPeer(peer, source = "presence", { snap = false, now = Date.now() } = {}) {
     const characterId = String(peer?.character_id || "");
     if (!characterId) return;
     const previous = this.peers.get(characterId);
@@ -117,6 +117,21 @@ export class RemotePlayerManager {
       void this.loadPeerModel(state);
     }
     this.ensurePeerRoot(state);
+    if (snap) this.snapPeerToTarget(state, now);
+  }
+
+  snapPeerToTarget(state, now = Date.now()) {
+    if (!state?.root) return false;
+    const target = this.derivePeerTarget(state.peer, now);
+    if (!target) {
+      state.root.visible = false;
+      return false;
+    }
+    state.root.position.copy(target.position);
+    state.root.quaternion.copy(target.quaternion);
+    state.root.visible = true;
+    state.initialized = true;
+    return true;
   }
 
   createPeerState(characterId) {
