@@ -5,7 +5,10 @@ import {
   createNavigationResponse,
   withWorldAuthoritySnapshot
 } from "./_pw-world-authority-fixture.mjs";
-import { createStandardMovementPlan } from "../js/navigationKinematics.js";
+import {
+  createHyperdriveMovementPlan,
+  createStandardMovementPlan
+} from "../js/navigationKinematics.js";
 
 const baseUrl = process.env.BETA_VOID_TEST_BASE_URL || "http://127.0.0.1:4173";
 const now = Date.now();
@@ -73,21 +76,51 @@ async function run() {
     }, { characterId: users[0].characterId, expectedX: moved.x }, { timeout: 10_000 });
 
     const poseCountBeforeRoute = hub.messageCounts.pose;
-    const predictedActionId = await alpha.page.evaluate(() => {
+    const pendingState = await alpha.page.evaluate(() => {
       const game = window.__betaVoidGame;
       const target = game.ship.position.clone().add({ x: 400, y: 0, z: 0 });
+      const before = {
+        position: game.ship.position.toArray(),
+        quaternion: game.ship.quaternion.toArray()
+      };
       game.setTarget({ x: target.x, y: target.y, z: target.z });
       for (let i = 0; i < 5; i += 1) game.updateOnlinePresence();
-      return game.activeNavLogId;
+      return {
+        before,
+        position: game.ship.position.toArray(),
+        quaternion: game.ship.quaternion.toArray(),
+        phase: game.state.autopilotPhase,
+        activeActionId: game.activeNavLogId,
+        pendingActionId: game.pendingNavigationCommand?.clientActionId || null
+      };
     });
-    assert.ok(predictedActionId);
+    assert.ok(pendingState.pendingActionId);
+    assert.equal(pendingState.phase, null);
+    assert.equal(pendingState.activeActionId, null);
+    assert.deepEqual(pendingState.position, pendingState.before.position);
+    assert.deepEqual(pendingState.quaternion, pendingState.before.quaternion);
+
+    await alpha.page.waitForTimeout(100);
+    const stillPending = await alpha.page.evaluate(() => {
+      const game = window.__betaVoidGame;
+      return {
+        phase: game.state.autopilotPhase,
+        activeActionId: game.activeNavLogId,
+        pendingActionId: game.pendingNavigationCommand?.clientActionId || null
+      };
+    });
+    assert.equal(stillPending.pendingActionId, pendingState.pendingActionId);
+    assert.equal(stillPending.phase, null);
+    assert.equal(stillPending.activeActionId, null);
+
     await alpha.page.waitForFunction(() => Boolean(
       window.__betaVoidGame?.worldDataManager?.getNavigationState()?.activeContract
+      && !window.__betaVoidGame?.pendingNavigationCommand
     ), null, { timeout: 10_000 });
     const authorityActionId = await alpha.page.evaluate(() => (
       window.__betaVoidGame.worldDataManager.getNavigationState().activeContract.clientActionId
     ));
-    assert.equal(authorityActionId, predictedActionId);
+    assert.equal(authorityActionId, pendingState.pendingActionId);
 
     const fieldRoute = await beta.page.evaluate(async () => {
       const game = window.__betaVoidGame;
@@ -106,6 +139,59 @@ async function run() {
     assert.equal(routeSnapshot.route.routeType, "standard");
     assert.equal(routeSnapshot.route.authority, true);
     assert.equal(hub.protocolChecks, 2);
+
+    const cancelledPending = await alpha.page.evaluate(() => {
+      const game = window.__betaVoidGame;
+      game.state.phase = "running";
+      const target = game.ship.position.clone().add({ x: 0, y: 0, z: 500 });
+      game.setTarget({ x: target.x, y: target.y, z: target.z });
+      const clientActionId = game.pendingNavigationCommand?.clientActionId || null;
+      game.setManualSpeed(5);
+      return {
+        clientActionId,
+        cancelRequested: game.pendingNavigationCommand?.cancelRequested || false,
+        phase: game.state.autopilotPhase
+      };
+    });
+    assert.ok(cancelledPending.clientActionId);
+    assert.equal(cancelledPending.cancelRequested, true);
+    assert.equal(cancelledPending.phase, null);
+    await alpha.page.waitForFunction(() => (
+      !window.__betaVoidGame?.pendingNavigationCommand
+      && !window.__betaVoidGame?.worldDataManager?.getNavigationState()?.activeContract
+    ), null, { timeout: 10_000 });
+    assert.equal(await alpha.page.evaluate(() => (
+      window.__betaVoidGame.state.desiredSpeed
+    )), 5);
+    assert.equal(alpha.commandCounts.start, 2);
+    assert.equal(alpha.commandCounts.manualOverride, 1);
+
+    const hyperPending = await alpha.page.evaluate(() => {
+      const game = window.__betaVoidGame;
+      const target = game.ship.position.clone().add({ x: 500, y: 0, z: 0 });
+      game.initiateHyperdrive({ x: target.x, y: target.y, z: target.z });
+      return {
+        clientActionId: game.pendingNavigationCommand?.clientActionId || null,
+        routeType: game.pendingNavigationCommand?.routeType || null,
+        phase: game.state.autopilotPhase,
+        isHyperdrive: game.isHyperdrive
+      };
+    });
+    assert.ok(hyperPending.clientActionId);
+    assert.equal(hyperPending.routeType, "hyperdrive");
+    assert.equal(hyperPending.phase, null);
+    assert.equal(hyperPending.isHyperdrive, false);
+    await alpha.page.waitForTimeout(100);
+    assert.equal(await alpha.page.evaluate(() => (
+      window.__betaVoidGame.pendingNavigationCommand?.clientActionId
+    )), hyperPending.clientActionId);
+    await alpha.page.waitForFunction((clientActionId) => {
+      const game = window.__betaVoidGame;
+      return !game?.pendingNavigationCommand
+        && game?.isHyperdrive
+        && game?.hyperdriveLogId === clientActionId;
+    }, hyperPending.clientActionId, { timeout: 10_000 });
+    assert.equal(alpha.commandCounts.start, 3);
 
     await alpha.context.close();
     alpha.closed = true;
@@ -174,6 +260,7 @@ async function openSession(browser, hub, authorityByCharacterId, user) {
     displayName: user.displayName,
     serverTime: now
   });
+  const commandCounts = { start: 0, checkpoint: 0, manualOverride: 0 };
   authorityByCharacterId.set(user.characterId, navigation.navigation);
   await page.route("https://beta-void-api.infira-2025.workers.dev/v1/**", async (route) => {
     const request = route.request();
@@ -200,16 +287,25 @@ async function openSession(browser, hub, authorityByCharacterId, user) {
       || url.pathname === "/v1/navigation/checkpoint"
       || url.pathname === "/v1/navigation/manual-override"
     ) {
+      if (url.pathname === "/v1/navigation/start") {
+        commandCounts.start += 1;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      } else if (url.pathname === "/v1/navigation/checkpoint") {
+        commandCounts.checkpoint += 1;
+      } else {
+        commandCounts.manualOverride += 1;
+      }
       const body = request.postDataJSON();
       const serverTime = Date.now();
       const activeContract = url.pathname === "/v1/navigation/start"
-        ? createPublicStandardContract(body, navigation.navigation, serverTime)
+        ? createPublicMovementContract(body, navigation.navigation, serverTime)
         : null;
       navigation = createNavigationResponse({
         characterId: user.characterId,
         displayName: user.displayName,
         position: body.ship?.position || body.observed_ship?.position || navigation.navigation.ship.position,
         rotation: body.ship?.rotation || body.observed_ship?.rotation || navigation.navigation.ship.rotation,
+        desiredSpeed: body.desired_speed ?? 0,
         revision: navigation.navigation.ship.revision + 1,
         serverTime,
         activeContract
@@ -267,10 +363,10 @@ async function openSession(browser, hub, authorityByCharacterId, user) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => Boolean(window.__betaVoidGame), null, { timeout: 30_000 });
   await page.evaluate(() => window.__betaVoidGame.loadWorld());
-  return { context, page, user, errors };
+  return { context, page, user, errors, commandCounts };
 }
 
-function createPublicStandardContract(body, navigation, serverTime) {
+function createPublicMovementContract(body, navigation, serverTime) {
   const physics = {
     maxSpeed: 30_000,
     accelerationRate: 3_000,
@@ -278,16 +374,26 @@ function createPublicStandardContract(body, navigation, serverTime) {
     pitchRate: 2,
     yawRate: 2,
     arrivalRadius: 100,
-    deactivationCoastDuration: 2
+    deactivationCoastDuration: 2,
+    hyperdrive: {
+      cooldownDuration: 2,
+      warpEntryDuration: 1,
+      warpExitDuration: 1,
+      warpMinFlightDuration: 1,
+      warpFlightSpeed: 1_000_000
+    }
   };
-  const plan = createStandardMovementPlan({
+  const planInput = {
     position: body.observed_ship?.position || navigation.ship.position,
     rotation: body.observed_ship?.rotation || navigation.ship.rotation,
     speed: body.observed_ship?.speed || 0,
     target: body.target,
     physics,
     issuedAt: serverTime
-  });
+  };
+  const plan = body.route_type === "hyperdrive"
+    ? createHyperdriveMovementPlan(planInput)
+    : createStandardMovementPlan(planInput);
   return {
     contract_id: body.client_action_id,
     client_action_id: body.client_action_id,
@@ -301,16 +407,16 @@ function createPublicStandardContract(body, navigation, serverTime) {
     heading: plan.heading,
     stop_start_at: plan.stopStartAt,
     align_start_at: plan.alignStartAt,
-    cooldown_start_at: null,
+    cooldown_start_at: plan.cooldownStartAt ?? null,
     flight_at: plan.flightAt,
     arrive_at: plan.arriveAt,
     stop_duration: plan.stopDuration,
     align_duration: plan.alignDuration,
-    cooldown_duration: 0,
+    cooldown_duration: plan.cooldownDuration ?? 0,
     flight_duration: plan.flightDuration,
-    warp_entry_duration: 0,
-    warp_cruise_duration: 0,
-    warp_exit_duration: 0,
+    warp_entry_duration: plan.warpEntryDuration ?? 0,
+    warp_cruise_duration: plan.warpCruiseDuration ?? 0,
+    warp_exit_duration: plan.warpExitDuration ?? 0,
     peak_speed: plan.peakSpeed,
     desired_speed: plan.desiredSpeed,
     coast_duration: plan.coastDuration,

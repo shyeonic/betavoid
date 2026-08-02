@@ -242,6 +242,15 @@ export async function overridePlayerNavigation(db, context, body, now = Date.now
   }
 
   const derived = deriveMovementState(contract, now);
+  const physics = getShipPhysics(state.ship.ship_definition_id);
+  const desiredSpeed = body?.desired_speed == null
+    ? derived.speed
+    : boundedNumber(
+        body.desired_speed,
+        physics.minSpeed,
+        physics.maxSpeed,
+        "desired speed"
+      );
   const rotation = rotationForMovement(contract, state.ship.rotation, derived.phase);
   const position = derived.position;
   const zones = zoneFields(position, state.ship.spatial_mode);
@@ -251,7 +260,7 @@ export async function overridePlayerNavigation(db, context, body, now = Date.now
     position,
     rotation,
     speed: derived.speed,
-    desired_speed: derived.speed,
+    desired_speed: desiredSpeed,
     active_contract_id: null,
     phase: "manual",
     revision: nextRevision,
@@ -1003,7 +1012,7 @@ export async function exitPlayerBetaSpace(db, context, body, now = Date.now()) {
   return response;
 }
 
-export async function getPlayerCommandResult(db, context, clientActionId) {
+export async function getPlayerCommandResult(db, context, clientActionId, now = Date.now()) {
   const actionId = requiredId(clientActionId, "client action");
   const receipt = await getCommandReceiptRecord(db, actionId, context.characterId);
   if (!receipt) return null;
@@ -1012,7 +1021,8 @@ export async function getPlayerCommandResult(db, context, clientActionId) {
     client_action_id: actionId,
     command_type: receipt.commandType,
     navigation: receipt.response,
-    recorded_at: receipt.createdAt
+    recorded_at: receipt.createdAt,
+    checked_at: now
   };
 }
 

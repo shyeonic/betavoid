@@ -232,7 +232,9 @@ export class UIManager {
       errorToast: this.getElement("#errorToast")
     };
     this.navActive = false;
+    this.navPending = false;
     this.warpPending = false;
+    this.warpCommandPending = false;
     this.warpActive = false;
     this._warpHudMode = null;
     this._warpHudCompleteTimer = null;
@@ -655,6 +657,7 @@ export class UIManager {
     });
     this.elements.targetForm.addEventListener("submit", (event) => {
       event.preventDefault();
+      if (this.navPending || this.warpCommandPending) return;
       if (this.navActive) {
         onCancelNavigate();
         this.closeTargetPopup({ restoreFocus: false });
@@ -671,6 +674,7 @@ export class UIManager {
     this.elements.warpToggle.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (this.navPending || this.warpCommandPending) return;
       if (this.warpActive) return;
       if (this.warpPending) {
         if (typeof onCancelHyperdrive === "function") onCancelHyperdrive();
@@ -4268,20 +4272,37 @@ export class UIManager {
     this.elements.speedTargetMark.style.left = `${targetPercent}%`;
     this.elements.speedGauge.setAttribute("aria-valuenow", snapshot.desiredSpeed.toFixed(1));
     this.elements.speedGauge.setAttribute("aria-valuetext", this.formatSignedSpeed(snapshot.desiredSpeed));
+    const pendingType = snapshot.navigationPendingType || null;
+    this.navPending = pendingType === "standard";
+    this.warpCommandPending = pendingType === "hyperdrive";
     this.navActive = snapshot.autopilot;
     this.elements.targetForm.classList.toggle("nav-active", snapshot.autopilot);
-    this.elements.navToggle.textContent = snapshot.autopilot ? "Nav On" : "Nav Off";
+    this.elements.targetForm.classList.toggle("nav-pending", this.navPending);
+    this.elements.navToggle.textContent = this.navPending
+      ? "Nav Pending"
+      : snapshot.autopilot ? "Nav On" : "Nav Off";
+    this.elements.navToggle.disabled = this.navPending || this.warpCommandPending;
     this.elements.navToggle.setAttribute("aria-pressed", snapshot.autopilot ? "true" : "false");
-    this.elements.navToggle.title = snapshot.autopilot
+    this.elements.navToggle.setAttribute("aria-busy", this.navPending ? "true" : "false");
+    this.elements.navToggle.title = this.navPending
+      ? "Waiting for navigation server"
+      : snapshot.autopilot
       ? "Disable autopilot navigation"
       : "Enable autopilot navigation";
 
     const hp = snapshot.hyperdrivePhase;
     this.warpPending = hp !== null && hp !== undefined && hp !== "warping";
     this.warpActive = hp === "warping";
+    this.elements.targetForm.classList.toggle("warp-command-pending", this.warpCommandPending);
     this.elements.targetForm.classList.toggle("warp-pending", this.warpPending);
     this.elements.targetForm.classList.toggle("warp-active", this.warpActive);
-    if (this.warpActive) {
+    this.elements.warpToggle.setAttribute("aria-busy", this.warpCommandPending ? "true" : "false");
+    if (this.warpCommandPending) {
+      this.elements.warpToggle.textContent = "Hyperdrive Pending";
+      this.elements.warpToggle.disabled = true;
+      this.elements.warpToggle.setAttribute("aria-pressed", "false");
+      this.elements.warpToggle.title = "Waiting for navigation server";
+    } else if (this.warpActive) {
       this.elements.warpToggle.textContent = this.t("ui.nav.hyperdriving", "Hyperdriving");
       this.elements.warpToggle.disabled = true;
       this.elements.warpToggle.setAttribute("aria-pressed", "true");
@@ -4293,7 +4314,7 @@ export class UIManager {
       this.elements.warpToggle.title = this.t("ui.nav.hyperdriveCancelHint", "Cancel hyperdrive");
     } else {
       this.elements.warpToggle.textContent = this.t("ui.nav.hyperdrive", "Hyperdrive");
-      this.elements.warpToggle.disabled = false;
+      this.elements.warpToggle.disabled = this.navPending;
       this.elements.warpToggle.setAttribute("aria-pressed", "false");
       this.elements.warpToggle.title = this.t("ui.nav.hyperdriveHint", "Engage hyperdrive");
     }

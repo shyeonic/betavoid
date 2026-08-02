@@ -173,6 +173,7 @@ export class GameManager {
     this.hyperdriveLog = null;
     this.hyperdriveLogId = null;
     this.isHyperdrive = false;
+    this.pendingNavigationCommand = null;
 
     this.miningSession = null;          // { logId, nodeId, storageId } while gathering, else null
     this.miningAligning = null;         // { nodeId, storageId, targetPos, committing } during pre-mining alignment
@@ -2436,22 +2437,21 @@ export class GameManager {
     }
     if (
       expectedClientActionId
+      && contract
       && contract?.clientActionId !== expectedClientActionId
     ) {
       return false;
     }
-    if (
-      expectedClientActionId
-      && this.activeNavLogId !== expectedClientActionId
-      && this.hyperdriveLogId !== expectedClientActionId
-    ) {
-      return false;
-    }
-
     const renderScale = Number(this.worldConfig.renderScale) || 0.01;
+    const authorityNow = contract
+      ? Math.max(
+          Number(state.serverTime) || 0,
+          this.worldDataManager.getEstimatedNavigationServerNow()
+        )
+      : Number(state.serverTime) || this.worldDataManager.getEstimatedNavigationServerNow();
     this.manualSettlementTracker.reset();
     const derived = contract
-      ? deriveMovementState(contract, state.serverTime)
+      ? deriveMovementState(contract, authorityNow)
       : {
           position: state.ship.position,
           speed: state.ship.speed,
@@ -2480,7 +2480,7 @@ export class GameManager {
 
     if (!contract) return true;
 
-    const localTimeOffset = Date.now() - Number(state.serverTime || Date.now());
+    const localTimeOffset = Date.now() - authorityNow;
     const from = this.worldMapManager.toRenderVector(contract.fromPosition);
     const target = this.worldMapManager.toRenderVector(contract.target);
     const toLocalTime = (timestamp) => Number(timestamp || 0) + localTimeOffset;
@@ -2523,7 +2523,7 @@ export class GameManager {
         warp_cruise_duration: contract.warpCruiseDuration,
         warp_exit_duration: contract.warpExitDuration,
         flight_duration: contract.flightDuration,
-        committed: state.serverTime >= contract.flightAt,
+        committed: authorityNow >= contract.flightAt,
         status: "active"
       };
       this.isHyperdrive = true;
@@ -3072,10 +3072,11 @@ export class GameManager {
     if (this.state.phase !== "running") return false;
     if (this.isDocked()) return false;
     if (this.isHyperdrive && this.state.autopilotPhase === "warping") return false;
+    const cancelledPending = this.cancelPendingNavigationForManualInput();
     if (this.isHyperdrive) {
-      this.clearTarget();
+      this.clearTarget(null, false, { recordServer: !cancelledPending });
     } else {
-      this.cancelAutopilot();
+      this.cancelAutopilot({ recordServer: !cancelledPending });
     }
     return this.setSpeed(value);
   }
@@ -3089,63 +3090,10 @@ export class GameManager {
     if (this.isDocked()) return;
     if (this.isMiningBusy()) return;
     if (this.isHyperdrive) return;
-    const { decelerationRate, accelerationRate, pitchRate, yawRate, arrivalRadius } = this.shipStats;
-
-    // Stopping phase: deterministic kinematics
-    const v0 = this.state.speed;
-    const stopRate = v0 > 0 ? decelerationRate : v0 < 0 ? accelerationRate : 0;
-    const stopDuration = stopRate > 0 ? Math.abs(v0) / stopRate : 0;
-    this.ship.getWorldDirection(this.vectors.forward);
-    const heading = this.vectors.forward.clone();
-    const sign = v0 > 0 ? 1 : -1;
-    const stopDist = stopDuration > 0
-      ? v0 * stopDuration - sign * 0.5 * stopRate * stopDuration * stopDuration
-      : 0;
-    const fromPos = this.ship.position.clone().addScaledVector(heading, stopDist);
-
-    // Aligning phase: exponential decay model (slerp rate = pitchRate, threshold dot > 0.99999 ≈ 0.00447 rad)
-    const toTarget = new THREE.Vector3(x, y, z).sub(fromPos);
-    const targetDir = toTarget.clone().normalize();
-    const dotVal = Math.max(-1, Math.min(1, heading.dot(targetDir)));
-    const angle = Math.acos(dotVal);
-    const alignRate = Math.min(pitchRate, yawRate);
-    const alignDuration = angle > 0.00447 ? Math.log(angle / 0.00447) / alignRate : 0;
-
-    // Flight phase
-    const effectiveDist = Math.max(0, toTarget.length() - arrivalRadius);
-    const peakSpeed = this.computeAutopilotPeakSpeed(effectiveDist);
-    const flightDuration = this.computeFlightDuration(effectiveDist, peakSpeed);
-    const flightStartAt = Date.now() + Math.round((stopDuration + alignDuration) * 1000);
-
-    this.navTarget = new THREE.Vector3(x, y, z);
-    this.state.autopilotPhase = stopDuration > 0 ? "stopping" : "aligning";
-    this.state.autopilotPeakSpeed = peakSpeed;
-    this.targetMarker.visible = true;
-    this.targetMarker.position.copy(this.navTarget);
-
-    const eta = stopDuration + alignDuration + flightDuration;
-    this.ui.showToast(`navigation engaged (~${Math.round(eta)}s)`);
-
-    const from = { x: fromPos.x, y: fromPos.y, z: fromPos.z };
-    this.activeNavLog = {
-      type: "standard",
-      from_position: from,
-      target: { x, y, z },
-      flight_start_at: flightStartAt,
-      peak_speed: peakSpeed,
-      flight_duration: flightDuration
-    };
-
-    this.activeNavLogId = this.worldDataManager.createNavigationActionId("nav");
-    this.recordAuthoritativeNavigationStart(
-      "standard",
-      { x, y, z },
-      this.activeNavLogId
-    );
-    this.updateOnlinePresence({ force: true });
+    this.beginDeterministicNavigation("standard", { x, y, z }, "nav");
   }
 
-  clearTarget(message, completed = false) {
+  clearTarget(message, completed = false, { recordServer = true } = {}) {
     const now = Date.now();
     const inBetaSpace = this.isBetaSpaceActive();
     const wasHyperdrive = this.isHyperdrive || !!this.hyperdriveLogId;
@@ -3191,7 +3139,7 @@ export class GameManager {
     if (message && !(wasHyperdrive && message === "arrived")) this.ui.showToast(message);
     // Warp ended (arrival or cancel): revert from warp ambience to the destination's location BGM.
     if (wasHyperdrive) this.refreshBgm();
-    if (shouldOverrideServer) this.recordAuthoritativeManualOverride();
+    if (shouldOverrideServer && recordServer) this.recordAuthoritativeManualOverride();
     if (completed) {
       setTimeout(() => {
         void this.worldDataManager.refreshNavigationState()
@@ -3201,7 +3149,7 @@ export class GameManager {
     this.updateOnlinePresence({ force: true });
   }
 
-  cancelAutopilot() {
+  cancelAutopilot({ recordServer = true } = {}) {
     if (this.state.autopilotPhase === null) return;
     if (this.isHyperdrive) return;
     if (this.activeNavLogId) {
@@ -3218,7 +3166,7 @@ export class GameManager {
     this.navTarget = null;
     this.activeNavLog = null;
     this.targetMarker.visible = false;
-    this.recordAuthoritativeManualOverride();
+    if (recordServer) this.recordAuthoritativeManualOverride();
     this.updateOnlinePresence({ force: true });
   }
 
@@ -3233,84 +3181,12 @@ export class GameManager {
       this.ui.showToast("hyperdrive unavailable in Beta Space");
       return;
     }
-    if (this.state.autopilotPhase !== null) this.cancelAutopilot();
-
-    const { decelerationRate, accelerationRate, pitchRate, yawRate, hyperdriveSpecs } = this.shipStats;
+    const { hyperdriveSpecs } = this.shipStats;
     if (!hyperdriveSpecs) {
       this.ui.showToast("hyperdrive not available");
       return;
     }
-
-    const now = Date.now();
-    const v0 = this.state.speed;
-    const stopRate = v0 > 0 ? decelerationRate : v0 < 0 ? accelerationRate : 0;
-    const stopDuration = stopRate > 0 ? Math.abs(v0) / stopRate : 0;
-
-    this.ship.getWorldDirection(this.vectors.forward);
-    const heading = this.vectors.forward.clone();
-    const sign = v0 >= 0 ? 1 : -1;
-    const stopDist = stopDuration > 0
-      ? v0 * stopDuration - sign * 0.5 * stopRate * stopDuration * stopDuration
-      : 0;
-    const fromPos = this.ship.position.clone().addScaledVector(heading, stopDist);
-
-    const toTarget = new THREE.Vector3(x, y, z).sub(fromPos);
-    const targetDir = toTarget.clone().normalize();
-    const dotVal = Math.max(-1, Math.min(1, heading.dot(targetDir)));
-    const angle = Math.acos(dotVal);
-    const alignRate = Math.min(pitchRate, yawRate);
-    const alignDuration = angle > 0.00447 ? Math.log(angle / 0.00447) / alignRate : 0;
-
-    const { cooldownDuration, warpEntryDuration, warpExitDuration, warpMinFlightDuration, warpFlightSpeed } = hyperdriveSpecs;
-    const distance = toTarget.length();
-    const warpCruiseDuration = Math.max(warpMinFlightDuration, distance / warpFlightSpeed);
-    const flightDuration = warpEntryDuration + warpCruiseDuration + warpExitDuration;
-
-    const stopStartAt = now;
-    const alignStartAt = now + Math.round(stopDuration * 1000);
-    const cooldownStartAt = alignStartAt + Math.round(alignDuration * 1000);
-    const jumpStartAt = cooldownStartAt + Math.round(cooldownDuration * 1000);
-
-    this.navTarget = new THREE.Vector3(x, y, z);
-    this.isHyperdrive = true;
-    this.state.autopilotPhase = stopDuration > 0 ? "stopping" : alignDuration > 0 ? "aligning" : "cooldown";
-    this.targetMarker.visible = true;
-    this.targetMarker.position.copy(this.navTarget);
-
-    const from = { x: fromPos.x, y: fromPos.y, z: fromPos.z };
-    const log = {
-      type: "hyperdrive",
-      issued_at: now,
-      from_position: from,
-      target: { x, y, z },
-      heading_at_jump: { x: targetDir.x, y: targetDir.y, z: targetDir.z },
-      stop_start_at: stopStartAt,
-      align_start_at: alignStartAt,
-      cooldown_start_at: cooldownStartAt,
-      jump_start_at: jumpStartAt,
-      stop_duration: stopDuration,
-      align_duration: alignDuration,
-      cooldown_duration: cooldownDuration,
-      warp_entry_duration: warpEntryDuration,
-      warp_cruise_duration: warpCruiseDuration,
-      warp_exit_duration: warpExitDuration,
-      flight_duration: flightDuration,
-      committed: false,
-      status: "active",
-      cancel_reason: null,
-      completed_at: null,
-      cancelled_at: null
-    };
-
-    this.hyperdriveLog = log;
-    this.hyperdriveLogId = this.worldDataManager.createNavigationActionId("warp");
-
-    this.recordAuthoritativeNavigationStart(
-      "hyperdrive",
-      { x, y, z },
-      this.hyperdriveLogId
-    );
-    this.updateOnlinePresence({ force: true });
+    this.beginDeterministicNavigation("hyperdrive", { x, y, z }, "warp");
   }
 
   canCancelHyperdrive() {
@@ -3761,6 +3637,7 @@ export class GameManager {
 
   _commitDeactivationNavLog(overrideStartAt = null, overrideDesiredSpeed = null) {
     if (this.isBetaSpaceActive()) return;
+    if (this.pendingNavigationCommand) return;
     if (this.isHyperdrive && this.state.autopilotPhase === "warping") return;
     if (this.state.autopilotPhase !== null || this.state.speed === 0) return;
 
@@ -4395,6 +4272,7 @@ export class GameManager {
 
   updateHud() {
     this.ship.getWorldDirection(this.vectors.forward).normalize();
+    const pendingNavigation = this.getVisiblePendingNavigation();
     const hyperdrivePhase = this.isHyperdrive ? this.state.autopilotPhase : null;
     const hyperdriveElapsed = hyperdrivePhase === "warping" && this.hyperdriveLog
       ? Math.max(0, (Date.now() - this.hyperdriveLog.jump_start_at) / 1000)
@@ -4409,7 +4287,8 @@ export class GameManager {
       desiredSpeed: this.state.desiredSpeed,
       position: this.ship.position,
       heading: this.vectors.forward,
-      target: this.navTarget,
+      target: pendingNavigation?.target || this.navTarget,
+      navigationPendingType: pendingNavigation?.routeType || null,
       autopilot: this.state.autopilotPhase !== null && !this.isHyperdrive,
       hyperdrivePhase,
       hyperdriveElapsed,
@@ -4512,9 +4391,14 @@ export class GameManager {
   }
 
   updateManualMovementSettlement() {
+    const pendingBlocksSettlement = Boolean(
+      this.pendingNavigationCommand
+      && !this.pendingNavigationCommand.cancelRequested
+    );
     const eligible = !this.isDocked()
       && !this.worldDataResetting
       && !this._deactivationLog
+      && !pendingBlocksSettlement
       && this.state.autopilotPhase === null;
     const controlActive = [...this.activeActions, ...this.cameraControl.touchDpadActions]
       .some((action) => (
@@ -4542,11 +4426,77 @@ export class GameManager {
     return shipState;
   }
 
+  beginDeterministicNavigation(routeType, target, actionPrefix) {
+    if (this.pendingNavigationCommand) {
+      this.ui.showToast("navigation command pending");
+      return false;
+    }
+
+    const normalizedTarget = {
+      x: Number(target?.x) || 0,
+      y: Number(target?.y) || 0,
+      z: Number(target?.z) || 0
+    };
+    const clientActionId = this.worldDataManager.createNavigationActionId(actionPrefix);
+    this.pendingNavigationCommand = {
+      clientActionId,
+      routeType,
+      target: normalizedTarget,
+      cancelRequested: false
+    };
+    this.targetMarker.visible = true;
+    this.targetMarker.position.set(
+      normalizedTarget.x,
+      normalizedTarget.y,
+      normalizedTarget.z
+    );
+    this.ui.showToast(routeType === "hyperdrive"
+      ? "hyperdrive command pending"
+      : "navigation command pending");
+    this.recordAuthoritativeNavigationStart(
+      routeType,
+      normalizedTarget,
+      clientActionId,
+      { deterministic: true }
+    );
+    return true;
+  }
+
+  getVisiblePendingNavigation() {
+    const pending = this.pendingNavigationCommand;
+    return pending && !pending.cancelRequested ? pending : null;
+  }
+
+  restoreNavigationTargetMarker() {
+    if (!this.navTarget) {
+      this.targetMarker.visible = false;
+      return;
+    }
+    this.targetMarker.visible = true;
+    this.targetMarker.position.copy(this.navTarget);
+  }
+
+  clearPendingNavigationCommand(clientActionId) {
+    if (this.pendingNavigationCommand?.clientActionId !== clientActionId) return false;
+    this.pendingNavigationCommand = null;
+    this.restoreNavigationTargetMarker();
+    return true;
+  }
+
+  cancelPendingNavigationForManualInput() {
+    const pending = this.pendingNavigationCommand;
+    if (!pending || pending.cancelRequested) return false;
+    pending.cancelRequested = true;
+    this.restoreNavigationTargetMarker();
+    this.ui.showToast("pending navigation cancelled");
+    return true;
+  }
+
   recordAuthoritativeNavigationStart(
     routeType,
     target,
     clientActionId,
-    { desiredSpeed = null } = {}
+    { desiredSpeed = null, deterministic = false } = {}
   ) {
     const dataTarget = target
       ? this.worldMapManager.toDataVector(new THREE.Vector3(
@@ -4568,18 +4518,53 @@ export class GameManager {
         : null,
       observedShip
     }).then((state) => {
+      if (deterministic) {
+        const pending = this.pendingNavigationCommand?.clientActionId === clientActionId
+          ? this.pendingNavigationCommand
+          : null;
+        const cancelRequested = Boolean(pending?.cancelRequested);
+        this.clearPendingNavigationCommand(clientActionId);
+        if (cancelRequested) {
+          this.recordAuthoritativeManualOverride();
+          this.navigationRecordFailed = false;
+          return;
+        }
+      }
       if (routeType !== "deactivation") {
-        this.applyAuthoritativeNavigationState(state, {
+        const applied = this.applyAuthoritativeNavigationState(state, {
           expectedClientActionId: clientActionId
         });
+        if (deterministic && applied) {
+          const contract = state.activeContract;
+          const remainingSeconds = contract
+            ? Math.max(0, contract.arriveAt - this.worldDataManager.getEstimatedNavigationServerNow()) / 1000
+            : 0;
+          this.ui.showToast(routeType === "hyperdrive"
+            ? "hyperdrive engaged"
+            : `navigation engaged (~${Math.round(remainingSeconds)}s)`);
+          this.updateOnlinePresence({ force: true });
+        }
       }
       this.navigationRecordFailed = false;
-    }).catch((error) => this.handleNavigationRecordFailure(error));
+    }).catch((error) => {
+      const cancelRequested = deterministic
+        && this.pendingNavigationCommand?.clientActionId === clientActionId
+        && this.pendingNavigationCommand.cancelRequested;
+      if (deterministic) this.clearPendingNavigationCommand(clientActionId);
+      this.handleNavigationRecordFailure(error);
+      if (cancelRequested) this.recordAuthoritativeManualOverride();
+    });
   }
 
   recordAuthoritativeManualOverride() {
-    void this.worldDataManager.manualOverrideNavigation()
-      .then(() => {
+    const renderScale = Number(this.worldConfig.renderScale) || 0.01;
+    const desiredSpeed = this.state.desiredSpeed / renderScale;
+    const shouldApplyAuthority = Boolean(
+      this.worldDataManager.getNavigationState().activeContract
+    );
+    void this.worldDataManager.manualOverrideNavigation({ desiredSpeed })
+      .then((state) => {
+        if (shouldApplyAuthority) this.applyAuthoritativeNavigationState(state);
         this.navigationRecordFailed = false;
       })
       .catch((error) => this.handleNavigationRecordFailure(error));
@@ -4732,6 +4717,7 @@ export class GameManager {
   } = {}) {
     if (this.isDocked()) return;
     if (this._deactivationLog) return;
+    if (this.pendingNavigationCommand) return;
     if (!force && this.state.autopilotPhase !== null) return;
     if (!this.worldDataManager.db || this.worldDataResetting) return;
 
@@ -6338,6 +6324,7 @@ export class GameManager {
       this.state.speed !== 0 &&
       frameGapMs > this.config.gapDetectionThresholdMs &&
       !this._deactivationLog &&
+      !this.pendingNavigationCommand &&
       gapStartAt > this._lastDeactivationResolvedAt
     ) {
       this.activeActions.clear();
@@ -7115,8 +7102,15 @@ export class GameManager {
 
     nextActions.forEach((action) => {
       const isNewAction = !previousActions.has(action);
+      const cancelledPending = isNewAction
+        ? this.cancelPendingNavigationForManualInput()
+        : false;
       if (isNewAction && this.state.autopilotPhase !== null && this.shouldAutopilotCancelOnKey(action)) {
-        this.clearTarget(this.isHyperdrive ? "hyperdrive cancelled" : "autopilot cancelled");
+        this.clearTarget(
+          this.isHyperdrive ? "hyperdrive cancelled" : "autopilot cancelled",
+          false,
+          { recordServer: !cancelledPending }
+        );
       }
     });
 
@@ -7180,8 +7174,19 @@ export class GameManager {
 
     this.activeActions.add(action);
 
+    const isFlightAction = action === "throttleUp" || action === "throttleDown"
+      || action === "maxSpeed" || action === "stopSpeed"
+      || this.isManualControlAction(action);
+    const cancelledPending = isFlightAction
+      ? this.cancelPendingNavigationForManualInput()
+      : false;
+
     if (this.state.autopilotPhase !== null && this.shouldAutopilotCancelOnKey(action)) {
-      this.clearTarget(this.isHyperdrive ? "hyperdrive cancelled" : "autopilot cancelled");
+      this.clearTarget(
+        this.isHyperdrive ? "hyperdrive cancelled" : "autopilot cancelled",
+        false,
+        { recordServer: !cancelledPending }
+      );
     }
 
     if (action === "throttleUp" || action === "throttleDown") {

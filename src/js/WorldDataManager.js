@@ -115,6 +115,9 @@ export class WorldDataManager {
     this.playerServerState = normalizePlayerServerState(playerState);
     this.navigationServerState = normalizeNavigationServerState(navigationState);
     this.navigationServerReceivedAt = Date.now();
+    this.navigationServerClockOffsetMs = this.navigationServerState.serverTime > 0
+      ? this.navigationServerState.serverTime - this.navigationServerReceivedAt
+      : 0;
     this.worldBootstrap = normalizeWorldBootstrap(worldBootstrap);
     this.playerCacheHydrated = false;
     this.playerServerMutationChain = Promise.resolve();
@@ -2409,10 +2412,26 @@ export class WorldDataManager {
   }
 
   async refreshNavigationState() {
+    const requestStartedAt = Date.now();
     const state = normalizeNavigationServerState(await this.onlineApi.getNavigationState());
+    const receivedAt = Date.now();
+    this.recordNavigationClockSample(state.serverTime, requestStartedAt, receivedAt);
     this.navigationServerState = state;
-    this.navigationServerReceivedAt = Date.now();
     return state;
+  }
+
+  recordNavigationClockSample(serverTime, requestStartedAt, receivedAt = Date.now()) {
+    const serverAt = Number(serverTime);
+    const startedAt = Number(requestStartedAt);
+    const completedAt = Number(receivedAt);
+    if (serverAt <= 0 || ![serverAt, startedAt, completedAt].every(Number.isFinite)) return;
+    const midpoint = startedAt + Math.max(0, completedAt - startedAt) / 2;
+    this.navigationServerClockOffsetMs = serverAt - midpoint;
+    this.navigationServerReceivedAt = completedAt;
+  }
+
+  getEstimatedNavigationServerNow() {
+    return Math.round(Date.now() + this.navigationServerClockOffsetMs);
   }
 
   createNavigationActionId(prefix = "command") {
@@ -2420,8 +2439,7 @@ export class WorldDataManager {
   }
 
   createNavigationCommandWindow(lifetimeMs = 5_000) {
-    const elapsed = Math.max(0, Date.now() - this.navigationServerReceivedAt);
-    const estimatedServerNow = Math.round(this.navigationServerState.serverTime + elapsed);
+    const estimatedServerNow = this.getEstimatedNavigationServerNow();
     const issuedAt = estimatedServerNow;
     return {
       issuedAt,
@@ -2452,7 +2470,7 @@ export class WorldDataManager {
     });
   }
 
-  manualOverrideNavigation({ clientActionId = null } = {}) {
+  manualOverrideNavigation({ clientActionId = null, desiredSpeed = null } = {}) {
     return this.queueNavigationServerMutation(async () => {
       const current = this.navigationServerState;
       if (!current.activeContract) return current;
@@ -2465,7 +2483,8 @@ export class WorldDataManager {
           expectedRevision: latest.ship.revision,
           issuedAt: commandWindow.issuedAt,
           expiresAt: commandWindow.expiresAt,
-          contractId: latest.activeContract.contractId
+          contractId: latest.activeContract.contractId,
+          desiredSpeed
         });
       });
       this.navigationServerState = state;
@@ -2554,8 +2573,10 @@ export class WorldDataManager {
 
   async runNavigationCommand(clientActionId, commandWindow, operation) {
     this.reportNavigationCommandStatus("SENDING", clientActionId);
+    const requestStartedAt = Date.now();
     try {
       const state = normalizeNavigationServerState(await operation(this.navigationServerState));
+      this.recordNavigationClockSample(state.serverTime, requestStartedAt, Date.now());
       this.reportNavigationCommandStatus("ACCEPTED", clientActionId);
       return state;
     } catch (error) {
@@ -2572,9 +2593,11 @@ export class WorldDataManager {
     const delays = [0, 250, 750];
     for (const delay of delays) {
       if (delay > 0) await wait(delay);
+      const requestStartedAt = Date.now();
       try {
         const result = await this.onlineApi.getNavigationCommandResult(clientActionId);
         if (result.status === "ACCEPTED") {
+          this.recordNavigationClockSample(result.checkedAt, requestStartedAt, Date.now());
           this.reportNavigationCommandStatus("ACCEPTED", clientActionId);
           return normalizeNavigationServerState(result.navigation);
         }
@@ -2588,9 +2611,11 @@ export class WorldDataManager {
 
     const remaining = commandWindow.localExpiresAt - Date.now();
     if (remaining > 0) await wait(remaining);
+    const requestStartedAt = Date.now();
     try {
       const result = await this.onlineApi.getNavigationCommandResult(clientActionId);
       if (result.status === "ACCEPTED") {
+        this.recordNavigationClockSample(result.checkedAt, requestStartedAt, Date.now());
         this.reportNavigationCommandStatus("ACCEPTED", clientActionId);
         return normalizeNavigationServerState(result.navigation);
       }
@@ -2601,7 +2626,11 @@ export class WorldDataManager {
     }
 
     try {
-      await this.refreshNavigationState();
+      const state = await this.refreshNavigationState();
+      if (state.activeContract?.clientActionId === clientActionId) {
+        this.reportNavigationCommandStatus("ACCEPTED", clientActionId);
+        return state;
+      }
     } catch {
       // Reconnection will rebase again; the expired command is never re-submitted.
     }

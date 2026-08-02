@@ -113,6 +113,7 @@ const receipt = await request(
 );
 assert.equal(receipt.status, "ACCEPTED");
 assert.equal(receipt.navigation.active_contract.contract_id, standard.active_contract.contract_id);
+assert.ok(receipt.checked_at >= receipt.recorded_at);
 
 const arrivalNow = standard.active_contract.arrive_at + 1;
 const arrivalZone = await request(
@@ -253,5 +254,43 @@ const history = await request(
 );
 assert.equal(history.length, 1);
 assert.equal(history[0].status, "ARRIVED");
+
+const manualCharacterId = `manual-override-${Date.now()}`;
+const manualInitial = await request(`/navigation?character_id=${manualCharacterId}`);
+const manualStartAt = Date.now();
+const manualStart = await request("/navigation/start", {
+  method: "POST",
+  body: {
+    character_id: manualCharacterId,
+    client_action_id: `standard-${manualCharacterId}`,
+    expected_revision: manualInitial.ship.revision,
+    route_type: "standard",
+    target: {
+      x: manualInitial.ship.position.x + 100_000,
+      y: manualInitial.ship.position.y,
+      z: manualInitial.ship.position.z
+    },
+    observed_ship: {
+      position: manualInitial.ship.position,
+      rotation: manualInitial.ship.rotation,
+      speed: 0,
+      desired_speed: 0
+    },
+    ...commandWindow(manualStartAt)
+  }
+});
+const manualOverride = await request("/navigation/override", {
+  method: "POST",
+  body: {
+    character_id: manualCharacterId,
+    client_action_id: `override-${manualCharacterId}`,
+    expected_revision: manualStart.ship.revision,
+    contract_id: manualStart.active_contract.contract_id,
+    desired_speed: 500,
+    ...commandWindow(manualStartAt + 100)
+  }
+});
+assert.equal(manualOverride.active_contract, null);
+assert.equal(manualOverride.ship.desired_speed, 500);
 
 console.log("navigation authority check passed");

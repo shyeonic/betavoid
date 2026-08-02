@@ -19,6 +19,8 @@ import {
   undockPlayerShip
 } from "../src/navigation-state.js";
 
+export { PresenceShard } from "../src/presence-shard.js";
+
 export default {
   async fetch(request, env) {
     try {

@@ -54,7 +54,14 @@ export class OnlineApiClient {
     return normalizeNavigationState(payload?.navigation);
   }
 
-  async manualOverride({ clientActionId, expectedRevision, issuedAt, expiresAt, contractId }) {
+  async manualOverride({
+    clientActionId,
+    expectedRevision,
+    issuedAt,
+    expiresAt,
+    contractId,
+    desiredSpeed = null
+  }) {
     const payload = await this.request("/v1/navigation/manual-override", {
       method: "POST",
       body: {
@@ -62,7 +69,8 @@ export class OnlineApiClient {
         expected_revision: expectedRevision,
         issued_at: issuedAt,
         expires_at: expiresAt,
-        contract_id: contractId
+        contract_id: contractId,
+        desired_speed: desiredSpeed
       },
       timeoutMs: 4_000
     });
@@ -180,7 +188,8 @@ export class OnlineApiClient {
       status: String(payload?.result?.status || ""),
       commandType: String(payload?.result?.command_type || ""),
       navigation: normalizeNavigationState(payload?.result?.navigation),
-      recordedAt: Number(payload?.result?.recorded_at) || 0
+      recordedAt: Number(payload?.result?.recorded_at) || 0,
+      checkedAt: Number(payload?.result?.checked_at) || 0
     };
   }
 

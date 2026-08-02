@@ -35,6 +35,8 @@ function managerWith(api) {
   const manager = Object.create(WorldDataManager.prototype);
   manager.onlineApi = api;
   manager.navigationServerState = navigationState();
+  manager.navigationServerReceivedAt = Date.now();
+  manager.navigationServerClockOffsetMs = 0;
   manager.onNavigationCommandStatus = null;
   manager.refreshNavigationState = async () => manager.navigationServerState;
   return manager;
@@ -44,10 +46,11 @@ function managerWith(api) {
   let mutationCalls = 0;
   let receiptCalls = 0;
   const accepted = navigationState(2);
+  const checkedAt = Date.now() + 2_000;
   const manager = managerWith({
     async getNavigationCommandResult() {
       receiptCalls += 1;
-      return { status: "ACCEPTED", navigation: accepted };
+      return { status: "ACCEPTED", navigation: accepted, checkedAt };
     }
   });
   const result = await manager.runNavigationCommand(
@@ -63,6 +66,7 @@ function managerWith(api) {
   assert.equal(mutationCalls, 1);
   assert.equal(receiptCalls, 1);
   assert.equal(result.ship.revision, 2);
+  assert.ok(Math.abs(manager.getEstimatedNavigationServerNow() - checkedAt) < 100);
 }
 
 {
@@ -92,6 +96,38 @@ function managerWith(api) {
   );
   assert.equal(mutationCalls, 1);
   assert.ok(receiptCalls >= 1);
+}
+
+{
+  let mutationCalls = 0;
+  const accepted = navigationState(2);
+  accepted.activeContract = {
+    clientActionId: "delivery-state-confirmed"
+  };
+  const manager = managerWith({
+    async getNavigationCommandResult() {
+      const error = new Error("receipt unavailable");
+      error.code = "MOVEMENT_COMMAND_NOT_FOUND";
+      error.status = 404;
+      throw error;
+    }
+  });
+  manager.refreshNavigationState = async () => {
+    manager.navigationServerState = accepted;
+    return accepted;
+  };
+  const result = await manager.runNavigationCommand(
+    "delivery-state-confirmed",
+    { localExpiresAt: Date.now() },
+    async () => {
+      mutationCalls += 1;
+      const error = new Error("response lost");
+      error.status = 0;
+      throw error;
+    }
+  );
+  assert.equal(mutationCalls, 1);
+  assert.equal(result.activeContract.clientActionId, "delivery-state-confirmed");
 }
 
 console.log("navigation command delivery check passed");
