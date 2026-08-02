@@ -21,10 +21,18 @@ import {
   listZoneShipPeers,
   observeSpaceShips,
   overridePlayerNavigation,
+  resumePlayerManualNavigation,
   startPlayerNavigation,
   undockPlayerShip
 } from "./navigation-state.js";
 import { reconcileResourceLifecycle } from "./resource-lifecycle.js";
+import { tradeAtStation } from "./economy-state.js";
+import {
+  getActiveGathering,
+  settleGathering,
+  startGathering,
+  stopGathering
+} from "./gathering-state.js";
 export { PresenceShard } from "./presence-shard.js";
 
 const FIREBASE_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -57,15 +65,27 @@ export default {
 
       if (url.pathname === "/v1/world/bootstrap" && request.method === "GET") {
         await requireFirebaseUser(request, env);
-        const world = await getOrCreateWorldState(env.WORLD_DB);
+        const world = await getOrCreateWorldState(
+          env.WORLD_DB,
+          Date.now(),
+          requireWorldEntropySecret(env)
+        );
         return json({ ok: true, world, server_time: Date.now() }, { request, env });
       }
 
       if (url.pathname === "/v1/world/reconcile" && request.method === "POST") {
         await requireFirebaseUser(request, env);
-        const reconciliation = await reconcileResourceLifecycle(env.WORLD_DB);
+        const reconciliation = await reconcileResourceLifecycle(
+          env.WORLD_DB,
+          Date.now(),
+          requireWorldEntropySecret(env)
+        );
         const serverTime = Date.now();
-        const world = await getOrCreateWorldState(env.WORLD_DB, serverTime);
+        const world = await getOrCreateWorldState(
+          env.WORLD_DB,
+          serverTime,
+          requireWorldEntropySecret(env)
+        );
         return json({
           ok: true,
           reconciliation,
@@ -86,9 +106,13 @@ export default {
           actorShipUid: context.shipUid,
           issuedAt: body?.issued_at,
           expiresAt: body?.expires_at
-        });
+        }, Date.now(), requireWorldEntropySecret(env));
         const serverTime = Date.now();
-        const world = await getOrCreateWorldState(env.WORLD_DB, serverTime);
+        const world = await getOrCreateWorldState(
+          env.WORLD_DB,
+          serverTime,
+          requireWorldEntropySecret(env)
+        );
         return json({ ok: true, result, world, server_time: serverTime }, { request, env });
       }
 
@@ -109,7 +133,7 @@ export default {
       if (url.pathname === "/v1/admin/world/summary" && request.method === "GET") {
         requireAdmin(await requireFirebaseUser(request, env), env);
         const [summary, navigation] = await Promise.all([
-          getWorldAdminSummary(env.WORLD_DB),
+          getWorldAdminSummary(env.WORLD_DB, requireWorldEntropySecret(env)),
           getNavigationAdminSummary(env.WORLD_DB)
         ]);
         summary.navigation = navigation;
@@ -141,7 +165,7 @@ export default {
           sectorId: url.searchParams.get("sector_id"),
           cursor: url.searchParams.get("cursor"),
           limit: url.searchParams.get("limit")
-        });
+        }, requireWorldEntropySecret(env));
         return json({ ok: true, ...result, server_time: Date.now() }, { request, env });
       }
 
@@ -153,14 +177,14 @@ export default {
         }
         const world = await rebuildWorldState(env.WORLD_DB, {
           expectedRevision: body?.expected_revision
-        });
+        }, requireWorldEntropySecret(env));
         return json({ ok: true, world, server_time: Date.now() }, { request, env });
       }
 
       if (url.pathname === "/v1/player/state" && request.method === "GET") {
         const auth = await requireFirebaseUser(request, env);
         const profile = await getOrCreatePlayerProfile(env.LEGACY_DB, auth);
-        const state = await getOrCreatePlayerState(env.LEGACY_DB, auth, profile);
+        const state = await getOrCreatePlayerState(env.WORLD_DB, auth, profile);
         return json({ ok: true, state, server_time: Date.now() }, { request, env });
       }
 
@@ -168,12 +192,51 @@ export default {
         const auth = await requireFirebaseUser(request, env);
         const profile = await getOrCreatePlayerProfile(env.LEGACY_DB, auth);
         const body = await readJsonBody(request);
-        const state = await commitPlayerAssets(env.LEGACY_DB, auth, profile, body);
+        const state = await commitPlayerAssets(env.WORLD_DB, auth, profile, body);
         await getPlayerNavigationState(
           env.WORLD_DB,
-          navigationContextFromPlayerState(profile, state)
+          navigationContextFromPlayerState(profile, state, requireWorldEntropySecret(env))
         );
         return json({ ok: true, state, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/economy/trade" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const result = await tradeAtStation(
+          env.WORLD_DB,
+          context,
+          await readJsonBody(request)
+        );
+        return json({ ok: true, result, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/economy/gathering/active" && request.method === "GET") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const result = await getActiveGathering(env.WORLD_DB, context);
+        return json({ ok: true, result, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/economy/gathering/start" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const result = await startGathering(env.WORLD_DB, context, await readJsonBody(request));
+        return json({ ok: true, result, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/economy/gathering/stop" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const result = await stopGathering(env.WORLD_DB, context, await readJsonBody(request));
+        return json({ ok: true, result, server_time: Date.now() }, { request, env });
+      }
+
+      if (url.pathname === "/v1/economy/gathering/settle" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const result = await settleGathering(env.WORLD_DB, context, await readJsonBody(request));
+        return json({ ok: true, result, server_time: Date.now() }, { request, env });
       }
 
       if (url.pathname === "/v1/navigation/state" && request.method === "GET") {
@@ -198,6 +261,17 @@ export default {
         const auth = await requireFirebaseUser(request, env);
         const context = await getNavigationContext(env, auth);
         const navigation = await overridePlayerNavigation(
+          env.WORLD_DB,
+          context,
+          await readJsonBody(request)
+        );
+        return json({ ok: true, navigation }, { request, env });
+      }
+
+      if (url.pathname === "/v1/navigation/manual-resume" && request.method === "POST") {
+        const auth = await requireFirebaseUser(request, env);
+        const context = await getNavigationContext(env, auth);
+        const navigation = await resumePlayerManualNavigation(
           env.WORLD_DB,
           context,
           await readJsonBody(request)
@@ -323,7 +397,7 @@ async function connectPresence(request, env, url) {
 
   const auth = await requireFirebaseWebSocketUser(request, env);
   const profile = await getOrCreatePlayerProfile(env.LEGACY_DB, auth);
-  const state = await getOrCreatePlayerState(env.LEGACY_DB, auth, profile);
+  const state = await getOrCreatePlayerState(env.WORLD_DB, auth, profile);
   const worldId = normalizePresenceId(url.searchParams.get("world_id") || PRIMARY_WORLD_ID, "world");
   const zoneId = normalizePresenceId(url.searchParams.get("zone_id"), "zone");
   const shipId = normalizePresenceId(
@@ -347,18 +421,29 @@ async function connectPresence(request, env, url) {
 
 async function getNavigationContext(env, auth) {
   const profile = await getOrCreatePlayerProfile(env.LEGACY_DB, auth);
-  const state = await getOrCreatePlayerState(env.LEGACY_DB, auth, profile);
-  return navigationContextFromPlayerState(profile, state);
+  const state = await getOrCreatePlayerState(env.WORLD_DB, auth, profile);
+  return navigationContextFromPlayerState(profile, state, requireWorldEntropySecret(env));
 }
 
-function navigationContextFromPlayerState(profile, state) {
+function navigationContextFromPlayerState(profile, state, worldEntropySecret) {
   return {
+    firebaseUid: profile.firebase_uid,
+    profile,
     characterId: profile.character_id,
     displayName: profile.display_name,
     shipUid: state.assets?.profile?.active_ship_uid
       || `ship-${profile.character_id}-ship_01-001`,
-    shipDefinitionId: state.assets?.profile?.selected_ship_id || "ship_01"
+    shipDefinitionId: state.assets?.profile?.selected_ship_id || "ship_01",
+    worldEntropySecret
   };
+}
+
+function requireWorldEntropySecret(env) {
+  const secret = String(env.WORLD_ENTROPY_SECRET || "");
+  if (!secret) {
+    throw httpError(500, "WORLD_ENTROPY_UNAVAILABLE", "World entropy is unavailable.");
+  }
+  return secret;
 }
 
 async function requireFirebaseUser(request, env) {

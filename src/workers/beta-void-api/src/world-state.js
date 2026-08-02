@@ -1,4 +1,5 @@
 import { WORLD_TEMPLATE } from "./generated/world-template.js";
+import { createServerDeterministicRandom } from "./server-determinism.js";
 
 const PRIMARY_WORLD_ID = "primary";
 const TIMESTAMP_FLOOR = 1_000_000_000_000;
@@ -6,7 +7,7 @@ const BETA_VOID_ENEMY_TYPES = ["pirate_squad", "raider_group", "hostile_fleet"];
 const BETA_VOID_RISK_LEVELS = [1, 2, 3, 4, 5];
 const BETA_VOID_REWARD_TABLE_IDS = ["loot_91", "loot_92", "loot_93"];
 
-export async function getOrCreateWorldState(db, now = Date.now()) {
+export async function getOrCreateWorldState(db, now = Date.now(), entropySecret) {
   const worldRow = await ensureWorldInitialized(db);
 
   const [entityResult, storageResult, metaResult] = await db.batch([
@@ -36,9 +37,10 @@ export async function getOrCreateWorldState(db, now = Date.now()) {
     beta_void: []
   };
   const entityRows = entityResult?.results || [];
-  const derivedBetaVoids = deriveBetaVoidLifecycle({
+  const derivedBetaVoids = await deriveBetaVoidLifecycle({
     records: entityRows,
     worldSeed: worldRow.seed,
+    entropySecret,
     now
   });
   for (const row of entityRows) {
@@ -55,7 +57,6 @@ export async function getOrCreateWorldState(db, now = Date.now()) {
 
   return {
     world_id: worldRow.world_id,
-    seed: worldRow.seed,
     data_source_key: worldRow.data_source_key,
     schema_version: Number(worldRow.schema_version),
     revision: Number(worldRow.revision),
@@ -85,7 +86,7 @@ export async function ensureWorldInitialized(db) {
   return worldRow;
 }
 
-export function deriveBetaVoidLifecycle({ records, worldSeed, now = Date.now() }) {
+export async function deriveBetaVoidLifecycle({ records, worldSeed, entropySecret, now = Date.now() }) {
   const normalizedRecords = records.map((row) => ({
     ...row,
     state: row.state || parseState(row.state_json)
@@ -116,7 +117,10 @@ export function deriveBetaVoidLifecycle({ records, worldSeed, now = Date.now() }
     const lifecycleKey = betaVoid.status === "defeated"
       ? `defeated:${betaVoid.next_regeneration_checkpoint}`
       : `active:${betaVoid.active_reset_at}`;
-    const rng = createSeededRandom(`${worldSeed}:${betaVoid.id}:${lifecycleKey}`);
+    const rng = await createServerDeterministicRandom(
+      entropySecret,
+      `${worldSeed}:${betaVoid.id}:${lifecycleKey}`
+    );
     const sector = sectors.find((candidate) => candidate.sector_id === betaVoid.sector_id);
     const position = findBetaVoidResetPosition({
       betaVoid,
@@ -145,11 +149,11 @@ export function deriveBetaVoidLifecycle({ records, worldSeed, now = Date.now() }
   return new Map(betaEntries.map((entry) => [entry.entity_id, entry.state]));
 }
 
-export async function getWorldEntityState(db, entityType, entityId, now = Date.now()) {
+export async function getWorldEntityState(db, entityType, entityId, now = Date.now(), entropySecret) {
   const normalizedType = normalizeEntityType(entityType);
   const normalizedId = optionalId(entityId);
   if (!normalizedType || !normalizedId) return null;
-  const world = await getOrCreateWorldState(db, now);
+  const world = await getOrCreateWorldState(db, now, entropySecret);
   const collection = {
     sector: world.snapshot.sectors,
     resource_node: world.snapshot.resource_nodes,
@@ -167,7 +171,7 @@ export async function processBetaVoidEntity(db, {
   actorShipUid,
   issuedAt,
   expiresAt
-}, now = Date.now()) {
+}, now = Date.now(), entropySecret) {
   const entityId = optionalId(betaVoidId);
   const actionId = optionalId(clientActionId);
   const characterId = optionalId(actorCharacterId);
@@ -188,7 +192,7 @@ export async function processBetaVoidEntity(db, {
   `).bind(PRIMARY_WORLD_ID, entityId).first();
   if (!row) throw worldError(404, "BETA_VOID_NOT_FOUND", "Beta Void was not found.");
 
-  const current = await getWorldEntityState(db, "beta_void", entityId, now);
+  const current = await getWorldEntityState(db, "beta_void", entityId, now, entropySecret);
   if (!current || current.status !== "active") {
     throw worldError(409, "BETA_VOID_UNAVAILABLE", "Beta Void is unavailable.");
   }
@@ -277,8 +281,8 @@ export async function processBetaVoidEntity(db, {
   return response;
 }
 
-export async function getWorldAdminSummary(db) {
-  const world = await getOrCreateWorldState(db);
+export async function getWorldAdminSummary(db, entropySecret) {
+  const world = await getOrCreateWorldState(db, Date.now(), entropySecret);
   const [entityResult, storageResult, sectorResult] = await db.batch([
     db.prepare(`
       SELECT entity_type, COUNT(*) AS count
@@ -325,7 +329,6 @@ export async function getWorldAdminSummary(db) {
   return {
     world: {
       world_id: world.world_id,
-      seed: world.seed,
       data_source_key: world.data_source_key,
       schema_version: world.schema_version,
       revision: world.revision,
@@ -348,8 +351,8 @@ export async function listWorldAdminEntities(db, {
   sectorId = null,
   cursor = null,
   limit = 50
-} = {}) {
-  const world = await getOrCreateWorldState(db);
+} = {}, entropySecret) {
+  const world = await getOrCreateWorldState(db, Date.now(), entropySecret);
   const betaVoids = new Map(
     world.snapshot.beta_voids.map((entry) => [entry.id, entry])
   );
@@ -414,8 +417,8 @@ export async function listWorldAdminEntities(db, {
   };
 }
 
-export async function rebuildWorldState(db, { expectedRevision } = {}) {
-  const current = await getOrCreateWorldState(db);
+export async function rebuildWorldState(db, { expectedRevision } = {}, entropySecret) {
+  const current = await getOrCreateWorldState(db, Date.now(), entropySecret);
   const expected = Number(expectedRevision);
   if (!Number.isInteger(expected) || expected !== current.revision) {
     throw worldError(409, "WORLD_REVISION_CONFLICT", "World revision changed.");
@@ -424,7 +427,7 @@ export async function rebuildWorldState(db, { expectedRevision } = {}) {
     replace: true,
     revision: current.revision + 1
   });
-  return getOrCreateWorldState(db);
+  return getOrCreateWorldState(db, Date.now(), entropySecret);
 }
 
 async function initializeWorld(db, generatedAt, { replace = false, revision = 1 } = {}) {
@@ -440,6 +443,9 @@ async function initializeWorld(db, generatedAt, { replace = false, revision = 1 
   const statements = [];
   if (replace) {
     statements.push(
+      db.prepare("DELETE FROM economy_command_receipts"),
+      db.prepare("DELETE FROM gathering_contracts"),
+      db.prepare("DELETE FROM economy_occupancies"),
       db.prepare("DELETE FROM world_meta WHERE world_id = ?").bind(PRIMARY_WORLD_ID),
       db.prepare("DELETE FROM world_storages WHERE world_id = ?").bind(PRIMARY_WORLD_ID),
       db.prepare("DELETE FROM world_entities WHERE world_id = ?").bind(PRIMARY_WORLD_ID),
@@ -699,26 +705,6 @@ function chunkDataAtPosition(position) {
       z: position.z - chunk.z * size.z
     }
   };
-}
-
-function createSeededRandom(seed) {
-  let value = hashSeed(String(seed));
-  return () => {
-    value += 0x6D2B79F5;
-    let next = value;
-    next = Math.imul(next ^ (next >>> 15), next | 1);
-    next ^= next + Math.imul(next ^ (next >>> 7), next | 61);
-    return ((next ^ (next >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function hashSeed(seed) {
-  let hash = 2166136261;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash ^= seed.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
 }
 
 function pickRandom(items, rng) {

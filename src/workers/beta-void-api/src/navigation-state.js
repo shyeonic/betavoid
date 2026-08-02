@@ -29,6 +29,34 @@ export async function getPlayerNavigationState(db, context, now = Date.now()) {
   ));
 }
 
+export async function prepareFieldEconomyAction(db, context, body, now = Date.now()) {
+  const state = await getPlayerNavigationStateInternal(db, context, now);
+  assertCommandRevision(state, body?.expected_ship_revision);
+  if (
+    state.ship.spatial_mode !== FIELD_MODE
+    || state.custody
+    || state.betaSpaceSession
+    || state.activeContract
+  ) {
+    throw navigationError(
+      409,
+      "SHIP_NOT_AVAILABLE_FOR_ECONOMY",
+      "Ship must be stationary in the field for this economy action."
+    );
+  }
+  const physics = getShipPhysics(state.ship.ship_definition_id);
+  const anchor = resolveValidatedActionAnchor(state, body?.observed_ship, physics, now);
+  return {
+    state,
+    anchor: {
+      ...anchor,
+      speed: 0,
+      desiredSpeed: 0
+    },
+    zones: zoneFields(anchor.position, FIELD_MODE)
+  };
+}
+
 async function getPlayerNavigationStateInternal(
   db,
   context,
@@ -368,6 +396,98 @@ export async function overridePlayerNavigation(db, context, body, now = Date.now
   return response;
 }
 
+export async function resumePlayerManualNavigation(db, context, body, now = Date.now()) {
+  const clientActionId = requiredId(body?.client_action_id, "client action");
+  const receipt = await getCommandReceipt(db, clientActionId, context.characterId);
+  if (receipt) return receipt;
+  assertCommandDeadline(body, now);
+
+  const state = await getPlayerNavigationStateInternal(db, context, now);
+  assertRevision(state.ship.revision, body?.expected_revision);
+  assertShipNotEconomyOccupied(state);
+  if (
+    state.ship.spatial_mode !== FIELD_MODE
+    || state.custody
+    || state.betaSpaceSession
+    || state.activeContract
+    || state.ship.active_contract_id
+  ) {
+    throw navigationError(
+      409,
+      "MANUAL_RESUME_CONTRACT_CONFLICT",
+      "Manual flight cannot resume while the ship has an authoritative occupancy contract."
+    );
+  }
+
+  const physics = getShipPhysics(state.ship.ship_definition_id);
+  const anchor = resolveValidatedActionAnchor(state, body?.observed_ship, physics, now);
+  const zones = zoneFields(anchor.position, FIELD_MODE);
+  const nextRevision = state.ship.revision + 1;
+  const nextShip = {
+    ...state.ship,
+    position: anchor.position,
+    rotation: anchor.rotation,
+    speed: anchor.speed,
+    desired_speed: anchor.desiredSpeed,
+    active_contract_id: null,
+    phase: "manual",
+    revision: nextRevision,
+    checkpoint_at: now,
+    updated_at: now,
+    ...zones
+  };
+  const response = publicNavigationState({
+    ship: nextShip,
+    activeContract: null,
+    custody: null,
+    betaSpaceSession: null,
+    serverTime: now
+  });
+  const results = await db.batch([
+    db.prepare(`
+      UPDATE ship_locations
+      SET
+        position_x = ?, position_y = ?, position_z = ?,
+        rotation_x = ?, rotation_y = ?, rotation_z = ?, rotation_w = ?,
+        speed = ?, desired_speed = ?, sector_id = ?, chunk_id = ?,
+        active_contract_id = NULL, movement_phase = 'MANUAL',
+        revision = revision + 1, checkpoint_at = ?, updated_at = ?
+      WHERE ship_uid = ? AND revision = ?
+        AND spatial_mode = 'FIELD' AND active_contract_id IS NULL
+    `).bind(
+      anchor.position.x,
+      anchor.position.y,
+      anchor.position.z,
+      anchor.rotation.x,
+      anchor.rotation.y,
+      anchor.rotation.z,
+      anchor.rotation.w,
+      anchor.speed,
+      anchor.desiredSpeed,
+      zones.sector_id,
+      zones.chunk_id,
+      now,
+      now,
+      state.ship.ship_uid,
+      state.ship.revision
+    ),
+    createReceiptInsert(db, {
+      clientActionId,
+      ownerCharacterId: context.characterId,
+      commandType: "MANUAL_RESUME",
+      response,
+      now,
+      shipUid: state.ship.ship_uid,
+      expectedRevision: nextRevision,
+      expectedContractId: null
+    })
+  ]);
+  if (statementChanges(results[0]) !== 1) {
+    throw navigationError(409, "MOVEMENT_REVISION_CONFLICT", "Ship movement revision changed.");
+  }
+  return response;
+}
+
 export async function dockPlayerShip(db, context, body, now = Date.now()) {
   const clientActionId = requiredId(body?.client_action_id, "client action");
   const receipt = await getCommandReceipt(db, clientActionId, context.characterId);
@@ -658,7 +778,13 @@ export async function enterPlayerBetaSpace(db, context, body, now = Date.now()) 
     throw navigationError(409, "BETA_ENTRY_SHIP_NOT_IN_FIELD", "Only a field ship can enter Beta Space.");
   }
   const betaVoidId = requiredId(body?.beta_void_id, "Beta Void");
-  const betaVoid = await getWorldEntityState(db, "beta_void", betaVoidId, now);
+  const betaVoid = await getWorldEntityState(
+    db,
+    "beta_void",
+    betaVoidId,
+    now,
+    context.worldEntropySecret
+  );
   if (!betaVoid || betaVoid.status !== "active") {
     throw navigationError(409, "BETA_VOID_UNAVAILABLE", "Beta Void is unavailable.");
   }
@@ -1529,7 +1655,7 @@ async function resolvePlayerState(db, initialShip, now, { materializeArrival }) 
         rotation.w,
         zones.sector_id,
         zones.chunk_id,
-        now,
+        contract.arriveAt,
         now,
         ship.ship_uid,
         ship.revision,
@@ -1580,6 +1706,9 @@ async function resolvePlayerState(db, initialShip, now, { materializeArrival }) 
       speed: derived.speed,
       desired_speed: derived.desiredSpeed,
       phase: derived.phase,
+      checkpoint_at: derived.logicalStatus === "ARRIVED"
+        ? contract.arriveAt
+        : ship.checkpoint_at,
       ...zoneFields(derived.position, ship.spatial_mode)
     },
     activeContract: derived.logicalStatus === "ACTIVE" ? contract : null,
@@ -1594,13 +1723,34 @@ async function attachPlacementState(db, state) {
   const betaSpaceSession = state.ship.spatial_mode === "BETA_SPACE"
     ? await getActiveBetaSpaceSession(db, state.ship.ship_uid)
     : null;
+  const economyOccupancy = await getActiveEconomyOccupancy(
+    db,
+    state.ship.ship_uid,
+    state.serverTime
+  );
   if (state.ship.spatial_mode === "DOCKED" && !custody) {
     throw navigationError(500, "SHIP_CUSTODY_MISSING", "Docked ship custody is missing.");
   }
   if (state.ship.spatial_mode === "BETA_SPACE" && !betaSpaceSession) {
     throw navigationError(500, "BETA_SESSION_MISSING", "Beta Space session is missing.");
   }
-  return { ...state, custody, betaSpaceSession };
+  return { ...state, custody, betaSpaceSession, economyOccupancy };
+}
+
+async function getActiveEconomyOccupancy(db, shipUid, now) {
+  const row = await db.prepare(`
+    SELECT * FROM economy_occupancies
+    WHERE ship_uid = ? AND busy_until > ?
+  `).bind(shipUid, now).first();
+  if (!row) return null;
+  return {
+    type: row.occupancy_type,
+    contractId: row.contract_id,
+    worldObjectId: row.world_object_id,
+    startedAt: Number(row.started_at),
+    busyUntil: Number(row.busy_until),
+    revision: Number(row.revision)
+  };
 }
 
 async function getShipCustody(db, shipUid) {
@@ -1830,20 +1980,32 @@ function resolveValidatedActionAnchor(state, observedShip, physics, now) {
   if (state.activeContract) {
     return movementAnchor(state.ship, state.activeContract, now);
   }
-  const anchor = observedAnchor(observedShip, state.ship, physics);
+  const anchor = observedAnchor(observedShip, state.ship, physics, now);
   assertActionPositionReachable(state.ship, anchor.position, physics, now);
   return anchor;
 }
 
-function observedAnchor(value, ship, physics) {
+function observedAnchor(value, ship, physics, now) {
   const source = value && typeof value === "object" ? value : {};
+  const elapsedSeconds = Math.max(0, now - Number(ship.checkpoint_at || now)) / 1000 + 2;
+  const rotationElapsedSeconds = Math.max(0, now - Number(ship.checkpoint_at || now)) / 1000 + 0.25;
+  const minimumReachableSpeed = Math.max(
+    physics.minSpeed,
+    ship.speed - physics.decelerationRate * elapsedSeconds
+  );
+  const maximumReachableSpeed = Math.min(
+    physics.maxSpeed,
+    ship.speed + physics.accelerationRate * elapsedSeconds
+  );
   return {
     position: source.position ? normalizePosition(source.position) : ship.position,
-    rotation: source.rotation ? normalizeQuaternion(source.rotation) : ship.rotation,
+    rotation: source.rotation
+      ? clampObservedRotation(ship.rotation, normalizeQuaternion(source.rotation), physics, rotationElapsedSeconds)
+      : ship.rotation,
     speed: clamp(
       finiteNumber(source.speed, ship.speed),
-      physics.minSpeed,
-      physics.maxSpeed
+      minimumReachableSpeed,
+      maximumReachableSpeed
     ),
     desiredSpeed: clamp(
       finiteNumber(source.desired_speed, ship.desired_speed),
@@ -1899,6 +2061,7 @@ function getShipPhysics(shipDefinitionId) {
     deactivationCoastDuration: source.deactivationCoastDuration,
     pitchRate: source.pitchRate,
     yawRate: source.yawRate,
+    rollRate: source.rollRate,
     strafeRate: source.strafeRate * unitsPerRender,
     verticalRate: source.verticalRate * unitsPerRender,
     hyperdrive: {
@@ -1909,6 +2072,35 @@ function getShipPhysics(shipDefinitionId) {
       warpFlightSpeed: source.hyperdriveSpecs.warpFlightSpeed * unitsPerRender
     }
   };
+}
+
+function clampObservedRotation(from, to, physics, elapsedSeconds) {
+  const start = normalizeQuaternion(from);
+  let target = normalizeQuaternion(to);
+  let dot = start.x * target.x + start.y * target.y + start.z * target.z + start.w * target.w;
+  if (dot < 0) {
+    target = { x: -target.x, y: -target.y, z: -target.z, w: -target.w };
+    dot = -dot;
+  }
+  dot = clamp(dot, -1, 1);
+  const angle = 2 * Math.acos(dot);
+  const maximumAngle = Math.max(
+    Number(physics.pitchRate) || 0,
+    Number(physics.yawRate) || 0,
+    Number(physics.rollRate) || 0
+  ) * Math.max(0, elapsedSeconds);
+  if (angle <= maximumAngle || angle <= 1e-9) return target;
+  return normalizedQuaternionLerp(start, target, maximumAngle / angle);
+}
+
+function normalizedQuaternionLerp(from, to, ratio) {
+  const t = clamp(ratio, 0, 1);
+  return normalizeQuaternionComponents({
+    x: from.x + (to.x - from.x) * t,
+    y: from.y + (to.y - from.y) * t,
+    z: from.z + (to.z - from.z) * t,
+    w: from.w + (to.w - from.w) * t
+  });
 }
 
 function shipFromRow(row) {
@@ -1967,11 +2159,12 @@ async function getContract(db, contractId) {
   return row ? contractFromRow(row) : null;
 }
 
-function publicNavigationState({
+export function publicNavigationState({
   ship,
   activeContract,
   custody = null,
   betaSpaceSession = null,
+  economyOccupancy = null,
   serverTime
 }) {
   return {
@@ -2008,6 +2201,16 @@ function publicNavigationState({
         }
       : null,
     beta_space_session: betaSpaceSession ? publicBetaSpaceSession(betaSpaceSession) : null,
+    economy_occupancy: economyOccupancy
+      ? {
+          type: economyOccupancy.type,
+          contract_id: economyOccupancy.contractId,
+          world_object_id: economyOccupancy.worldObjectId,
+          started_at: economyOccupancy.startedAt,
+          busy_until: economyOccupancy.busyUntil,
+          revision: economyOccupancy.revision
+        }
+      : null,
     active_contract: activeContract ? publicContract(activeContract) : null,
     server_time: serverTime
   };
@@ -2293,6 +2496,7 @@ function assertCommandDeadline(body, now) {
 }
 
 function assertShipCanNavigate(state) {
+  assertShipNotEconomyOccupied(state);
   if (state.custody || ![FIELD_MODE, "BETA_SPACE"].includes(state.ship.spatial_mode)) {
     throw navigationError(409, "SHIP_NOT_SPATIALLY_DEPLOYED", "Ship is not deployed in navigable space.");
   }
@@ -2314,9 +2518,17 @@ function assertCommandRevision(state, expected) {
     && normalized === transition.fromRevision
     && state.ship.revision === transition.toRevision
   ) {
+    assertShipNotEconomyOccupied(state);
     return;
   }
   assertRevision(state.ship.revision, expected);
+  assertShipNotEconomyOccupied(state);
+}
+
+function assertShipNotEconomyOccupied(state) {
+  if (state.economyOccupancy) {
+    throw navigationError(409, "SHIP_OCCUPIED", "Ship is occupied by an economy action.");
+  }
 }
 
 function normalizeRouteType(value) {

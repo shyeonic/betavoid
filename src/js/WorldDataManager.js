@@ -120,6 +120,7 @@ export class WorldDataManager {
       : 0;
     this.worldBootstrap = normalizeWorldBootstrap(worldBootstrap);
     this.playerCacheHydrated = false;
+    this.activeGatheringContract = null;
     this.playerServerMutationChain = Promise.resolve();
     this.navigationServerMutationChain = Promise.resolve();
     this.db = null;
@@ -190,7 +191,6 @@ export class WorldDataManager {
       && meta.server_world_id === bootstrap.worldId
       && meta.server_data_source_key === bootstrap.dataSourceKey
       && Number(meta.server_revision) === bootstrap.revision
-      && String(meta.seed) === bootstrap.seed
       && Number(meta.generated_at) === bootstrap.generatedAt;
   }
 
@@ -211,7 +211,6 @@ export class WorldDataManager {
     this.assignObjectCounts(chunks, [...resourceNodes, ...buildings]);
     const meta = {
       key: "world",
-      seed: bootstrap.seed,
       data_source_key: this.dataSourceKey,
       data_source_name: this.gameData?.dataSetName || "static",
       server_world_id: bootstrap.worldId,
@@ -235,7 +234,7 @@ export class WorldDataManager {
   }
 
   createGeneratedWorld({
-    seed = this.worldBootstrap.seed,
+    seed = this.worldBootstrap.dataSourceKey,
     generatedAt = this.worldBootstrap.generatedAt
   } = {}) {
     const rng = createSeededRandom(seed);
@@ -1142,7 +1141,9 @@ export class WorldDataManager {
     resourceNodes = storedResourceNodes.filter((node) => !this.shouldRemoveResourceNode(node, now));
     this.updateResourceManagerTotals(resourceManager, resourceNodes, buildings);
 
-    const rng = createSeededRandom(`${worldMeta.seed}:${resourceManager.last_check}:${now}`);
+    const rng = createSeededRandom(
+      `${worldMeta.server_data_source_key || worldMeta.data_source_key}:${resourceManager.last_check}:${now}`
+    );
     const placedObjects = [...resourceNodes, ...buildings];
     let nextIndex = resourceNodes.length;
     let spawnedCount = 0;
@@ -1905,7 +1906,7 @@ export class WorldDataManager {
   }
 
   // Transactional load/unload at a docked station (one buildingStorages record).
-  runStationTrade(buildingInstanceId, shipUid, { itemId, direction, amount, nowMs = Date.now() } = {}) {
+  runLocalStationTrade(buildingInstanceId, shipUid, { itemId, direction, amount, nowMs = Date.now() } = {}) {
     return new Promise((resolve, reject) => {
       const { transaction, stores } = this.openTx(["buildingStorages"], "readwrite");
       const storageId = this.stationInventoryStorageId(buildingInstanceId);
@@ -2068,16 +2069,14 @@ export class WorldDataManager {
     const normalized = normalizePlayerServerState(state);
     await this.syncServerDockingToWorldCache(normalized);
 
-    const { transaction, stores } = this.openTx([...PLAYER_ASSET_STORES, "playerShip"], "readwrite");
+    const { transaction, stores } = this.openTx(PLAYER_ASSET_STORES, "readwrite");
     PLAYER_ASSET_STORES.forEach((name) => stores[name].clear());
-    stores.playerShip.clear();
     const assets = normalized.assets;
     if (assets.profile) stores.characterProfiles.put(assets.profile);
     (assets.storageLocations || []).forEach((storage) => stores.storageLocations.put(storage));
     (assets.quantityItems || []).forEach((item) => stores.quantityItems.put(item));
     (assets.uniqueItems || []).forEach((item) => stores.uniqueItems.put(item));
     (assets.slotAssignments || []).forEach((assignment) => stores.slotAssignments.put(assignment));
-    if (normalized.shipState) stores.playerShip.put(normalized.shipState);
     await transactionDone(transaction);
 
     this.playerServerState = normalized;
@@ -2088,7 +2087,19 @@ export class WorldDataManager {
   async syncServerDockingToWorldCache(state) {
     const shipUid = state.assets?.profile?.active_ship_uid;
     if (!shipUid) return;
-    const docking = state.docking;
+    const authority = this.navigationServerState;
+    const isDocked = authority?.ship?.shipUid === shipUid
+      && authority.ship.spatialMode === "DOCKED"
+      && authority.custody?.type === "BUILDING";
+    const entry = isDocked
+      ? this.buildDockedShipEntry(state.assets, shipUid, {
+          dockSlot: authority.custody.slot,
+          dockedAt: authority.custody.sinceAt
+        })
+      : null;
+    const docking = isDocked && entry
+      ? { station_id: authority.custody.id, entry }
+      : null;
     const storages = await this.getAll("buildingStorages");
     const changed = [];
 
@@ -2284,6 +2295,240 @@ export class WorldDataManager {
     });
   }
 
+  runStationTrade(buildingId, shipUid, { itemId, direction, amount } = {}) {
+    this.assertServerCharacter(this.playerServerState.characterId);
+    return this.queuePlayerServerMutation(async () => {
+      const currentNavigation = this.navigationServerState;
+      if (currentNavigation.ship.shipUid !== shipUid) {
+        throw createLocalOnlineError("TRADE_SHIP_INVALID", "Active ship changed before trade.");
+      }
+      const commandWindow = this.createNavigationCommandWindow();
+      try {
+        const result = await this.onlineApi.tradeAtStation({
+          clientActionId: createClientActionId("trade"),
+          expectedAssetsRevision: this.playerServerState.assetsRevision,
+          issuedAt: commandWindow.issuedAt,
+          expiresAt: commandWindow.expiresAt,
+          buildingId,
+          itemId,
+          direction,
+          amount
+        });
+        if (!result.committed) return { ok: false, ...result };
+
+        await this.applyPlayerServerStateToCache(result.state);
+        await this.applyServerStationStorageToCache(result.storage);
+        this.navigationServerState = {
+          ...this.navigationServerState,
+          economyOccupancy: result.occupancy
+            ? {
+                type: String(result.occupancy.type || "TRADE"),
+                contractId: String(result.occupancy.contract_id || ""),
+                worldObjectId: result.occupancy.building_id == null
+                  ? null
+                  : String(result.occupancy.building_id),
+                startedAt: Number(result.occupancy.started_at) || 0,
+                busyUntil: Number(result.occupancy.busy_until) || 0,
+                revision: 1
+              }
+            : null,
+          serverTime: result.serverTime
+        };
+        return { ok: true, ...result };
+      } catch (error) {
+        if (error?.code === "PLAYER_STATE_CONFLICT" || error?.code === "TRADE_REVISION_CONFLICT") {
+          await Promise.allSettled([
+            this.refreshPlayerState(),
+            this.refreshNavigationState()
+          ]);
+        }
+        throw error;
+      }
+    });
+  }
+
+  async applyServerStationStorageToCache(storage) {
+    if (!storage?.storage_id) return;
+    const current = await this.getStoreValue("buildingStorages", storage.storage_id);
+    await this.putStoreValue("buildingStorages", {
+      ...storage,
+      docked_ships: current?.docked_ships || {},
+      updated_at: Number(storage.updated_at) || Date.now()
+    });
+  }
+
+  startGathering({ nodeId, storageId, observedShip } = {}) {
+    return this.queuePlayerServerMutation(async () => {
+      const commandWindow = this.createNavigationCommandWindow();
+      const requestStartedAt = Date.now();
+      try {
+        const result = await this.onlineApi.startGathering({
+          clientActionId: createClientActionId("gather-start"),
+          expectedShipRevision: this.navigationServerState.ship.revision,
+          expectedAssetsRevision: this.playerServerState.assetsRevision,
+          issuedAt: commandWindow.issuedAt,
+          expiresAt: commandWindow.expiresAt,
+          nodeId,
+          targetStorageId: storageId,
+          observedShip
+        });
+        const receivedAt = Date.now();
+        if (result.navigation) {
+          this.recordNavigationClockSample(result.navigation.serverTime, requestStartedAt, receivedAt);
+          this.navigationServerState = result.navigation;
+        }
+        this.activeGatheringContract = result.contract;
+        await this.applyServerResourceNodeToCache(nodeId, result.node);
+        return {
+          ok: result.committed,
+          committed: result.committed,
+          logId: result.contract?.contractId || null,
+          contract: result.contract,
+          node: result.node
+        };
+      } catch (error) {
+        await this.recoverEconomyAuthority(error);
+        throw error;
+      }
+    });
+  }
+
+  stopGathering({ logId } = {}) {
+    return this.runGatheringServerCommand("stop", logId);
+  }
+
+  settleNode() {
+    return this.runGatheringServerCommand(
+      "settle",
+      this.activeGatheringContract?.contractId
+    );
+  }
+
+  runGatheringServerCommand(command, contractId) {
+    return this.queuePlayerServerMutation(async () => {
+      if (!contractId) return { ok: false, committed: false, reason: "not-active" };
+      const commandWindow = this.createNavigationCommandWindow();
+      try {
+        const result = await this.onlineApi[command === "stop" ? "stopGathering" : "settleGathering"]({
+          clientActionId: createClientActionId(`gather-${command}`),
+          issuedAt: commandWindow.issuedAt,
+          expiresAt: commandWindow.expiresAt,
+          contractId
+        });
+        if (result.state) await this.applyPlayerServerStateToCache(result.state);
+        await this.applyServerResourceNodeToCache(
+          result.contract?.nodeId || this.activeGatheringContract?.nodeId,
+          result.node
+        );
+        this.activeGatheringContract = result.contract?.status === "active"
+          ? result.contract
+          : null;
+        this.navigationServerState = {
+          ...this.navigationServerState,
+          economyOccupancy: this.activeGatheringContract
+            ? {
+                type: "GATHERING",
+                contractId: this.activeGatheringContract.contractId,
+                worldObjectId: this.activeGatheringContract.nodeId,
+                startedAt: this.activeGatheringContract.startAt,
+                busyUntil: this.activeGatheringContract.plannedEndAt,
+                revision: (this.navigationServerState.economyOccupancy?.revision || 0) + 1
+              }
+            : null,
+          serverTime: result.serverTime
+        };
+        return {
+          ok: true,
+          committed: result.committed,
+          gathered: result.gathered,
+          contract: result.contract,
+          node: result.node
+        };
+      } catch (error) {
+        await this.recoverEconomyAuthority(error);
+        throw error;
+      }
+    });
+  }
+
+  async getGatheringLogs({ nodeId = null, actorId = null, activeOnly = false } = {}) {
+    const result = await this.onlineApi.getActiveGathering();
+    this.activeGatheringContract = result.contract?.status === "active" ? result.contract : null;
+    const contract = this.activeGatheringContract;
+    if (!contract) return [];
+    if (nodeId != null && contract.nodeId !== nodeId) return [];
+    if (actorId != null && contract.actorId !== actorId) return [];
+    if (activeOnly && contract.status !== "active") return [];
+    return [this.gatheringContractAsLegacyLog(contract)];
+  }
+
+  async deriveNodeState(nodeId, nowMs = this.getEstimatedNavigationServerNow()) {
+    const contract = this.activeGatheringContract;
+    if (!contract || contract.nodeId !== nodeId) return null;
+    const endAt = contract.plannedEndAt == null
+      ? nowMs
+      : Math.min(nowMs, contract.plannedEndAt);
+    const elapsedSeconds = Math.max(0, endAt - contract.epochSettledAnchor) / 1000;
+    const projected = Math.floor(
+      contract.accumulated + contract.effectiveYieldPerSecond * elapsedSeconds + 1e-9
+    );
+    const gathered = Math.max(
+      contract.settledYield,
+      Math.min(contract.plannedYield, projected)
+    );
+    const projectedStatus = contract.plannedEndAt != null && nowMs >= contract.plannedEndAt
+      ? "completed"
+      : contract.status;
+    return {
+      node: await this.getStoreValue("resourceNodes", nodeId),
+      depleted: false,
+      logs: [{
+        id: contract.contractId,
+        actor_id: contract.actorId,
+        status: projectedStatus,
+        gathered,
+        planned_yield: contract.plannedYield,
+        planned_end_at: contract.plannedEndAt
+      }]
+    };
+  }
+
+  gatheringContractAsLegacyLog(contract) {
+    return {
+      id: contract.contractId,
+      actor_id: contract.actorId,
+      status: contract.status,
+      target_node_id: contract.nodeId,
+      target_storage_id: contract.storageId,
+      produces_item_id: contract.itemId,
+      start_at: contract.startAt,
+      planned_end_at: contract.plannedEndAt,
+      planned_yield: contract.plannedYield,
+      settled_yield: contract.settledYield
+    };
+  }
+
+  async applyServerResourceNodeToCache(nodeId, node) {
+    if (!nodeId) return;
+    if (node) await this.putStoreValue("resourceNodes", node);
+    else await this.deleteStoreValue("resourceNodes", nodeId);
+    if (!this.snapshot?.resourceNodes) return;
+    const index = this.snapshot.resourceNodes.findIndex((entry) => entry.resource_instance_id === nodeId);
+    if (node && index >= 0) this.snapshot.resourceNodes[index] = node;
+    else if (node) this.snapshot.resourceNodes.push(node);
+    else if (index >= 0) this.snapshot.resourceNodes.splice(index, 1);
+  }
+
+  async recoverEconomyAuthority(error) {
+    if (!["PLAYER_STATE_CONFLICT", "GATHER_STATE_CONFLICT", "SHIP_OCCUPIED"].includes(error?.code)) {
+      return;
+    }
+    await Promise.allSettled([
+      this.refreshPlayerState(),
+      this.refreshNavigationState()
+    ]);
+  }
+
   async getPlayerDockingSnapshot(assets) {
     const shipUid = assets?.profile?.active_ship_uid;
     if (!shipUid) return null;
@@ -2374,6 +2619,7 @@ export class WorldDataManager {
       ));
       this.navigationServerState = state;
       this.navigationServerReceivedAt = Date.now();
+      await this.clearManualNavigationProjection();
       return state;
     });
   }
@@ -2397,6 +2643,36 @@ export class WorldDataManager {
       });
       this.navigationServerState = state;
       this.navigationServerReceivedAt = Date.now();
+      await this.clearManualNavigationProjection();
+      return state;
+    });
+  }
+
+  resumeManualNavigation({ projection, observedShip, clientActionId = null }) {
+    return this.queueNavigationServerMutation(async () => {
+      const actionId = clientActionId || createClientActionId("manual-resume");
+      const commandWindow = this.createNavigationCommandWindow();
+      const expectedRevision = Number(projection?.base_ship_revision);
+      const state = await this.runNavigationCommand(actionId, commandWindow, () => (
+        this.onlineApi.resumeManualNavigation({
+          clientActionId: actionId,
+          expectedRevision,
+          issuedAt: commandWindow.issuedAt,
+          expiresAt: commandWindow.expiresAt,
+          observedShip
+        })
+      ));
+      this.navigationServerState = state;
+      this.navigationServerReceivedAt = Date.now();
+      await this.saveManualNavigationProjection({
+        position: state.ship.position,
+        rotation: state.ship.rotation,
+        speed: state.ship.speed,
+        desired_speed: state.ship.desiredSpeed
+      }, {
+        navigationState: state,
+        savedAt: state.serverTime
+      });
       return state;
     });
   }
@@ -2417,6 +2693,7 @@ export class WorldDataManager {
       ));
       this.navigationServerState = state;
       this.navigationServerReceivedAt = Date.now();
+      await this.clearManualNavigationProjection();
       return state;
     });
   }
@@ -2436,6 +2713,7 @@ export class WorldDataManager {
       ));
       this.navigationServerState = state;
       this.navigationServerReceivedAt = Date.now();
+      await this.clearManualNavigationProjection();
       return state;
     });
   }
@@ -2457,6 +2735,7 @@ export class WorldDataManager {
       ));
       this.navigationServerState = state;
       this.navigationServerReceivedAt = Date.now();
+      await this.clearManualNavigationProjection();
       return state;
     });
   }
@@ -2475,6 +2754,7 @@ export class WorldDataManager {
       ));
       this.navigationServerState = state;
       this.navigationServerReceivedAt = Date.now();
+      await this.clearManualNavigationProjection();
       return state;
     });
   }
@@ -2563,9 +2843,72 @@ export class WorldDataManager {
   async loadOrCreatePlayerShipState(characterId = DEFAULT_CHARACTER_ID) {
     this.assertServerCharacter(characterId);
     if (!this.playerCacheHydrated) await this.applyPlayerServerStateToCache(this.playerServerState);
-    const state = this.navigationStateToPlayerShipState(this.navigationServerState);
-    await this.putStoreValue("playerShip", state);
-    return state;
+    return this.navigationStateToPlayerShipState(this.navigationServerState);
+  }
+
+  async getManualNavigationProjection(characterId = DEFAULT_CHARACTER_ID) {
+    this.assertServerCharacter(characterId);
+    const value = await this.getStoreValue("playerShip", this.createPlayerShipStateKey(characterId));
+    if (
+      value?.projection_type !== "MANUAL_NAVIGATION"
+      || Number(value?.projection_version) !== 1
+      || value?.player_id !== characterId
+      || !value?.ship_id
+      || !Number.isInteger(Number(value?.base_ship_revision))
+      || Number(value?.base_ship_revision) < 1
+      || !isFiniteVector(value?.position)
+      || !isFiniteQuaternion(value?.rotation)
+      || !Number.isFinite(Number(value?.speed))
+      || !Number.isFinite(Number(value?.desired_speed))
+      || !Number.isFinite(Number(value?.saved_at))
+    ) {
+      return null;
+    }
+    return {
+      ...value,
+      base_ship_revision: Number(value.base_ship_revision),
+      base_checkpoint_at: Number(value.base_checkpoint_at) || 0,
+      speed: Number(value.speed),
+      desired_speed: Number(value.desired_speed),
+      saved_at: Number(value.saved_at)
+    };
+  }
+
+  async saveManualNavigationProjection(observedShip, {
+    navigationState = this.navigationServerState,
+    savedAt = this.getEstimatedNavigationServerNow()
+  } = {}) {
+    const navigation = normalizeNavigationServerState(navigationState);
+    if (
+      navigation.ship.spatialMode !== "FIELD"
+      || navigation.custody
+      || navigation.betaSpaceSession
+      || navigation.activeContract
+      || !observedShip?.position
+    ) {
+      return null;
+    }
+    const projection = {
+      key: this.createPlayerShipStateKey(navigation.characterId),
+      projection_type: "MANUAL_NAVIGATION",
+      projection_version: 1,
+      ship_id: navigation.ship.shipUid,
+      player_id: navigation.characterId,
+      base_ship_revision: navigation.ship.revision,
+      base_contract_id: null,
+      base_checkpoint_at: navigation.ship.checkpointAt,
+      position: normalizePlainVector(observedShip.position),
+      rotation: normalizePlainQuaternion(observedShip.rotation),
+      speed: Number(observedShip.speed) || 0,
+      desired_speed: Number(observedShip.desired_speed) || 0,
+      saved_at: Math.round(Number(savedAt) || Date.now())
+    };
+    await this.putStoreValue("playerShip", projection);
+    return projection;
+  }
+
+  clearManualNavigationProjection(characterId = this.navigationServerState.characterId) {
+    return this.deleteStoreValue("playerShip", this.createPlayerShipStateKey(characterId));
   }
 
   navigationStateToPlayerShipState(state) {
@@ -2708,7 +3051,7 @@ export class WorldDataManager {
       : null;
 
     return {
-      seed: snapshot.meta?.seed ?? "none",
+      worldId: snapshot.meta?.server_world_id ?? "none",
       generatedAt: snapshot.meta?.generated_at ?? null,
       sectorCount: snapshot.sectors.length,
       chunkCount: snapshot.chunks.length,
@@ -2801,6 +3144,11 @@ export class WorldDataManager {
   async putStoreValue(logical, value) {
     const name = this.storeName(logical);
     return requestToPromise(this.db.transaction(name, "readwrite").objectStore(name).put(value));
+  }
+
+  async deleteStoreValue(logical, key) {
+    const name = this.storeName(logical);
+    return requestToPromise(this.db.transaction(name, "readwrite").objectStore(name).delete(key));
   }
 
   createId(prefix, type, seed, index, rng) {
@@ -3124,7 +3472,7 @@ export class WorldDataManager {
 
   // Begin a mining action: settle existing miners to now, then add this actor's
   // log and re-plan the node's new contention epoch.
-  async startGathering({ nodeId, storageId, actorId = DEFAULT_CHARACTER_ID, gatherRateMult = 1.0, nowMs = Date.now() } = {}) {
+  async startLocalGathering({ nodeId, storageId, actorId = DEFAULT_CHARACTER_ID, gatherRateMult = 1.0, nowMs = Date.now() } = {}) {
     return this._commitNodeOp(nodeId, nowMs, (state) => {
       const node = state.node;
       if (state.nodeDeleted) return { ok: false, reason: "node-depleted" };
@@ -3177,7 +3525,7 @@ export class WorldDataManager {
 
   // Stop a mining action at nowMs: the stopping actor is settled to exactly now,
   // remaining miners re-plan (their end times extend).
-  async stopGathering({ nodeId, logId, nowMs = Date.now() } = {}) {
+  async stopLocalGathering({ nodeId, logId, nowMs = Date.now() } = {}) {
     return this._commitNodeOp(nodeId, nowMs, (state) => {
       const log = state.logs.get(logId);
       if (!log || log.status !== "active") return { ok: false, reason: "not-active" };
@@ -3193,13 +3541,13 @@ export class WorldDataManager {
 
   // Heartbeat / lifecycle commit: settle the node to nowMs without changing the
   // miner set (also fires deterministic exhaust/expiry completion if reached).
-  async settleNode({ nodeId, nowMs = Date.now() } = {}) {
+  async settleLocalNode({ nodeId, nowMs = Date.now() } = {}) {
     return this._commitNodeOp(nodeId, nowMs, null);
   }
 
   // Read-only projection for HUD/extrapolation — never writes. Returns each
   // active miner's projected gathered amount at nowMs.
-  async deriveNodeState(nodeId, nowMs = Date.now()) {
+  async deriveLocalNodeState(nodeId, nowMs = Date.now()) {
     const [node, allLogs, allQuantityItems, allStorages] = await Promise.all([
       this.getStoreValue("resourceNodes", nodeId),
       this.getAll("gatheringLogs"),
@@ -3225,7 +3573,7 @@ export class WorldDataManager {
     };
   }
 
-  async getGatheringLogs({ nodeId = null, actorId = null, activeOnly = false } = {}) {
+  async getLocalGatheringLogs({ nodeId = null, actorId = null, activeOnly = false } = {}) {
     const all = await this.getAll("gatheringLogs");
     return all.filter((log) => (
       (nodeId == null || log.target_node_id === nodeId)
@@ -3334,6 +3682,9 @@ function normalizeNavigationServerState(value) {
           }
         }
       : null,
+    economyOccupancy: value.economyOccupancy
+      ? { ...value.economyOccupancy }
+      : null,
     activeContract: value.activeContract
       ? {
           ...value.activeContract,
@@ -3377,6 +3728,14 @@ function normalizePlainQuaternion(value) {
   };
 }
 
+function isFiniteVector(value) {
+  return [value?.x, value?.y, value?.z].every((entry) => Number.isFinite(Number(entry)));
+}
+
+function isFiniteQuaternion(value) {
+  return [value?.x, value?.y, value?.z, value?.w].every((entry) => Number.isFinite(Number(entry)));
+}
+
 function normalizeWorldBootstrap(value) {
   const source = value?.snapshot;
   const snapshot = {
@@ -3389,7 +3748,6 @@ function normalizeWorldBootstrap(value) {
   };
   const normalized = {
     worldId: String(value?.worldId || ""),
-    seed: String(value?.seed || ""),
     dataSourceKey: String(value?.dataSourceKey || ""),
     revision: Number(value?.revision),
     generatedAt: Number(value?.generatedAt),
@@ -3398,7 +3756,6 @@ function normalizeWorldBootstrap(value) {
 
   if (
     !normalized.worldId
-    || !normalized.seed
     || !normalized.dataSourceKey
     || !Number.isInteger(normalized.revision)
     || normalized.revision < 1
@@ -3425,6 +3782,12 @@ function createClientActionId(prefix) {
   const suffix = globalThis.crypto?.randomUUID?.()
     || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `${prefix}-${suffix}`;
+}
+
+function createLocalOnlineError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
 }
 
 function betaVoidLifecycleFingerprint(betaVoids) {

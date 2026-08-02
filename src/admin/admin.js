@@ -210,7 +210,7 @@ function renderSummary() {
   elements.fieldShipMetric.textContent = formatNumber(navigation?.field_ships);
   elements.activeRouteMetric.textContent = formatNumber(navigation?.active_movements);
   elements.worldIdValue.textContent = world?.world_id || "-";
-  elements.seedValue.textContent = world?.seed || "-";
+  elements.seedValue.textContent = "server-only";
   elements.dataSourceValue.textContent = world?.data_source_key || "-";
   elements.generatedValue.textContent = formatDate(world?.generated_at);
 

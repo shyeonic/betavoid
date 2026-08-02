@@ -7,6 +7,7 @@ import { HyperdriveWarpLayer } from "./HyperdriveWarpLayer.js";
 import { CONFIG, CONTROL_SETTINGS, DEFAULT_KEY_BINDINGS, KEY_BINDING_GROUPS } from "./config.js";
 import { MinimapManager } from "./MinimapManager.js";
 import { deriveMovementState } from "./navigationKinematics.js";
+import { deriveManualNavigationProjection } from "./manualNavigationProjection.js";
 import { RemotePlayerManager } from "./RemotePlayerManager.js";
 import { ResourceManager } from "./ResourceManager.js";
 import { ShipVisualManager } from "./ShipVisualManager.js";
@@ -374,6 +375,10 @@ export class GameManager {
     this.boundEvents = null;
     this.worldSummaryLastUpdatedAt = 0;
     this.worldSummaryPending = false;
+    this.playerShipSaveLastUpdatedAt = 0;
+    this.playerShipSavePending = false;
+    this.playerShipSaveInterval = 1000;
+    this.manualProjectionValidationPending = false;
     this._lastFrameTimestamp = 0;
     this._frameIntervalMs = FRAME_INTERVAL_MS;
     this._lastRenderAt = 0;
@@ -2067,12 +2072,7 @@ export class GameManager {
       pagehide: () => {
         if (this.state.phase === "running") {
           if (this.isBetaSpaceActive()) return;
-          // 임시 비활성화용 coast navLog가 있으면 취소하고 즉시 정지 navLog로 교체
-          if (this._deactivationLog) {
-            void this.worldDataManager.updateNavLog(this._deactivationLog.id, { status: "cancelled", cancelled_at: Date.now() });
-            this._deactivationLog = null;
-          }
-          this._commitDeactivationNavLog(null, 0);
+          void this.savePlayerShipState({ force: true });
           if (this.miningSession) void this.worldDataManager.settleNode({ nodeId: this.miningSession.nodeId });
         }
       },
@@ -2081,10 +2081,9 @@ export class GameManager {
         if (this.isBetaSpaceActive()) return;
         if (document.visibilityState === "hidden") {
           this._commitPreflightSnapshot();
-          this._commitDeactivationNavLog();
+          void this.savePlayerShipState({ force: true });
         } else if (document.visibilityState === "visible") {
           this._resolvePreflightSnapshot();
-          this._resolveDeactivationNavLog();
           this._resolveHyperdriveWarp();
           this._snapToActiveNavLog();
         }
@@ -2171,8 +2170,55 @@ export class GameManager {
   }
 
   async restorePlayerShipState() {
-    const authoritativeState = this.worldDataManager.getNavigationState();
+    let authoritativeState = this.worldDataManager.getNavigationState();
     if (authoritativeState?.ship) {
+      const projection = await this.worldDataManager.getManualNavigationProjection(this.characterId);
+      const canResumeProjection = Boolean(
+        projection
+        && projection.ship_id === authoritativeState.ship.shipUid
+        && projection.base_ship_revision === authoritativeState.ship.revision
+        && authoritativeState.ship.spatialMode === "FIELD"
+        && !authoritativeState.activeContract
+        && !authoritativeState.custody
+        && !authoritativeState.betaSpaceSession
+      );
+      if (projection && !canResumeProjection) {
+        await this.worldDataManager.clearManualNavigationProjection(this.characterId);
+        this.manualProjectionValidationPending = false;
+      } else if (canResumeProjection) {
+        this.manualProjectionValidationPending = true;
+        const projected = deriveManualNavigationProjection(
+          projection,
+          this.worldDataManager.getEstimatedNavigationServerNow(),
+          this.getManualProjectionPhysics()
+        );
+        if (this.manualProjectionDiffersFromAuthority(projected, authoritativeState)) {
+          try {
+            authoritativeState = await this.worldDataManager.resumeManualNavigation({
+              projection,
+              observedShip: {
+                position: projected.position,
+                rotation: projected.rotation,
+                speed: projected.speed,
+                desired_speed: projected.desired_speed
+              }
+            });
+            this.manualProjectionValidationPending = false;
+          } catch (error) {
+            if (Number(error?.status) >= 400 && Number(error?.status) < 500) {
+              await this.worldDataManager.clearManualNavigationProjection(this.characterId);
+              this.manualProjectionValidationPending = false;
+              this.ui.showErrorToast(error?.message || "local manual flight was rejected");
+            } else {
+              console.warn("[navigation] local manual flight validation unavailable.", error);
+            }
+          }
+        } else {
+          this.manualProjectionValidationPending = false;
+        }
+      } else {
+        this.manualProjectionValidationPending = false;
+      }
       if (authoritativeState.ship.spatialMode === "BETA_SPACE") {
         this.activateAuthoritativeBetaSpace(authoritativeState);
       }
@@ -2365,16 +2411,6 @@ export class GameManager {
           navLogId: this.activeNavLogId
         };
         this._resolvePreflightSnapshot();
-      } else if (savedAt > 0 && this.state.speed !== 0) {
-        // 수동 비행 중 비활성화 구간 결정론적 항법 적용
-        const elapsed = (Date.now() - savedAt) / 1000;
-        if (elapsed > 0) {
-          this._commitDeactivationNavLog(savedAt, 0);
-          this._resolveDeactivationNavLog();
-          if (this.state.autopilotPhase === null) {
-            this.state.desiredSpeed = 0;
-          }
-        }
       }
     }
 
@@ -4339,6 +4375,7 @@ export class GameManager {
     this.worldMapManager.update(dt);
     this.updateShipAnimations(dt);
     if (this.miningSession) this.updateMiningHeartbeat(dt);
+    void this.savePlayerShipState();
   }
 
   buildPlayerShipSavePayload() {
@@ -4367,6 +4404,106 @@ export class GameManager {
       speed: state.speed / renderScale,
       desired_speed: state.desiredSpeed / renderScale
     };
+  }
+
+  getManualProjectionPhysics() {
+    const renderScale = Number(this.worldConfig.renderScale) || 0.01;
+    return {
+      maxSpeed: this.shipStats.maxSpeed / renderScale,
+      minSpeed: this.shipStats.minSpeed / renderScale,
+      accelerationRate: this.shipStats.accelerationRate / renderScale,
+      decelerationRate: this.shipStats.decelerationRate / renderScale
+    };
+  }
+
+  manualProjectionDiffersFromAuthority(projection, navigationState) {
+    const ship = navigationState.ship;
+    const position = ship.position;
+    if (!position) return true;
+    const distance = Math.hypot(
+      projection.position.x - position.x,
+      projection.position.y - position.y,
+      projection.position.z - position.z
+    );
+    const rotation = ship.rotation;
+    const rotationDot = Math.abs(
+      projection.rotation.x * rotation.x
+      + projection.rotation.y * rotation.y
+      + projection.rotation.z * rotation.z
+      + projection.rotation.w * rotation.w
+    );
+    return distance > 0.001
+      || Math.abs(projection.speed - ship.speed) > 0.001
+      || Math.abs(projection.desired_speed - ship.desiredSpeed) > 0.001
+      || 1 - Math.min(1, rotationDot) > 1e-7;
+  }
+
+  applyManualProjection(projection) {
+    this.ship.position.copy(this.worldMapManager.toRenderVector(projection.position));
+    this.ship.quaternion.set(
+      projection.rotation.x,
+      projection.rotation.y,
+      projection.rotation.z,
+      projection.rotation.w
+    ).normalize();
+    const renderScale = Number(this.worldConfig.renderScale) || 0.01;
+    this.state.speed = projection.speed * renderScale;
+    this.state.desiredSpeed = projection.desired_speed * renderScale;
+  }
+
+  advanceManualFlightGap(elapsedMs) {
+    if (
+      elapsedMs <= 0
+      || this.isDocked()
+      || this.isBetaSpaceActive()
+      || this.miningSession
+      || this.pendingNavigationCommand
+      || this.state.autopilotPhase !== null
+      || this.worldDataManager.getNavigationState().activeContract
+    ) {
+      return;
+    }
+    const observed = this.buildObservedNavigationShip();
+    const projected = deriveManualNavigationProjection({
+      position: observed.position,
+      rotation: observed.rotation,
+      speed: observed.speed,
+      desired_speed: observed.desired_speed,
+      saved_at: 1
+    }, 1 + elapsedMs, this.getManualProjectionPhysics());
+    this.applyManualProjection(projected);
+    void this.savePlayerShipState({ force: true });
+  }
+
+  async savePlayerShipState({ force = false } = {}) {
+    const navigation = this.worldDataManager.getNavigationState();
+    if (
+      !this.worldDataManager.db
+      || this.playerShipSavePending
+      || this.manualProjectionValidationPending
+      || this.worldDataResetting
+      || this.isDocked()
+      || this.isBetaSpaceActive()
+      || this.miningSession
+      || this.pendingNavigationCommand
+      || this.state.autopilotPhase !== null
+      || navigation.ship.spatialMode !== "FIELD"
+      || navigation.activeContract
+    ) {
+      return;
+    }
+
+    const now = performance.now();
+    if (!force && now - this.playerShipSaveLastUpdatedAt < this.playerShipSaveInterval) return;
+    this.playerShipSaveLastUpdatedAt = now;
+    this.playerShipSavePending = true;
+    try {
+      await this.worldDataManager.saveManualNavigationProjection(this.buildObservedNavigationShip());
+    } catch (error) {
+      console.warn("[navigation] local manual flight save failed.", error);
+    } finally {
+      this.playerShipSavePending = false;
+    }
   }
 
   beginDeterministicNavigation(routeType, target, actionPrefix) {
@@ -5019,7 +5156,7 @@ export class GameManager {
       const result = await this.worldDataManager.startGathering({
         nodeId: pending.nodeId,
         storageId: pending.storageId,
-        actorId: this.characterId
+        observedShip: this.buildObservedNavigationShip()
       });
       this.miningAligning = null;
       if (!result?.ok) {
@@ -5032,6 +5169,11 @@ export class GameManager {
       this._lastGatherDerive = null;
       this.driveShipMiningAnimation(true); // deploy + hold end while mining
       this.ui.showToast("gathering started");
+    } catch (error) {
+      console.error("[gathering] authoritative start failed.", error);
+      this.miningAligning = null;
+      this.ui.setGatheringState({ active: false });
+      this.ui.showErrorToast(error?.message || "gathering command failed");
     } finally {
       this._miningBusy = false;
     }
@@ -5070,13 +5212,13 @@ export class GameManager {
       this._miningVisAccumMs = 0;
       this.driveShipMiningAnimation(false); // retract back to rest pose
       this.ui.setGatheringState({ active: false });
-      if (result?.committed) {
-        await this.syncPlayerAssetsToServer("mining");
-      }
       await this.loadPlayerAssets();
       if (manual && Number.isFinite(Number(result?.gathered))) {
         this.ui.showToast(`gathered ${Math.floor(Number(result.gathered))}`);
       }
+    } catch (error) {
+      console.error("[gathering] authoritative settlement failed.", error);
+      this.ui.showErrorToast(error?.message || "gathering settlement failed");
     } finally {
       this._miningBusy = false;
     }
@@ -5114,9 +5256,6 @@ export class GameManager {
     let settleResult = null;
     try { settleResult = await this.worldDataManager.settleNode({ nodeId: active.target_node_id }); }
     catch { /* node may be gone */ }
-    if (settleResult?.committed) {
-      await this.syncPlayerAssetsToServer("mining");
-    }
     await this.loadPlayerAssets();
 
     const remaining = await this.worldDataManager.getGatheringLogs({ actorId: this.characterId, activeOnly: true });
@@ -5179,13 +5318,20 @@ export class GameManager {
     if (!stationId) return { ok: false, reason: "not-docked" };
     const shipUid = this.getActiveShipItem()?.item_uid || this.activeShipUid;
     if (!shipUid) return { ok: false, reason: "no-ship" };
-    const result = await this.worldDataManager.runStationTrade(stationId, shipUid, { itemId, direction, amount, nowMs: Date.now() });
-    if (result?.committed) {
-      const synced = await this.syncPlayerAssetsToServer("trade");
-      if (!synced) return { ok: false, reason: "server-sync-failed" };
+    try {
+      const result = await this.worldDataManager.runStationTrade(stationId, shipUid, {
+        itemId,
+        direction,
+        amount
+      });
+      if (result?.committed) await this.loadPlayerAssets();
+      return result;
+    } catch (error) {
+      console.error("[trade] authoritative command failed.", error);
+      await this.loadPlayerAssets();
+      this.ui.showErrorToast(error?.message || "trade command failed");
+      return { ok: false, reason: error?.code || "server-command-failed" };
     }
-    await this.loadPlayerAssets(); // refresh in-memory docked cargo view
-    return result;
   }
 
   // Lowest free hangar slot (< capacity) at a station, or -1 if full.
@@ -5648,21 +5794,8 @@ export class GameManager {
     // station blowing up resolves it field-locally. "Docked" is derived from the
     // ship's location (its docked_ships membership) — no stored docked state.
     const stationId = resolved.id;
-    const now = Date.now();
     const dockSlot = authorityState.custody.slot;
-    const result = await this.worldDataManager.dockActiveShipToStation(this.characterId, stationId, { dockSlot, nowMs: now });
-    if (!result?.committed) {
-      this.dockingState = { station_id: stationId, slot: dockSlot };
-      this.enterDockingScene();
-      this.ui.showErrorToast("docked on server; local asset cache unavailable");
-      await this.ui.fadeIn(2000);
-      return;
-    }
-    const synced = await this.syncPlayerAssetsToServer("dock");
-    if (!synced) {
-      await this.ui.fadeIn(2000);
-      return;
-    }
+    this.dockingState = { station_id: stationId, slot: dockSlot };
     this._dockCutscenePending = true; // play the arrival cutscene (only on space→station dock)
     await this.loadPlayerAssets(); // syncDockingPresentation enters the docking scene
     this.clearObservedSpace();
@@ -5681,20 +5814,8 @@ export class GameManager {
       return;
     }
     await this.ui.fadeOut(this.getSpaceBackgroundColor(), 2000); // 2s fade to space bg, then transition
-    const now = Date.now();
     // Custody migration (one transaction): bring the ship subtree back from the
     // station's docked_ships zone into the player namespace; clear dock truth.
-    const result = await this.worldDataManager.undockShipFromStation(this.characterId, stationId, { nowMs: now });
-    if (!result?.committed) {
-      this.ui.showErrorToast("undock failed");
-      await this.ui.fadeIn(2000);
-      return;
-    }
-    const synced = await this.syncPlayerAssetsToServer("undock");
-    if (!synced) {
-      await this.ui.fadeIn(2000);
-      return;
-    }
     await this.loadPlayerAssets(); // syncDockingPresentation exits the docking scene
 
     // The server resolves the current building coordinate before releasing custody.
@@ -6174,19 +6295,14 @@ export class GameManager {
     const frameGapMs = this._lastFrameTimestamp ? nowMs - this._lastFrameTimestamp : 0;
     this._lastFrameTimestamp = nowMs;
 
-    const gapStartAt = nowMs - frameGapMs;
     if (
       this.state.phase === "running" &&
       this.state.autopilotPhase === null &&
-      this.state.speed !== 0 &&
       frameGapMs > this.config.gapDetectionThresholdMs &&
-      !this._deactivationLog &&
-      !this.pendingNavigationCommand &&
-      gapStartAt > this._lastDeactivationResolvedAt
+      !this.pendingNavigationCommand
     ) {
       this.activeActions.clear();
-      this._commitDeactivationNavLog(nowMs - frameGapMs);
-      this._resolveDeactivationNavLog();
+      this.advanceManualFlightGap(frameGapMs);
     }
 
     const dt = Math.min(this.clock.getDelta(), 0.05);

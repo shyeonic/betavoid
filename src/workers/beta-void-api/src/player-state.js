@@ -4,8 +4,8 @@ const DEFAULT_SHIP_CARGO_CAPACITY = 1000;
 const MAX_PLAYER_STATE_BYTES = 256 * 1024;
 const MAX_ASSET_RECORDS = 2000;
 const MAX_MINING_ITEM_GAIN = 1_000_000;
-const ASSET_REASONS = new Set(["fitting", "dock", "undock", "mining", "trade"]);
-const CONSERVED_REASONS = new Set(["fitting", "dock", "undock"]);
+const ASSET_REASONS = new Set(["fitting"]);
+const CONSERVED_REASONS = new Set(["fitting"]);
 const DEFAULT_FITTINGS = [
   { slotType: "weapon", slotId: "weapon_slot_special", itemId: "weapon_ex_beta_cascade" },
   { slotType: "weapon", slotId: "weapon_slot_wing", itemId: "weapon_pulse_service_m" },
@@ -21,7 +21,7 @@ export async function getOrCreatePlayerState(db, auth, profile) {
   const assets = createDefaultPlayerAssets(profile, now);
   const [, selected] = await db.batch([
     db.prepare(`
-      INSERT OR IGNORE INTO player_states (
+      INSERT OR IGNORE INTO character_states (
         firebase_uid,
         character_id,
         schema_version,
@@ -64,7 +64,7 @@ export async function commitPlayerAssets(db, auth, profile, body) {
   }
 
   const now = Date.now();
-  const docking = normalizeDocking(body?.docking, current.assets.profile.active_ship_uid, profile.character_id);
+  const docking = null;
   const assets = normalizePlayerAssets(body?.assets, current.assets, profile, docking, now);
   validateAssetTransition(current, { assets, docking }, reason);
 
@@ -75,7 +75,7 @@ export async function commitPlayerAssets(db, auth, profile, body) {
   }
 
   const result = await db.prepare(`
-    UPDATE player_states
+    UPDATE character_states
     SET
       assets_json = ?,
       docking_json = ?,
@@ -406,7 +406,7 @@ function sameLedgerKind(left, right, prefix) {
   return leftEntries.every(([key, value]) => Math.abs((right.get(key) || 0) - value) <= 1e-9);
 }
 
-function normalizePlayerStateRow(row, profile) {
+export function normalizePlayerStateRow(row, profile) {
   const assets = parseJsonObject(row.assets_json, "PLAYER_STATE_CORRUPT");
   assets.character_id = profile.character_id;
   assets.profile = {
@@ -422,7 +422,7 @@ function normalizePlayerStateRow(row, profile) {
     ship_revision: Number(row.ship_revision),
     assets,
     ship_state: row.ship_state_json ? parseJsonObject(row.ship_state_json, "PLAYER_STATE_CORRUPT") : null,
-    docking: row.docking_json ? parseJsonObject(row.docking_json, "PLAYER_STATE_CORRUPT") : null,
+    docking: null,
     updated_at: Number(row.updated_at)
   };
 }
@@ -445,7 +445,7 @@ function selectPlayerStateStatement(db, firebaseUid) {
       last_reason,
       created_at,
       updated_at
-    FROM player_states
+    FROM character_states
     WHERE firebase_uid = ?
   `).bind(firebaseUid);
 }

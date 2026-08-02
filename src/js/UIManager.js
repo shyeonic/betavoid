@@ -2602,7 +2602,7 @@ export class UIManager {
 
   setWorldSummary(summary) {
     if (!summary) return;
-    this.elements.worldSeedValue.textContent = String(summary.seed ?? "none");
+    this.elements.worldSeedValue.textContent = String(summary.worldId ?? "none");
     this.elements.worldGeneratedValue.textContent = summary.generatedAt
       ? new Date(summary.generatedAt).toLocaleString()
       : "none";

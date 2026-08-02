@@ -238,6 +238,7 @@ const arrived = await request(
 );
 assert.equal(arrived.ship.phase, "arrived");
 assert.equal(arrived.ship.revision, standard.ship.revision);
+assert.equal(arrived.ship.checkpoint_at, standard.active_contract.arrive_at);
 assertVector(arrived.ship.position, dockBuilding.position);
 
 const dockNow = arrivalNow + 1;
@@ -442,5 +443,50 @@ const manualOverride = await request("/navigation/override", {
 });
 assert.equal(manualOverride.active_contract, null);
 assert.equal(manualOverride.ship.desired_speed, 500);
+
+const manualResumeCharacterId = `manual-resume-${Date.now()}`;
+const manualResumeInitial = await request(`/navigation?character_id=${manualResumeCharacterId}`);
+const manualResumeAt = manualResumeInitial.ship.checkpoint_at + 1_000;
+const manualResume = await request("/navigation/manual-resume", {
+  method: "POST",
+  body: {
+    character_id: manualResumeCharacterId,
+    client_action_id: `resume-${manualResumeCharacterId}`,
+    expected_revision: manualResumeInitial.ship.revision,
+    observed_ship: {
+      position: {
+        ...manualResumeInitial.ship.position,
+        z: manualResumeInitial.ship.position.z + 100
+      },
+      rotation: { x: 0, y: 1, z: 0, w: 0 },
+      speed: 999_999,
+      desired_speed: 999_999
+    },
+    ...commandWindow(manualResumeAt)
+  }
+});
+assert.equal(manualResume.active_contract, null);
+assert.equal(manualResume.ship.phase, "manual");
+assert.equal(manualResume.ship.revision, manualResumeInitial.ship.revision + 1);
+assert.ok(manualResume.ship.speed < 999_999);
+assert.ok(manualResume.ship.desired_speed < 999_999);
+await assert.rejects(
+  request("/navigation/manual-resume", {
+    method: "POST",
+    body: {
+      character_id: manualResumeCharacterId,
+      client_action_id: `stale-resume-${manualResumeCharacterId}`,
+      expected_revision: manualResumeInitial.ship.revision,
+      observed_ship: {
+        position: manualResume.ship.position,
+        rotation: manualResume.ship.rotation,
+        speed: 0,
+        desired_speed: 0
+      },
+      ...commandWindow(manualResumeAt + 1)
+    }
+  }),
+  (error) => error?.code === "MOVEMENT_REVISION_CONFLICT"
+);
 
 console.log("navigation authority check passed");

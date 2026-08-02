@@ -7,8 +7,11 @@
     "check:admin-layout": "node scripts/check-admin-layout.mjs",
     "check:admin-navigation": "node scripts/check-admin-navigation.mjs",
     "check:navigation": "node scripts/check-navigation-kinematics.mjs",
+    "check:manual-navigation": "node scripts/check-manual-navigation-projection.mjs",
     "check:navigation-delivery": "node scripts/check-navigation-command-delivery.mjs",
-    "check:navigation-authority": "node scripts/check-navigation-authority.mjs"
+    "check:navigation-authority": "node scripts/check-navigation-authority.mjs",
+    "check:economy-authority": "node scripts/check-economy-authority.mjs",
+    "check:gathering-authority": "node scripts/check-gathering-authority.mjs"
   },
   "devDependencies": {
     "playwright": "^1.60.0"

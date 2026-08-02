@@ -16,10 +16,21 @@ import {
   listZoneShipPeers,
   observeSpaceShips,
   overridePlayerNavigation,
+  resumePlayerManualNavigation,
   startPlayerNavigation,
   undockPlayerShip
 } from "../src/navigation-state.js";
 import { reconcileResourceLifecycle } from "../src/resource-lifecycle.js";
+import { getOrCreatePlayerState } from "../src/player-state.js";
+import { tradeAtStation } from "../src/economy-state.js";
+import {
+  getActiveGathering,
+  settleGathering,
+  startGathering,
+  stopGathering
+} from "../src/gathering-state.js";
+
+const TEST_WORLD_ENTROPY_SECRET = "beta-void-authority-test-secret";
 
 export { PresenceShard } from "../src/presence-shard.js";
 
@@ -30,11 +41,12 @@ export default {
       if (request.method === "GET" && url.pathname === "/state") {
         return json(await getOrCreateWorldState(
           env.WORLD_DB,
-          testNow(url.searchParams.get("server_now"))
+          testNow(url.searchParams.get("server_now")),
+          TEST_WORLD_ENTROPY_SECRET
         ));
       }
       if (request.method === "GET" && url.pathname === "/summary") {
-        return json(await getWorldAdminSummary(env.WORLD_DB));
+        return json(await getWorldAdminSummary(env.WORLD_DB, TEST_WORLD_ENTROPY_SECRET));
       }
       if (request.method === "GET" && url.pathname === "/entities") {
         return json(await listWorldAdminEntities(env.WORLD_DB, {
@@ -42,13 +54,13 @@ export default {
           sectorId: url.searchParams.get("sector_id"),
           cursor: url.searchParams.get("cursor"),
           limit: url.searchParams.get("limit")
-        }));
+        }, TEST_WORLD_ENTROPY_SECRET));
       }
       if (request.method === "POST" && url.pathname === "/rebuild") {
         const body = await request.json();
         return json(await rebuildWorldState(env.WORLD_DB, {
           expectedRevision: body.expected_revision
-        }));
+        }, TEST_WORLD_ENTROPY_SECRET));
       }
       if (request.method === "POST" && url.pathname === "/beta-process") {
         const body = await request.json();
@@ -60,13 +72,14 @@ export default {
           actorShipUid: navigationContext(body.character_id).shipUid,
           issuedAt: body.issued_at,
           expiresAt: body.expires_at
-        }, testNow(body.server_now)));
+        }, testNow(body.server_now), TEST_WORLD_ENTROPY_SECRET));
       }
       if (request.method === "POST" && url.pathname === "/reconcile") {
         const body = await request.json();
         return json(await reconcileResourceLifecycle(
           env.WORLD_DB,
-          testNow(body.server_now)
+          testNow(body.server_now),
+          TEST_WORLD_ENTROPY_SECRET
         ));
       }
       if (request.method === "GET" && url.pathname === "/navigation") {
@@ -85,9 +98,82 @@ export default {
           testNow(body.server_now)
         ));
       }
+      if (request.method === "POST" && url.pathname === "/player/bootstrap") {
+        const body = await request.json();
+        const identity = playerIdentity(body.character_id);
+        return json(await getOrCreatePlayerState(
+          env.WORLD_DB,
+          identity.auth,
+          identity.profile
+        ));
+      }
+      if (request.method === "POST" && url.pathname === "/economy/trade") {
+        const body = await request.json();
+        const identity = playerIdentity(body.character_id);
+        const state = await getOrCreatePlayerState(
+          env.WORLD_DB,
+          identity.auth,
+          identity.profile
+        );
+        return json(await tradeAtStation(
+          env.WORLD_DB,
+          navigationContext(body.character_id, null, state),
+          body,
+          testNow(body.server_now)
+        ));
+      }
+      if (request.method === "GET" && url.pathname === "/economy/gathering/active") {
+        return json(await getActiveGathering(
+          env.WORLD_DB,
+          navigationContext(url.searchParams.get("character_id")),
+          testNow(url.searchParams.get("server_now"))
+        ));
+      }
+      if (request.method === "POST" && url.pathname === "/economy/gathering/start") {
+        const body = await request.json();
+        const identity = playerIdentity(body.character_id);
+        const state = await getOrCreatePlayerState(env.WORLD_DB, identity.auth, identity.profile);
+        return json(await startGathering(
+          env.WORLD_DB,
+          navigationContext(body.character_id, null, state),
+          body,
+          testNow(body.server_now)
+        ));
+      }
+      if (request.method === "POST" && url.pathname === "/economy/gathering/stop") {
+        const body = await request.json();
+        const identity = playerIdentity(body.character_id);
+        const state = await getOrCreatePlayerState(env.WORLD_DB, identity.auth, identity.profile);
+        return json(await stopGathering(
+          env.WORLD_DB,
+          navigationContext(body.character_id, null, state),
+          body,
+          testNow(body.server_now)
+        ));
+      }
+      if (request.method === "POST" && url.pathname === "/economy/gathering/settle") {
+        const body = await request.json();
+        const identity = playerIdentity(body.character_id);
+        const state = await getOrCreatePlayerState(env.WORLD_DB, identity.auth, identity.profile);
+        return json(await settleGathering(
+          env.WORLD_DB,
+          navigationContext(body.character_id, null, state),
+          body,
+          testNow(body.server_now)
+        ));
+      }
       if (request.method === "POST" && url.pathname === "/navigation/override") {
         const body = await request.json();
         return json(await overridePlayerNavigation(
+          env.WORLD_DB,
+          navigationContext(body.character_id, body.spatial_mode),
+          body,
+          testNow(body.server_now)
+        ));
+      }
+      if (request.method === "POST" && url.pathname === "/navigation/manual-resume") {
+        const body = await request.json();
+        return json(await resumePlayerManualNavigation(
           env.WORLD_DB,
           navigationContext(body.character_id, body.spatial_mode),
           body,
@@ -193,13 +279,34 @@ function json(payload, status = 200) {
   });
 }
 
-function navigationContext(value) {
+function navigationContext(value, spatialMode = null, playerState = null) {
   const characterId = String(value || "test-pilot");
+  const identity = playerIdentity(characterId);
   return {
+    firebaseUid: identity.auth.uid,
+    profile: identity.profile,
     characterId,
     displayName: characterId,
-    shipUid: `ship-${characterId}-ship_01-001`,
-    shipDefinitionId: "ship_01"
+    shipUid: playerState?.assets?.profile?.active_ship_uid
+      || `ship-${characterId}-ship_01-001`,
+    shipDefinitionId: playerState?.assets?.profile?.selected_ship_id || "ship_01",
+    spatialMode,
+    worldEntropySecret: TEST_WORLD_ENTROPY_SECRET
+  };
+}
+
+function playerIdentity(value) {
+  const characterId = String(value || "test-pilot");
+  const firebaseUid = `firebase-${characterId}`;
+  return {
+    auth: { uid: firebaseUid },
+    profile: {
+      firebase_uid: firebaseUid,
+      character_id: characterId,
+      display_name: characterId,
+      created_at: 1,
+      updated_at: 1
+    }
   };
 }
 

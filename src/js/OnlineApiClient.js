@@ -109,6 +109,27 @@ export class OnlineApiClient {
     return normalizeNavigationState(payload?.navigation);
   }
 
+  async resumeManualNavigation({
+    clientActionId,
+    expectedRevision,
+    issuedAt,
+    expiresAt,
+    observedShip
+  }) {
+    const payload = await this.request("/v1/navigation/manual-resume", {
+      method: "POST",
+      body: {
+        client_action_id: clientActionId,
+        expected_revision: expectedRevision,
+        issued_at: issuedAt,
+        expires_at: expiresAt,
+        observed_ship: observedShip
+      },
+      timeoutMs: 4_000
+    });
+    return normalizeNavigationState(payload?.navigation);
+  }
+
   async dockShip({
     clientActionId,
     expectedRevision,
@@ -233,6 +254,109 @@ export class OnlineApiClient {
       }
     });
     return normalizePlayerState(payload?.state, payload?.server_time);
+  }
+
+  async tradeAtStation({
+    clientActionId,
+    expectedAssetsRevision,
+    issuedAt,
+    expiresAt,
+    buildingId,
+    itemId,
+    direction,
+    amount
+  }) {
+    const payload = await this.request("/v1/economy/trade", {
+      method: "POST",
+      body: {
+        client_action_id: clientActionId,
+        expected_assets_revision: expectedAssetsRevision,
+        issued_at: issuedAt,
+        expires_at: expiresAt,
+        building_id: buildingId,
+        item_id: itemId,
+        direction,
+        amount
+      },
+      timeoutMs: 4_000
+    });
+    const result = payload?.result || {};
+    return {
+      committed: result.committed === true,
+      applied: Math.max(0, Number(result.applied) || 0),
+      reason: result.reason == null ? null : String(result.reason),
+      occupancy: result.occupancy || null,
+      state: result.state
+        ? normalizePlayerState(result.state, payload?.server_time)
+        : null,
+      storage: result.storage || null,
+      storageRevision: Number(result.storage_revision) || 0,
+      serverTime: Number(payload?.server_time) || Date.now()
+    };
+  }
+
+  async getActiveGathering() {
+    const payload = await this.request("/v1/economy/gathering/active");
+    return normalizeGatheringResult(payload?.result, payload?.server_time);
+  }
+
+  async startGathering({
+    clientActionId,
+    expectedShipRevision,
+    expectedAssetsRevision,
+    issuedAt,
+    expiresAt,
+    nodeId,
+    targetStorageId,
+    observedShip
+  }) {
+    const payload = await this.request("/v1/economy/gathering/start", {
+      method: "POST",
+      body: {
+        client_action_id: clientActionId,
+        expected_ship_revision: expectedShipRevision,
+        expected_assets_revision: expectedAssetsRevision,
+        issued_at: issuedAt,
+        expires_at: expiresAt,
+        node_id: nodeId,
+        target_storage_id: targetStorageId,
+        observed_ship: observedShip
+      },
+      timeoutMs: 4_000
+    });
+    return normalizeGatheringResult(payload?.result, payload?.server_time);
+  }
+
+  async stopGathering({ clientActionId, issuedAt, expiresAt, contractId }) {
+    return this.gatheringCommand("stop", {
+      clientActionId,
+      issuedAt,
+      expiresAt,
+      contractId
+    });
+  }
+
+  async settleGathering({ clientActionId, issuedAt, expiresAt, contractId }) {
+    return this.gatheringCommand("settle", {
+      clientActionId,
+      issuedAt,
+      expiresAt,
+      contractId
+    });
+  }
+
+  async gatheringCommand(command, { clientActionId, issuedAt, expiresAt, contractId }) {
+    const payload = await this.request(`/v1/economy/gathering/${command}`, {
+      method: "POST",
+      body: {
+        client_action_id: clientActionId,
+        issued_at: issuedAt,
+        expires_at: expiresAt,
+        contract_id: contractId
+      },
+      timeoutMs: 4_000
+    });
+    return normalizeGatheringResult(payload?.result, payload?.server_time);
   }
 
   async updateProfile(displayName) {
@@ -398,7 +522,6 @@ function normalizeWorldBootstrap(world, serverTime) {
   };
   const normalized = {
     worldId: String(world?.world_id || ""),
-    seed: String(world?.seed || ""),
     dataSourceKey: String(world?.data_source_key || ""),
     revision,
     generatedAt,
@@ -408,7 +531,6 @@ function normalizeWorldBootstrap(world, serverTime) {
 
   if (
     !normalized.worldId
-    || !normalized.seed
     || !normalized.dataSourceKey
     || !Number.isInteger(revision)
     || revision < 1
@@ -453,6 +575,36 @@ function normalizePlayerState(state, serverTime) {
   return normalized;
 }
 
+function normalizeGatheringResult(value, serverTime) {
+  const contract = value?.contract;
+  return {
+    committed: value?.committed === true,
+    gathered: Math.max(0, Number(value?.gathered) || 0),
+    contract: contract
+      ? {
+          contractId: String(contract.contract_id || ""),
+          actorId: String(contract.actor_id || ""),
+          shipUid: String(contract.ship_uid || ""),
+          status: String(contract.status || ""),
+          nodeId: String(contract.target_node_id || ""),
+          storageId: String(contract.target_storage_id || ""),
+          itemId: String(contract.produces_item_id || ""),
+          startAt: Number(contract.start_at) || 0,
+          epochSettledAnchor: Number(contract.epoch_settled_anchor) || Number(contract.start_at) || 0,
+          plannedEndAt: contract.planned_end_at == null ? null : Number(contract.planned_end_at),
+          plannedYield: Math.max(0, Number(contract.planned_yield) || 0),
+          settledYield: Math.max(0, Number(contract.settled_yield) || 0),
+          accumulated: Math.max(0, Number(contract.accumulated) || 0),
+          effectiveYieldPerSecond: Math.max(0, Number(contract.effective_yield_per_sec) || 0)
+        }
+      : null,
+    node: value?.node || null,
+    state: value?.state ? normalizePlayerState(value.state, serverTime) : null,
+    navigation: value?.navigation ? normalizeNavigationState(value.navigation) : null,
+    serverTime: Number(value?.server_time) || Number(serverTime) || Date.now()
+  };
+}
+
 function normalizeNavigationState(value) {
   const ship = value?.ship;
   const revision = Number(ship?.revision);
@@ -491,6 +643,18 @@ function normalizeNavigationState(value) {
       : null,
     betaSpaceSession: value?.beta_space_session
       ? normalizeBetaSpaceSession(value.beta_space_session)
+      : null,
+    economyOccupancy: value?.economy_occupancy
+      ? {
+          type: String(value.economy_occupancy.type || ""),
+          contractId: String(value.economy_occupancy.contract_id || ""),
+          worldObjectId: value.economy_occupancy.world_object_id == null
+            ? null
+            : String(value.economy_occupancy.world_object_id),
+          startedAt: Number(value.economy_occupancy.started_at) || 0,
+          busyUntil: Number(value.economy_occupancy.busy_until) || 0,
+          revision: Number(value.economy_occupancy.revision) || 1
+        }
       : null,
     activeContract: value?.active_contract
       ? normalizeMovementContract(value.active_contract)

@@ -1,36 +1,17 @@
 import { WORLD_TEMPLATE } from "./generated/world-template.js";
 import { ensureWorldInitialized } from "./world-state.js";
+import { createServerDeterministicRandom } from "./server-determinism.js";
 
 const PRIMARY_WORLD_ID = "primary";
 
-export async function reconcileResourceLifecycle(db, now = Date.now()) {
+export async function reconcileResourceLifecycle(db, now = Date.now(), entropySecret) {
   const worldRow = await ensureWorldInitialized(db);
-  const [entityResult, metaRow] = await Promise.all([
-    db.prepare(`
-      SELECT entity_type, entity_id, state_json, revision
-      FROM world_entities
-      WHERE world_id = ?
-        AND entity_type IN ('sector', 'resource_node', 'building')
-      ORDER BY entity_type, entity_id
-    `).bind(PRIMARY_WORLD_ID).all(),
-    db.prepare(`
-      SELECT state_json, revision
-      FROM world_meta
-      WHERE world_id = ? AND meta_key = 'resourceManager'
-    `).bind(PRIMARY_WORLD_ID).first()
-  ]);
+  const metaRow = await db.prepare(`
+    SELECT state_json, revision
+    FROM world_meta
+    WHERE world_id = ? AND meta_key = 'resourceManager'
+  `).bind(PRIMARY_WORLD_ID).first();
   if (!metaRow) throw resourceError(500, "RESOURCE_MANAGER_MISSING", "Resource manager is unavailable.");
-
-  const records = entityResult?.results || [];
-  const originalResourceRows = records.filter((entry) => entry.entity_type === "resource_node");
-  const originalResourceIds = new Set(originalResourceRows.map((entry) => entry.entity_id));
-  let resources = originalResourceRows.map((entry) => parseState(entry.state_json));
-  const buildings = records
-    .filter((entry) => entry.entity_type === "building")
-    .map((entry) => parseState(entry.state_json));
-  const sectors = records
-    .filter((entry) => entry.entity_type === "sector")
-    .map((entry) => parseState(entry.state_json));
   const manager = parseState(metaRow.state_json);
   const config = WORLD_TEMPLATE.resourceLifecycle;
   const interval = Math.max(1, Number(manager.check_interval || config.checkInterval) || 86_400_000);
@@ -46,6 +27,24 @@ export async function reconcileResourceLifecycle(db, now = Date.now()) {
     };
   }
 
+  const entityResult = await db.prepare(`
+    SELECT entity_type, entity_id, state_json, revision
+    FROM world_entities
+    WHERE world_id = ?
+      AND entity_type IN ('sector', 'resource_node', 'building')
+    ORDER BY entity_type, entity_id
+  `).bind(PRIMARY_WORLD_ID).all();
+  const records = entityResult?.results || [];
+  const originalResourceRows = records.filter((entry) => entry.entity_type === "resource_node");
+  const originalResourceIds = new Set(originalResourceRows.map((entry) => entry.entity_id));
+  let resources = originalResourceRows.map((entry) => parseState(entry.state_json));
+  const buildings = records
+    .filter((entry) => entry.entity_type === "building")
+    .map((entry) => parseState(entry.state_json));
+  const sectors = records
+    .filter((entry) => entry.entity_type === "sector")
+    .map((entry) => parseState(entry.state_json));
+
   const chunks = createWorldChunks(config.enabledChunkRuns, WORLD_TEMPLATE.movementConfig.chunkSize);
   const sectorChunkIds = new Set(sectors.map((sector) => sector.chunk_id).filter(Boolean));
   const offSectorChunks = chunks.filter((chunk) => !sectorChunkIds.has(chunk.chunk_id));
@@ -57,7 +56,10 @@ export async function reconcileResourceLifecycle(db, now = Date.now()) {
     resources = resources.filter((node) => !shouldRemoveResourceNode(node, cycleAt));
     updateResourceManagerTotals(manager, resources, buildings, config);
 
-    const rng = createSeededRandom(`${worldRow.seed}:resource-cycle:${cycleAt}`);
+    const rng = await createServerDeterministicRandom(
+      entropySecret,
+      `${worldRow.seed}:resource-cycle:${cycleAt}`
+    );
     const placedObjects = [...resources, ...buildings];
     let nextIndex = resources.length;
     for (const resourceId of config.resourceIds || []) {
@@ -425,26 +427,6 @@ function createResourceInserts(db, records, now) {
     `).bind(...values));
   }
   return statements;
-}
-
-function createSeededRandom(seed) {
-  let value = hashSeed(String(seed));
-  return () => {
-    value += 0x6D2B79F5;
-    let next = value;
-    next = Math.imul(next ^ (next >>> 15), next | 1);
-    next ^= next + Math.imul(next ^ (next >>> 7), next | 61);
-    return ((next ^ (next >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function hashSeed(seed) {
-  let hash = 2166136261;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash ^= seed.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
 }
 
 function parseState(value) {

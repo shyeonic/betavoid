@@ -209,6 +209,34 @@ try {
         ),
         enabledChunkRuns: enabledChunkRuns.map((run) => run.join(",")).join(";")
       },
+      economyConfig: {
+        gathering: {
+          effectiveRatePerSecond: 0.1,
+          maximumRange: 8000
+        },
+        itemMasses: Object.fromEntries(
+          Object.entries(gameData.itemDefinitions).map(([itemId, definition]) => [
+            itemId,
+            Number(definition.mass) || 0
+          ])
+        ),
+        shipCargoCapacities: Object.fromEntries(
+          Object.entries(gameData.shipDefinitions).map(([shipId, definition]) => [
+            shipId,
+            Number(definition.combat?.base_stats?.cargo_capacity) || 0
+          ])
+        ),
+        buildingTrade: Object.fromEntries(
+          Object.entries(gameData.buildingDefinitions).map(([buildingId, definition]) => [
+            buildingId,
+            {
+              enabled: Boolean(definition.trade?.enabled),
+              handlingSpeed: Number(definition.trade?.handling_speed) || 0,
+              cargoCapacity: Number(definition.trade?.cargo_capacity) || 0
+            }
+          ])
+        )
+      },
       movementConfig: {
         renderScale: gameData.worldConfig.renderScale,
         chunkSize: gameData.worldConfig.chunkSize,
